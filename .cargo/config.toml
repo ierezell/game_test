@@ -1,0 +1,11 @@
+# Faster compilation and linking on Windows
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
+
+# Enable faster incremental builds
+[build]
+target-dir = "target"
+
+# Optional: Use a different target directory for faster compilation
+# [build]
+# target-dir = "C:/tmp/bevy-target" # Use a different drive if available

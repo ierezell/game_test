@@ -1,0 +1,14 @@
+{
+  "WorkspaceID": "dv.ws.25e5d37d-9f7c-4519-bf6e-3c7a2718b7cf",
+  "RepoID": "dv.repo.40110bbb-4ef1-42c6-a6f6-05e62152f984",
+  "Path": "C:\\Users\\psnell\\projects\\yolo",
+  "AccountID": "Google_111120162334708713218",
+  "BranchID": "dv.branch.1",
+  "BranchName": "main",
+  "CommitID": "",
+  "Paused": false,
+  "ShouldDownload": true,
+  "RepoName": "yolo",
+  "ReadOnly": false,
+  "DigestMethod": "sha1"
+}

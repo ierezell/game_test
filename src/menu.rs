@@ -1,22 +1,27 @@
-use bevy::prelude::*;
+use crate::combat::Health;
 use crate::game_state::GameState;
 use crate::player::Player;
-use crate::combat::Health;
+use bevy::prelude::*;
 
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .add_systems(OnEnter(GameState::MainMenu), setup_main_menu)
+        app.add_systems(OnEnter(GameState::MainMenu), setup_main_menu)
             .add_systems(OnExit(GameState::MainMenu), cleanup_main_menu)
-            .add_systems(Update, (
-                main_menu_system.run_if(in_state(GameState::MainMenu)),
-                check_player_death.run_if(in_state(GameState::InGame)),
-            ))
+            .add_systems(
+                Update,
+                (
+                    main_menu_system.run_if(in_state(GameState::MainMenu)),
+                    check_player_death.run_if(in_state(GameState::InGame)),
+                ),
+            )
             .add_systems(OnEnter(GameState::GameOver), setup_game_over_menu)
             .add_systems(OnExit(GameState::GameOver), cleanup_game_over_menu)
-            .add_systems(Update, game_over_menu_system.run_if(in_state(GameState::GameOver)));
+            .add_systems(
+                Update,
+                game_over_menu_system.run_if(in_state(GameState::GameOver)),
+            );
     }
 }
 
@@ -144,7 +149,7 @@ fn setup_main_menu(mut commands: Commands) {
 
 fn cleanup_main_menu(mut commands: Commands, menu_query: Query<Entity, With<MainMenuUI>>) {
     for entity in menu_query.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_recursive();
     }
 }
 
@@ -158,22 +163,20 @@ fn main_menu_system(
 ) {
     for (interaction, menu_button, mut background_color) in interaction_query.iter_mut() {
         match *interaction {
-            Interaction::Pressed => {
-                match menu_button.action {
-                    MenuAction::StartGame => {
-                        info!("Starting new game");
-                        next_state.set(GameState::InGame);
-                    }
-                    MenuAction::QuitGame => {
-                        info!("Quitting game");
-                        exit.write(AppExit::Success);
-                    }
-                    MenuAction::RestartGame => {
-                        info!("Restarting game");
-                        next_state.set(GameState::InGame);
-                    }
+            Interaction::Pressed => match menu_button.action {
+                MenuAction::StartGame => {
+                    info!("Starting new game");
+                    next_state.set(GameState::InGame);
                 }
-            }
+                MenuAction::QuitGame => {
+                    info!("Quitting game");
+                    exit.send(AppExit::Success);
+                }
+                MenuAction::RestartGame => {
+                    info!("Restarting game");
+                    next_state.set(GameState::InGame);
+                }
+            },
             Interaction::Hovered => {
                 *background_color = Color::srgb(0.3, 0.3, 0.3).into();
             }
@@ -313,7 +316,7 @@ fn setup_game_over_menu(mut commands: Commands) {
 
 fn cleanup_game_over_menu(mut commands: Commands, menu_query: Query<Entity, With<GameOverUI>>) {
     for entity in menu_query.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_recursive();
     }
 }
 
@@ -327,22 +330,20 @@ fn game_over_menu_system(
 ) {
     for (interaction, menu_button, mut background_color) in interaction_query.iter_mut() {
         match *interaction {
-            Interaction::Pressed => {
-                match menu_button.action {
-                    MenuAction::StartGame => {
-                        info!("Going to main menu");
-                        next_state.set(GameState::MainMenu);
-                    }
-                    MenuAction::RestartGame => {
-                        info!("Restarting game");
-                        next_state.set(GameState::InGame);
-                    }
-                    MenuAction::QuitGame => {
-                        info!("Quitting game");
-                        exit.write(AppExit::Success);
-                    }
+            Interaction::Pressed => match menu_button.action {
+                MenuAction::StartGame => {
+                    info!("Going to main menu");
+                    next_state.set(GameState::MainMenu);
                 }
-            }
+                MenuAction::RestartGame => {
+                    info!("Restarting game");
+                    next_state.set(GameState::InGame);
+                }
+                MenuAction::QuitGame => {
+                    info!("Quitting game");
+                    exit.send(AppExit::Success);
+                }
+            },
             Interaction::Hovered => {
                 *background_color = Color::srgb(0.3, 0.3, 0.3).into();
             }

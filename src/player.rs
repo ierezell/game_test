@@ -21,7 +21,8 @@ impl Plugin for PlayerPlugin {
                     player_shooting,
                     stamina_system,
                     handle_cursor_grab,
-                ).run_if(in_state(GameState::InGame)),
+                )
+                    .run_if(in_state(GameState::InGame)),
             );
     }
 }
@@ -154,8 +155,8 @@ pub struct PlayerBundle {
 
 fn spawn_player(
     mut commands: Commands,
-    _meshes: ResMut<Assets<Mesh>>,
-    _materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let player = commands
         .spawn(PlayerBundle {
@@ -208,7 +209,7 @@ fn spawn_player(
 }
 
 fn player_movement(
-    _time: Res<Time>,
+    time: Res<Time>,
     mut query: Query<
         (
             &mut Transform,
@@ -219,7 +220,7 @@ fn player_movement(
         With<Player>,
     >,
 ) {
-    for (_transform, mut velocity, mut controller, action_state) in query.iter_mut() {
+    for (mut transform, mut velocity, mut controller, action_state) in query.iter_mut() {
         let mut movement = Vec3::ZERO;
 
         // Get movement input
@@ -351,7 +352,7 @@ fn player_shooting(
     mut player_query: Query<(&Transform, &mut Weapon, &ActionState<PlayerAction>), With<Player>>,
     camera_query: Query<&Transform, (With<FirstPersonCamera>, Without<Player>)>,
 ) {
-    for (_player_transform, mut weapon, action_state) in player_query.iter_mut() {
+    for (player_transform, mut weapon, action_state) in player_query.iter_mut() {
         if let Ok(camera_transform) = camera_query.single() {
             // Handle shooting
             if action_state.pressed(&PlayerAction::PrimaryFire) {

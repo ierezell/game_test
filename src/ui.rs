@@ -206,7 +206,7 @@ fn setup_ui(mut commands: Commands) {
 
 fn cleanup_ui(mut commands: Commands, ui_query: Query<Entity, With<GameUI>>) {
     for entity in ui_query.iter() {
-        commands.entity(entity).despawn();
+        commands.entity(entity).despawn_recursive();
     }
 }
 

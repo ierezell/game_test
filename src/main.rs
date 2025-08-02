@@ -42,6 +42,7 @@ fn main() {
             audio::GameAudioPlugin,
             debug_ui::DebugUIPlugin,
             menu::MenuPlugin,
+            networking::NetworkingPlugin,
             static_level::StaticLevelPlugin,
         ))
         // Startup systems

@@ -6,8 +6,16 @@ authors = ["Your Name <your.email@example.com>"]
 description = "A GTFO-like cooperative survival horror game built with Bevy and Avian"
 
 [[bin]]
+name = "simple"
+path = "src/main_simple.rs"
+
+[[bin]]
 name = "full"
 path = "src/main.rs"
+
+[[bin]]
+name = "test_minimal"
+path = "src/test_minimal.rs"
 
 [dependencies]
 # Core Bevy engine

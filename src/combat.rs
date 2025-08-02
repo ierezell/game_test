@@ -1,8 +1,8 @@
+use crate::game_state::GameState;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
 use rand::Rng;
-use crate::game_state::GameState;
 
 pub struct CombatPlugin;
 
@@ -16,7 +16,8 @@ impl Plugin for CombatPlugin {
                 damage_system,
                 cleanup_projectiles,
                 remove_dead_entities,
-            ).run_if(in_state(GameState::InGame)),
+            )
+                .run_if(in_state(GameState::InGame)),
         );
     }
 }
@@ -226,7 +227,7 @@ fn projectile_movement(
     mut projectile_query: Query<(Entity, &mut Projectile, &mut Transform)>,
     mut commands: Commands,
 ) {
-    for (entity, mut projectile, _transform) in projectile_query.iter_mut() {
+    for (entity, mut projectile, transform) in projectile_query.iter_mut() {
         projectile.lifetime -= time.delta_secs();
 
         if projectile.lifetime <= 0.0 {
@@ -243,16 +244,16 @@ fn damage_system(
 ) {
     for CollisionStarted(entity1, entity2) in collision_events.read() {
         info!("Collision detected between {:?} and {:?}", entity1, entity2);
-        
+
         // Debug: Check what components each entity has
         let projectile1 = projectile_query.get(*entity1).is_ok();
         let projectile2 = projectile_query.get(*entity2).is_ok();
         let health1 = health_query.get(*entity1).is_ok();
         let health2 = health_query.get(*entity2).is_ok();
-        
+
         info!("Entity1 - Projectile: {}, Health: {}", projectile1, health1);
         info!("Entity2 - Projectile: {}, Health: {}", projectile2, health2);
-        
+
         // Check if one entity is a projectile and the other has health
         if let Ok(projectile) = projectile_query.get(*entity1) {
             if let Ok(mut health) = health_query.get_mut(*entity2) {
@@ -283,9 +284,9 @@ fn damage_system(
 }
 
 fn cleanup_projectiles(
-    _commands: Commands,
-    _projectile_query: Query<Entity, With<Projectile>>,
-    _time: Res<Time>,
+    mut commands: Commands,
+    projectile_query: Query<Entity, With<Projectile>>,
+    time: Res<Time>,
 ) {
     // This system runs cleanup for projectiles that might have gotten stuck
     // In a real implementation, you'd want more sophisticated cleanup

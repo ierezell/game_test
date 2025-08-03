@@ -1,6 +1,6 @@
-use avian3d::prelude::*;
+#![allow(dead_code)]
+
 use bevy::prelude::*;
-use rand::Rng;
 
 pub struct EnvironmentPlugin;
 
@@ -57,9 +57,9 @@ impl Default for AtmosphereSettings {
 }
 
 fn setup_atmospheric_elements(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    _commands: Commands,
+    _meshes: ResMut<Assets<Mesh>>,
+    _materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // Do nothing - let static level handle everything
 }

@@ -1,6 +1,7 @@
-use crate::combat::Health;
+use crate::combat::{Health, Projectile};
+use crate::enemies::Enemy;
 use crate::game_state::GameState;
-use crate::player::Player;
+use crate::player::{Player, FirstPersonCamera};
 use bevy::prelude::*;
 
 pub struct MenuPlugin;
@@ -9,6 +10,7 @@ impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::MainMenu), setup_main_menu)
             .add_systems(OnExit(GameState::MainMenu), cleanup_main_menu)
+            .add_systems(OnEnter(GameState::InGame), cleanup_previous_game)
             .add_systems(
                 Update,
                 (
@@ -41,6 +43,7 @@ pub enum MenuAction {
     StartGame,
     QuitGame,
     RestartGame,
+    MainMenu,
 }
 
 fn setup_main_menu(mut commands: Commands) {
@@ -149,11 +152,37 @@ fn setup_main_menu(mut commands: Commands) {
 
 fn cleanup_main_menu(mut commands: Commands, menu_query: Query<Entity, With<MainMenuUI>>) {
     for entity in menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
-fn main_menu_system(
+// Clean up all game entities when starting/restarting game
+pub fn cleanup_previous_game(
+    mut commands: Commands,
+    projectile_query: Query<Entity, With<Projectile>>,
+    enemy_query: Query<Entity, With<Enemy>>,
+    player_query: Query<Entity, (With<Player>, Without<FirstPersonCamera>)>,
+) {
+    info!("Cleaning up previous game entities...");
+    
+    // Remove all projectiles
+    for entity in projectile_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    
+    // Remove all enemies
+    for entity in enemy_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    
+    // Remove old player if exists (will be respawned by player plugin)
+    // BUT DO NOT remove the camera
+    for entity in player_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    
+    info!("Previous game cleanup complete");
+}fn main_menu_system(
     mut interaction_query: Query<
         (&Interaction, &MenuButton, &mut BackgroundColor),
         (Changed<Interaction>, With<Button>),
@@ -170,11 +199,15 @@ fn main_menu_system(
                 }
                 MenuAction::QuitGame => {
                     info!("Quitting game");
-                    exit.send(AppExit::Success);
+                    exit.write(AppExit::Success);
                 }
                 MenuAction::RestartGame => {
                     info!("Restarting game");
                     next_state.set(GameState::InGame);
+                }
+                MenuAction::MainMenu => {
+                    info!("Going to main menu");
+                    next_state.set(GameState::MainMenu);
                 }
             },
             Interaction::Hovered => {
@@ -271,7 +304,7 @@ fn setup_game_over_menu(mut commands: Commands) {
                     },
                     BackgroundColor(Color::srgb(0.2, 0.2, 0.2)),
                     MenuButton {
-                        action: MenuAction::StartGame, // This will go to main menu
+                        action: MenuAction::MainMenu,
                     },
                 ))
                 .with_children(|button| {
@@ -316,7 +349,7 @@ fn setup_game_over_menu(mut commands: Commands) {
 
 fn cleanup_game_over_menu(mut commands: Commands, menu_query: Query<Entity, With<GameOverUI>>) {
     for entity in menu_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
@@ -332,8 +365,8 @@ fn game_over_menu_system(
         match *interaction {
             Interaction::Pressed => match menu_button.action {
                 MenuAction::StartGame => {
-                    info!("Going to main menu");
-                    next_state.set(GameState::MainMenu);
+                    info!("Starting new game");
+                    next_state.set(GameState::InGame);
                 }
                 MenuAction::RestartGame => {
                     info!("Restarting game");
@@ -341,7 +374,11 @@ fn game_over_menu_system(
                 }
                 MenuAction::QuitGame => {
                     info!("Quitting game");
-                    exit.send(AppExit::Success);
+                    exit.write(AppExit::Success);
+                }
+                MenuAction::MainMenu => {
+                    info!("Going to main menu");
+                    next_state.set(GameState::MainMenu);
                 }
             },
             Interaction::Hovered => {

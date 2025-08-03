@@ -1,9 +1,10 @@
+#![allow(dead_code)]
+
 use crate::combat::Health;
 use crate::game_state::GameState;
 use crate::player::Player;
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use rand::Rng;
 
 pub struct EnemyPlugin;
 
@@ -301,8 +302,8 @@ fn enemy_ai_system(
     >,
     player_query: Query<(Entity, &Transform), With<crate::player::Player>>,
 ) {
-    for (enemy_entity, mut enemy, mut ai, enemy_transform) in enemy_query.iter_mut() {
-        let current_time = time.elapsed_secs();
+    for (_enemy_entity, mut enemy, mut ai, enemy_transform) in enemy_query.iter_mut() {
+        let _current_time = time.elapsed_secs();
 
         // Find closest player
         let mut closest_player: Option<(Entity, f32)> = None;
@@ -409,7 +410,7 @@ fn enemy_ai_system(
 }
 
 fn enemy_movement(
-    time: Res<Time>,
+    _time: Res<Time>,
     mut enemy_query: Query<
         (&Enemy, &mut EnemyAI, &mut LinearVelocity, &mut Transform),
         Without<crate::player::Player>,
@@ -514,7 +515,7 @@ fn enemy_attack_system(
 ) {
     let current_time = time.elapsed_secs();
 
-    for (mut enemy, enemy_transform) in enemy_query.iter_mut() {
+    for (mut enemy, _enemy_transform) in enemy_query.iter_mut() {
         if enemy.state == EnemyState::Attacking {
             if current_time - enemy.last_attack_time >= enemy.attack_cooldown {
                 if let Some(target_entity) = enemy.target {
@@ -542,10 +543,10 @@ fn enemy_attack_system(
 }
 
 fn enemy_death_system(
-    mut commands: Commands,
+    _commands: Commands,
     mut enemy_query: Query<(Entity, &mut Enemy, &Health), Without<crate::player::Player>>,
 ) {
-    for (entity, mut enemy, health) in enemy_query.iter_mut() {
+    for (_entity, mut enemy, health) in enemy_query.iter_mut() {
         if health.is_dead() && enemy.state != EnemyState::Dead {
             enemy.state = EnemyState::Dead;
             info!("Enemy died!");
@@ -562,7 +563,7 @@ fn enemy_death_system(
 fn sleeper_awakening_system(
     mut enemy_query: Query<(&mut Enemy, &mut EnemyAI, &Transform)>,
     player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
-    time: Res<Time>,
+    _time: Res<Time>,
 ) {
     for (mut enemy, mut ai, transform) in enemy_query.iter_mut() {
         if enemy.enemy_type == EnemyType::Sleeper && enemy.state == EnemyState::Dormant {

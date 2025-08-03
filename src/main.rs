@@ -8,7 +8,6 @@ mod enemies;
 mod environment;
 mod game_state;
 mod menu;
-mod networking;
 mod player;
 mod static_level;
 mod ui;
@@ -42,7 +41,6 @@ fn main() {
             audio::GameAudioPlugin,
             debug_ui::DebugUIPlugin,
             menu::MenuPlugin,
-            networking::NetworkingPlugin,
             static_level::StaticLevelPlugin,
         ))
         // Startup systems

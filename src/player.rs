@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::combat::{Health, Weapon};
 use crate::game_state::GameState;
 use avian3d::prelude::*;
@@ -11,6 +13,7 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputManagerPlugin::<PlayerAction>::default())
             .add_systems(Startup, spawn_player)
+            .add_systems(OnEnter(GameState::InGame), respawn_player)
             .add_systems(
                 Update,
                 (
@@ -18,12 +21,13 @@ impl Plugin for PlayerPlugin {
                     player_look,
                     update_camera_to_player,
                     update_flashlight,
-                    player_shooting,
                     stamina_system,
                     handle_cursor_grab,
                 )
                     .run_if(in_state(GameState::InGame)),
-            );
+            )
+            .add_systems(OnEnter(GameState::MainMenu), release_cursor)
+            .add_systems(OnEnter(GameState::GameOver), release_cursor);
     }
 }
 
@@ -155,8 +159,6 @@ pub struct PlayerBundle {
 
 fn spawn_player(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let player = commands
         .spawn(PlayerBundle {
@@ -208,8 +210,75 @@ fn spawn_player(
     });
 }
 
+// Respawn player when entering game state (for restarts)
+fn respawn_player(mut commands: Commands, player_query: Query<Entity, With<Player>>) {
+    info!(
+        "Respawn player called. Current players: {}",
+        player_query.iter().count()
+    );
+
+    // Clean up any existing players first
+    for entity in player_query.iter() {
+        info!("Removing existing player entity: {:?}", entity);
+        commands.entity(entity).despawn();
+    }
+
+    info!("Spawning fresh player...");
+
+    let player = commands
+        .spawn(PlayerBundle {
+            player: Player,
+            controller: PlayerController::default(),
+            flashlight: Flashlight::default(),
+            weapon: Weapon::new_assault_rifle(),
+            health: Health {
+                current: 100.0,
+                maximum: 100.0,
+                regeneration_rate: 0.0,
+                last_damage_time: 0.0,
+            },
+            rigid_body: RigidBody::Dynamic,
+            collider: Collider::capsule(0.5, 1.8),
+            mass: Mass(70.0),
+            locked_axes: LockedAxes::ROTATION_LOCKED,
+            transform: Transform::from_xyz(-2.0, 0.9, 0.0),
+            global_transform: GlobalTransform::default(),
+            visibility: Visibility::default(),
+            inherited_visibility: InheritedVisibility::default(),
+            view_visibility: ViewVisibility::default(),
+            input_map: PlayerAction::default_input_map(),
+            action_state: ActionState::<PlayerAction>::default(),
+            name: Name::new("Player - Respawned"),
+        })
+        .id();
+
+    // Add flashlight as a child entity
+    commands.entity(player).with_children(|parent| {
+        parent.spawn((
+            SpotLight {
+                intensity: 15000.0,
+                range: 25.0,
+                radius: 0.1,
+                outer_angle: 0.8,
+                inner_angle: 0.6,
+                shadows_enabled: true,
+                color: Color::srgb(1.0, 0.95, 0.8),
+                ..default()
+            },
+            Transform::from_xyz(0.2, 0.5, 0.3),
+            GlobalTransform::default(),
+            Visibility::default(),
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+            Name::new("Flashlight - Respawned"),
+        ));
+    });
+
+    info!("Player respawned successfully with entity: {:?}", player);
+}
+
 fn player_movement(
-    time: Res<Time>,
+    _time: Res<Time>,
     mut query: Query<
         (
             &mut Transform,
@@ -220,7 +289,7 @@ fn player_movement(
         With<Player>,
     >,
 ) {
-    for (mut transform, mut velocity, mut controller, action_state) in query.iter_mut() {
+    for (transform, mut velocity, mut controller, action_state) in query.iter_mut() {
         let mut movement = Vec3::ZERO;
 
         // Get movement input
@@ -344,86 +413,6 @@ fn update_flashlight(
     }
 }
 
-fn player_shooting(
-    time: Res<Time>,
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut player_query: Query<(&Transform, &mut Weapon, &ActionState<PlayerAction>), With<Player>>,
-    camera_query: Query<&Transform, (With<FirstPersonCamera>, Without<Player>)>,
-) {
-    for (player_transform, mut weapon, action_state) in player_query.iter_mut() {
-        if let Ok(camera_transform) = camera_query.single() {
-            // Handle shooting
-            if action_state.pressed(&PlayerAction::PrimaryFire) {
-                let current_time = time.elapsed_secs();
-                let time_since_last_shot = current_time - weapon.last_shot_time;
-                let fire_interval = 1.0 / weapon.rate_of_fire;
-
-                if time_since_last_shot >= fire_interval
-                    && weapon.ammo_current > 0
-                    && !weapon.is_reloading
-                {
-                    weapon.last_shot_time = current_time;
-                    weapon.ammo_current -= 1;
-
-                    // Create projectile
-                    let projectile_material = materials.add(StandardMaterial {
-                        base_color: Color::srgb(1.0, 1.0, 0.5),
-                        emissive: Color::srgb(0.8, 0.8, 0.2).into(),
-                        ..default()
-                    });
-
-                    // Shoot from camera position in camera direction
-                    let shoot_origin =
-                        camera_transform.translation + camera_transform.forward() * 0.5;
-                    let shoot_direction = camera_transform.forward();
-
-                    commands.spawn((
-                        Mesh3d(meshes.add(Sphere::new(0.05))),
-                        MeshMaterial3d(projectile_material),
-                        Transform::from_translation(shoot_origin),
-                        RigidBody::Dynamic,
-                        Collider::sphere(0.05),
-                        LinearVelocity(shoot_direction * 50.0), // Fast projectile
-                        Mass(0.1),
-                        crate::combat::Projectile {
-                            damage: weapon.damage,
-                            speed: 50.0,
-                            lifetime: 5.0,
-                            penetration: 1,
-                            owner: Entity::PLACEHOLDER, // Temporary placeholder
-                        },
-                        Name::new("Bullet"),
-                    ));
-
-                    info!("Shot fired! Ammo remaining: {}", weapon.ammo_current);
-                }
-            }
-
-            // Handle reloading
-            if action_state.just_pressed(&PlayerAction::Reload)
-                && !weapon.is_reloading
-                && weapon.ammo_current < weapon.ammo_max
-            {
-                weapon.is_reloading = true;
-                weapon.reload_start_time = time.elapsed_secs();
-                info!("Reloading...");
-            }
-
-            // Check if reload is complete
-            if weapon.is_reloading {
-                let reload_elapsed = time.elapsed_secs() - weapon.reload_start_time;
-                if reload_elapsed >= weapon.reload_time {
-                    weapon.is_reloading = false;
-                    weapon.ammo_current = weapon.ammo_max;
-                    info!("Reload complete! Ammo: {}", weapon.ammo_current);
-                }
-            }
-        }
-    }
-}
-
 fn stamina_system(time: Res<Time>, mut query: Query<&mut PlayerController, With<Player>>) {
     for mut controller in query.iter_mut() {
         if controller.is_sprinting {
@@ -454,5 +443,12 @@ fn handle_cursor_grab(
             window.cursor_options.visible = true;
             window.cursor_options.grab_mode = CursorGrabMode::None;
         }
+    }
+}
+
+fn release_cursor(mut windows: Query<&mut Window>) {
+    if let Ok(mut window) = windows.single_mut() {
+        window.cursor_options.visible = true;
+        window.cursor_options.grab_mode = CursorGrabMode::None;
     }
 }

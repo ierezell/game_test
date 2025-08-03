@@ -1,5 +1,6 @@
 use crate::combat::Health;
 use crate::enemies::{Enemy, EnemyAI, EnemyState, EnemyType};
+use crate::game_state::GameState;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
@@ -7,7 +8,8 @@ pub struct StaticLevelPlugin;
 
 impl Plugin for StaticLevelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_simple_test_level);
+        app.add_systems(Startup, spawn_simple_test_level)
+            .add_systems(OnEnter(GameState::InGame), respawn_level_entities);
     }
 }
 
@@ -56,6 +58,7 @@ fn spawn_simple_test_level(
         Transform::from_xyz(0.0, 0.0, 0.0),
         RigidBody::Static,
         Collider::cuboid(room_size, 0.1, room_size),
+        CollisionLayers::default(), // Use default collision layers
         Name::new("Floor"),
     ));
 
@@ -70,6 +73,7 @@ fn spawn_simple_test_level(
         ),
         RigidBody::Static,
         Collider::cuboid(room_size, wall_height, wall_thickness),
+        CollisionLayers::default(), // Use default collision layers
         Name::new("North Wall - RED"),
     ));
 
@@ -92,6 +96,7 @@ fn spawn_simple_test_level(
             wall_height,
             wall_thickness,
         ),
+        CollisionLayers::default(), // Use default collision layers
         Name::new("South Wall - GREEN"),
     ));
 
@@ -114,6 +119,7 @@ fn spawn_simple_test_level(
             wall_height,
             room_size + wall_thickness * 2.0,
         ),
+        CollisionLayers::default(), // Use default collision layers
         Name::new("East Wall - BLUE"),
     ));
 
@@ -136,6 +142,7 @@ fn spawn_simple_test_level(
             wall_height,
             room_size + wall_thickness * 2.0,
         ),
+        CollisionLayers::default(), // Use default collision layers
         Name::new("West Wall - YELLOW"),
     ));
 
@@ -216,8 +223,8 @@ fn spawn_simple_test_level(
             reaction_time: 0.5,
         },
         Health {
-            current: 80.0,
-            maximum: 80.0,
+            current: 100.0, // Reduced from 80 to 60
+            maximum: 100.0,
             regeneration_rate: 0.0,
             last_damage_time: 0.0,
         },
@@ -225,4 +232,58 @@ fn spawn_simple_test_level(
     ));
 
     info!("Simple test level created: 15x15 room with basic lighting and one enemy");
+}
+
+// Respawn enemies and other dynamic level entities when entering game state
+fn respawn_level_entities(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    info!("Respawning level entities...");
+
+    // Respawn the test enemy
+    let enemy_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(1.0, 0.0, 0.0),
+        emissive: Color::srgb(0.3, 0.0, 0.0).into(),
+        ..default()
+    });
+
+    commands.spawn((
+        Mesh3d(meshes.add(Capsule3d::new(0.4, 1.6))),
+        MeshMaterial3d(enemy_material),
+        Transform::from_xyz(4.0, 0.8, 0.0),
+        RigidBody::Dynamic,
+        Collider::capsule(0.4, 1.6),
+        CollisionLayers::default(), // Ensure collision layers are set
+        Mass(50.0),
+        LockedAxes::ROTATION_LOCKED,
+        Enemy {
+            enemy_type: EnemyType::Striker,
+            aggro_range: 7.0,
+            attack_range: 1.5,
+            move_speed: 1.0,
+            attack_damage: 20.0,
+            attack_cooldown: 1.0,
+            last_attack_time: 0.0,
+            state: EnemyState::Patrolling,
+            target: None,
+        },
+        EnemyAI {
+            detection_radius: 7.0,
+            patrol_points: vec![
+                Vec3::new(4.0, 0.8, 0.0),
+                Vec3::new(-3.0, 0.8, 3.0),
+                Vec3::new(-3.0, 0.8, -3.0),
+            ],
+            current_patrol_index: 0,
+            last_known_player_position: None,
+            search_timer: 0.0,
+            reaction_time: 0.5,
+        },
+        Health::new(60.0), // Use the proper constructor
+        Name::new("Test Enemy - Respawned"),
+    ));
+
+    info!("Level entities respawned");
 }

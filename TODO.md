@@ -1,0 +1,4 @@
+- Bullets are not going where I look. 
+- Bullet goes through walls. 
+- Bullets made the enemy too much recoil... 
+- More rooms, GTFO/Nemesis like, connected

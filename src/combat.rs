@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::game_state::GameState;
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -69,7 +71,7 @@ pub struct Weapon {
     pub accuracy: f32, // 0.0 to 1.0
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum WeaponType {
     AssaultRifle,
     Shotgun,
@@ -82,10 +84,10 @@ impl Weapon {
     pub fn new_assault_rifle() -> Self {
         Self {
             weapon_type: WeaponType::AssaultRifle,
-            damage: 30.0,
+            damage: 25.0, // Reduced damage for better balance
             range: 50.0,
             rate_of_fire: 8.0,
-            last_shot_time: 0.0,
+            last_shot_time: -1.0, // Initialize to allow immediate firing
             ammo_current: 30,
             ammo_max: 30,
             reload_time: 2.5,
@@ -98,10 +100,10 @@ impl Weapon {
     pub fn new_shotgun() -> Self {
         Self {
             weapon_type: WeaponType::Shotgun,
-            damage: 80.0,
+            damage: 40.0, // Reduced damage
             range: 15.0,
             rate_of_fire: 1.2,
-            last_shot_time: 0.0,
+            last_shot_time: -1.0, // Initialize to allow immediate firing
             ammo_current: 8,
             ammo_max: 8,
             reload_time: 3.0,
@@ -141,32 +143,38 @@ pub struct Projectile {
     pub owner: Entity,
 }
 
+#[derive(Component)]
+pub struct WeaponFireEvent;
+
 fn weapon_fire(
     time: Res<Time>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut weapon_query: Query<(Entity, &mut Weapon, &GlobalTransform)>,
-    input_query: Query<&ActionState<crate::player::PlayerAction>>,
+    mut weapon_query: Query<(Entity, &mut Weapon)>,
+    input_query: Query<&ActionState<crate::player::PlayerAction>, With<crate::player::Player>>,
+    camera_query: Query<&GlobalTransform, With<crate::player::FirstPersonCamera>>,
 ) {
     let current_time = time.elapsed_secs();
 
-    for (entity, mut weapon, transform) in weapon_query.iter_mut() {
+    for (entity, mut weapon) in weapon_query.iter_mut() {
         weapon.update_reload(current_time);
 
         // Check if this weapon belongs to a player who is firing
         if let Ok(action_state) = input_query.single() {
             if action_state.pressed(&crate::player::PlayerAction::PrimaryFire) {
                 if weapon.can_fire(current_time) {
-                    fire_weapon(
-                        &mut commands,
-                        &mut meshes,
-                        &mut materials,
-                        entity,
-                        &mut weapon,
-                        transform,
-                        current_time,
-                    );
+                    if let Ok(camera_transform) = camera_query.single() {
+                        fire_weapon(
+                            &mut commands,
+                            &mut meshes,
+                            &mut materials,
+                            entity,
+                            &mut weapon,
+                            camera_transform,
+                            current_time,
+                        );
+                    }
                 }
             }
 
@@ -183,41 +191,61 @@ fn fire_weapon(
     materials: &mut ResMut<Assets<StandardMaterial>>,
     owner: Entity,
     weapon: &mut Weapon,
-    transform: &GlobalTransform,
+    camera_transform: &GlobalTransform,
     current_time: f32,
 ) {
     weapon.last_shot_time = current_time;
     weapon.ammo_current = weapon.ammo_current.saturating_sub(1);
 
-    let forward = transform.forward();
-    let position = transform.translation() + forward * 1.0; // Offset from muzzle
+    // Use camera's forward direction instead of weapon transform
+    let forward = camera_transform.forward();
+    let position = camera_transform.translation() + forward * 0.5; // Small offset from camera
 
     // Add accuracy spread
     let mut rng = rand::rng();
-    let spread = (1.0 - weapon.accuracy) * 0.1;
+    let spread = (1.0 - weapon.accuracy) * 0.05; // Reduced spread for better accuracy
     let spread_x = rng.random_range(-spread..spread);
     let spread_y = rng.random_range(-spread..spread);
     let spread_z = rng.random_range(-spread..spread);
 
     let direction = (*forward + Vec3::new(spread_x, spread_y, spread_z)).normalize();
 
-    // Create projectile
-    commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(0.05))),
-        MeshMaterial3d(materials.add(Color::srgb(1.0, 1.0, 0.0))),
-        Transform::from_translation(position),
-        RigidBody::Dynamic,
-        Collider::sphere(0.05),
-        LinearVelocity(direction * 50.0),
-        Projectile {
-            damage: weapon.damage,
-            speed: 50.0,
-            lifetime: 5.0,
-            penetration: 1,
-            owner,
-        },
-        Name::new("Projectile"),
-    ));
+    // Create projectile with proper physics
+    let projectile_entity = commands
+        .spawn((
+            Mesh3d(meshes.add(Sphere::new(0.03))), // Smaller bullet
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::srgb(1.0, 1.0, 0.0),
+                emissive: Color::srgb(0.8, 0.8, 0.2).into(),
+                ..default()
+            })),
+            Transform::from_translation(position),
+            RigidBody::Dynamic, // Use Dynamic for proper collision detection
+            Collider::sphere(0.03),
+            CollisionLayers::default(), // Use default collision layers for now
+            LinearVelocity(direction * 30.0), // Slightly slower for better collision detection
+            Mass(0.01),                 // Very light
+            Restitution::new(0.0),      // No bounce
+            Friction::new(0.0),         // No friction
+            Projectile {
+                damage: weapon.damage,
+                speed: 30.0,
+                lifetime: 3.0, // Shorter lifetime
+                penetration: 1,
+                owner,
+            },
+            Name::new("Projectile"),
+            WeaponFireEvent,
+        ))
+        .id();
+
+    info!(
+        "Spawned projectile {:?} at {:?} with velocity {:?} and damage {}",
+        projectile_entity,
+        position,
+        direction * 30.0,
+        weapon.damage
+    );
 
     info!("Fired weapon! Ammo remaining: {}", weapon.ammo_current);
 }
@@ -227,7 +255,7 @@ fn projectile_movement(
     mut projectile_query: Query<(Entity, &mut Projectile, &mut Transform)>,
     mut commands: Commands,
 ) {
-    for (entity, mut projectile, transform) in projectile_query.iter_mut() {
+    for (entity, mut projectile, _transform) in projectile_query.iter_mut() {
         projectile.lifetime -= time.delta_secs();
 
         if projectile.lifetime <= 0.0 {
@@ -240,56 +268,104 @@ fn damage_system(
     mut commands: Commands,
     mut collision_events: EventReader<CollisionStarted>,
     projectile_query: Query<&Projectile>,
-    mut health_query: Query<&mut Health>,
+    mut health_query: Query<(Entity, &mut Health)>,
+    enemy_query: Query<(), With<crate::enemies::Enemy>>,
+    wall_query: Query<
+        (),
+        (
+            With<Collider>,
+            With<RigidBody>,
+            Without<crate::enemies::Enemy>,
+            Without<crate::player::Player>,
+        ),
+    >,
+    time: Res<Time>,
 ) {
     for CollisionStarted(entity1, entity2) in collision_events.read() {
         info!("Collision detected between {:?} and {:?}", entity1, entity2);
 
-        // Debug: Check what components each entity has
-        let projectile1 = projectile_query.get(*entity1).is_ok();
-        let projectile2 = projectile_query.get(*entity2).is_ok();
-        let health1 = health_query.get(*entity1).is_ok();
-        let health2 = health_query.get(*entity2).is_ok();
+        let mut projectile_hit = false;
+        let current_time = time.elapsed_secs();
 
-        info!("Entity1 - Projectile: {}, Health: {}", projectile1, health1);
-        info!("Entity2 - Projectile: {}, Health: {}", projectile2, health2);
-
-        // Check if one entity is a projectile and the other has health
+        // Check if entity1 is projectile hitting entity2
         if let Ok(projectile) = projectile_query.get(*entity1) {
-            if let Ok(mut health) = health_query.get_mut(*entity2) {
-                health.take_damage(projectile.damage, 0.0); // TODO: pass actual time
-                commands.entity(*entity1).despawn(); // Remove projectile on hit
-                info!(
-                    "Hit target! Damage: {}, Health remaining: {}",
-                    projectile.damage, health.current
-                );
-            } else {
-                info!("Entity1 is projectile but Entity2 has no health component");
+            // Check if hitting an enemy with health
+            if let Ok((_health_entity, mut health)) = health_query.get_mut(*entity2) {
+                if enemy_query.get(*entity2).is_ok() {
+                    info!(
+                        "Projectile {:?} hit enemy {:?}! Damage: {}, Health before: {}",
+                        entity1, entity2, projectile.damage, health.current
+                    );
+
+                    health.take_damage(projectile.damage, current_time);
+                    commands.entity(*entity1).despawn(); // Remove projectile
+                    projectile_hit = true;
+
+                    info!("Health after damage: {}", health.current);
+                }
             }
-        } else if let Ok(projectile) = projectile_query.get(*entity2) {
-            if let Ok(mut health) = health_query.get_mut(*entity1) {
-                health.take_damage(projectile.damage, 0.0);
-                commands.entity(*entity2).despawn();
+            // Check if hitting a wall/static object
+            else if wall_query.get(*entity2).is_ok() {
                 info!(
-                    "Hit target! Damage: {}, Health remaining: {}",
-                    projectile.damage, health.current
+                    "Projectile {:?} hit wall/static object {:?}",
+                    entity1, entity2
                 );
-            } else {
-                info!("Entity2 is projectile but Entity1 has no health component");
+                commands.entity(*entity1).despawn(); // Remove projectile when hitting wall
+                projectile_hit = true;
             }
-        } else {
-            info!("Neither entity is a projectile - collision between non-projectile entities");
+        }
+
+        // Check if entity2 is projectile hitting entity1
+        if !projectile_hit {
+            if let Ok(projectile) = projectile_query.get(*entity2) {
+                // Check if hitting an enemy with health
+                if let Ok((_health_entity, mut health)) = health_query.get_mut(*entity1) {
+                    if enemy_query.get(*entity1).is_ok() {
+                        info!(
+                            "Projectile {:?} hit enemy {:?}! Damage: {}, Health before: {}",
+                            entity2, entity1, projectile.damage, health.current
+                        );
+
+                        health.take_damage(projectile.damage, current_time);
+                        commands.entity(*entity2).despawn(); // Remove projectile
+
+                        info!("Health after damage: {}", health.current);
+                    }
+                }
+                // Check if hitting a wall/static object
+                else if wall_query.get(*entity1).is_ok() {
+                    info!(
+                        "Projectile {:?} hit wall/static object {:?}",
+                        entity2, entity1
+                    );
+                    commands.entity(*entity2).despawn(); // Remove projectile when hitting wall
+                }
+            }
         }
     }
 }
 
 fn cleanup_projectiles(
     mut commands: Commands,
-    projectile_query: Query<Entity, With<Projectile>>,
-    time: Res<Time>,
+    projectile_query: Query<(Entity, &Projectile, &Transform)>,
+    _time: Res<Time>,
 ) {
-    // This system runs cleanup for projectiles that might have gotten stuck
-    // In a real implementation, you'd want more sophisticated cleanup
+    // Clean up projectiles that are stuck or have traveled too far
+    for (entity, projectile, transform) in projectile_query.iter() {
+        // Remove projectiles that are too far from origin (likely stuck)
+        if transform.translation.length() > 100.0 {
+            info!(
+                "Removing stuck projectile at distance: {}",
+                transform.translation.length()
+            );
+            commands.entity(entity).despawn();
+        }
+
+        // Additional cleanup for projectiles with negative lifetime (shouldn't happen but safety check)
+        if projectile.lifetime < -1.0 {
+            commands.entity(entity).despawn();
+        }
+    }
 }
 
 fn remove_dead_entities(

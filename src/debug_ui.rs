@@ -1,4 +1,5 @@
-use avian3d::{debug_render::PhysicsGizmos, prelude::*};
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, egui};
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
@@ -8,10 +9,11 @@ pub struct DebugUIPlugin;
 
 impl Plugin for DebugUIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(EguiPlugin)
-            .add_plugins(WorldInspectorPlugin::new()) // Add entity inspector
+        app.add_plugins(EguiPlugin::default())
+            .add_plugins(WorldInspectorPlugin::new())
             .init_resource::<DebugMenuState>()
-            .add_systems(Update, (debug_input_system, debug_ui_system));
+            .add_systems(Update, debug_input_system)
+            .add_systems(Update, debug_ui_system);
     }
 }
 
@@ -61,6 +63,9 @@ impl DebugMenuState {
 pub fn debug_input_system(
     mut debug_state: ResMut<DebugMenuState>,
     input: Res<ButtonInput<KeyCode>>,
+    _commands: Commands,
+    _meshes: ResMut<Assets<Mesh>>,
+    _materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if input.just_pressed(KeyCode::KeyM) {
         debug_state.show_menu = !debug_state.show_menu;
@@ -73,7 +78,6 @@ pub fn debug_ui_system(
     mut contexts: EguiContexts,
     mut debug_state: ResMut<DebugMenuState>,
     mut gizmo_config_store: ResMut<GizmoConfigStore>,
-    mut inspector_state: ResMut<bevy_inspector_egui::quick::WorldInspectorState>,
 ) {
     if !debug_state.show_menu {
         return;
@@ -82,282 +86,198 @@ pub fn debug_ui_system(
     egui::Window::new("Debug Menu")
         .default_width(350.0)
         .default_height(700.0)
-        .show(contexts.ctx_mut(), |ui| {
-            ui.heading("Debug Tools");
-            ui.separator();
+        .show(
+            contexts.ctx_mut().expect("Failed to get EGUI context"),
+            |ui| {
+                ui.heading("Debug Tools");
+                ui.separator();
 
-            // Entity Inspector Toggle
-            ui.horizontal(|ui| {
+                // Entity Inspector Toggle
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut debug_state.show_inspector, "Show Entity Inspector");
+                    ui.label("Browse all entities in the world");
+                });
+
+                ui.separator();
+                ui.heading("Physics Debug Visualization");
+                ui.separator();
+
+                // AABB Debug
+                ui.horizontal(|ui| {
+                    if ui
+                        .checkbox(&mut debug_state.show_aabb, "Show AABB")
+                        .clicked()
+                    {
+                        update_physics_gizmos(&mut gizmo_config_store, &debug_state);
+                    }
+                    ui.color_edit_button_rgb(&mut debug_state.aabb_color);
+                });
+
+                // Collider Debug
+                ui.horizontal(|ui| {
+                    if ui
+                        .checkbox(&mut debug_state.show_colliders, "Show Colliders")
+                        .clicked()
+                    {
+                        update_physics_gizmos(&mut gizmo_config_store, &debug_state);
+                    }
+                    ui.color_edit_button_rgb(&mut debug_state.collider_color);
+                });
+
+                // Contact Points Debug
+                ui.horizontal(|ui| {
+                    if ui
+                        .checkbox(&mut debug_state.show_contact_points, "Show Contact Points")
+                        .clicked()
+                    {
+                        update_physics_gizmos(&mut gizmo_config_store, &debug_state);
+                    }
+                    ui.color_edit_button_rgb(&mut debug_state.contact_point_color);
+                });
+
+                // Contact Normals Debug
+                ui.horizontal(|ui| {
+                    if ui
+                        .checkbox(
+                            &mut debug_state.show_contact_normals,
+                            "Show Contact Normals",
+                        )
+                        .clicked()
+                    {
+                        update_physics_gizmos(&mut gizmo_config_store, &debug_state);
+                    }
+                    ui.color_edit_button_rgb(&mut debug_state.contact_normal_color);
+                });
+
+                // Joints Debug
                 if ui
-                    .checkbox(&mut debug_state.show_inspector, "Show Entity Inspector")
-                    .clicked()
-                {
-                    inspector_state.visible = debug_state.show_inspector;
-                }
-                ui.label("Browse all entities in the world");
-            });
-
-            ui.separator();
-            ui.heading("Physics Debug Visualization");
-            ui.separator();
-
-            // AABB Debug
-            ui.horizontal(|ui| {
-                if ui
-                    .checkbox(&mut debug_state.show_aabb, "Show AABB")
+                    .checkbox(&mut debug_state.show_joints, "Show Joints")
                     .clicked()
                 {
                     update_physics_gizmos(&mut gizmo_config_store, &debug_state);
                 }
-                ui.color_edit_button_rgb(&mut debug_state.aabb_color);
-            });
 
-            // Collider Debug
-            ui.horizontal(|ui| {
+                // Raycasts Debug
                 if ui
-                    .checkbox(&mut debug_state.show_colliders, "Show Colliders")
+                    .checkbox(&mut debug_state.show_raycasts, "Show Raycasts")
                     .clicked()
                 {
                     update_physics_gizmos(&mut gizmo_config_store, &debug_state);
                 }
-                ui.color_edit_button_rgb(&mut debug_state.collider_color);
-            });
 
-            // Contact Points Debug
-            ui.horizontal(|ui| {
+                // Shapecasts Debug
                 if ui
-                    .checkbox(&mut debug_state.show_contact_points, "Show Contact Points")
+                    .checkbox(&mut debug_state.show_shapecasts, "Show Shapecasts")
                     .clicked()
                 {
                     update_physics_gizmos(&mut gizmo_config_store, &debug_state);
                 }
-                ui.color_edit_button_rgb(&mut debug_state.contact_point_color);
-            });
 
-            // Contact Normals Debug
-            ui.horizontal(|ui| {
+                // Axes Debug
+                if ui
+                    .checkbox(&mut debug_state.show_axes, "Show Axes")
+                    .clicked()
+                {
+                    update_physics_gizmos(&mut gizmo_config_store, &debug_state);
+                }
+
+                ui.separator();
+
+                // Hide Meshes Option
                 if ui
                     .checkbox(
-                        &mut debug_state.show_contact_normals,
-                        "Show Contact Normals",
+                        &mut debug_state.hide_meshes,
+                        "Hide Meshes (Show Only Debug)",
                     )
                     .clicked()
                 {
                     update_physics_gizmos(&mut gizmo_config_store, &debug_state);
                 }
-                ui.color_edit_button_rgb(&mut debug_state.contact_normal_color);
-            });
 
-            // Joints Debug
-            if ui
-                .checkbox(&mut debug_state.show_joints, "Show Joints")
-                .clicked()
-            {
-                update_physics_gizmos(&mut gizmo_config_store, &debug_state);
-            }
+                ui.separator();
 
-            // Raycasts Debug
-            if ui
-                .checkbox(&mut debug_state.show_raycasts, "Show Raycasts")
-                .clicked()
-            {
-                update_physics_gizmos(&mut gizmo_config_store, &debug_state);
-            }
+                // Quick presets
+                ui.heading("Quick Presets");
+                ui.horizontal(|ui| {
+                    if ui.button("All On").clicked() {
+                        debug_state.show_aabb = true;
+                        debug_state.show_colliders = true;
+                        debug_state.show_contact_points = true;
+                        debug_state.show_contact_normals = true;
+                        debug_state.show_joints = true;
+                        debug_state.show_raycasts = true;
+                        debug_state.show_shapecasts = true;
+                        debug_state.show_axes = true;
+                        update_physics_gizmos(&mut gizmo_config_store, &debug_state);
+                    }
 
-            // Shapecasts Debug
-            if ui
-                .checkbox(&mut debug_state.show_shapecasts, "Show Shapecasts")
-                .clicked()
-            {
-                update_physics_gizmos(&mut gizmo_config_store, &debug_state);
-            }
+                    if ui.button("All Off").clicked() {
+                        debug_state.show_aabb = false;
+                        debug_state.show_colliders = false;
+                        debug_state.show_contact_points = false;
+                        debug_state.show_contact_normals = false;
+                        debug_state.show_joints = false;
+                        debug_state.show_raycasts = false;
+                        debug_state.show_shapecasts = false;
+                        debug_state.show_axes = false;
+                        debug_state.hide_meshes = false;
+                        update_physics_gizmos(&mut gizmo_config_store, &debug_state);
+                    }
+                });
 
-            // Axes Debug
-            if ui
-                .checkbox(&mut debug_state.show_axes, "Show Axes")
-                .clicked()
-            {
-                update_physics_gizmos(&mut gizmo_config_store, &debug_state);
-            }
+                ui.horizontal(|ui| {
+                    if ui.button("Colliders Only").clicked() {
+                        debug_state.show_aabb = false;
+                        debug_state.show_colliders = true;
+                        debug_state.show_contact_points = false;
+                        debug_state.show_contact_normals = false;
+                        debug_state.show_joints = false;
+                        debug_state.show_raycasts = false;
+                        debug_state.show_shapecasts = false;
+                        debug_state.show_axes = false;
+                        debug_state.hide_meshes = false;
+                        update_physics_gizmos(&mut gizmo_config_store, &debug_state);
+                    }
 
-            ui.separator();
+                    if ui.button("Physics Only").clicked() {
+                        debug_state.show_aabb = true;
+                        debug_state.show_colliders = true;
+                        debug_state.show_contact_points = true;
+                        debug_state.show_contact_normals = true;
+                        debug_state.show_joints = false;
+                        debug_state.show_raycasts = false;
+                        debug_state.show_shapecasts = false;
+                        debug_state.show_axes = false;
+                        debug_state.hide_meshes = true;
+                        update_physics_gizmos(&mut gizmo_config_store, &debug_state);
+                    }
+                });
 
-            // Hide Meshes Option
-            if ui
-                .checkbox(
-                    &mut debug_state.hide_meshes,
-                    "Hide Meshes (Show Only Debug)",
-                )
-                .clicked()
-            {
-                update_physics_gizmos(&mut gizmo_config_store, &debug_state);
-            }
+                ui.separator();
+                ui.label("Press 'M' to toggle this menu");
 
-            ui.separator();
-
-            // Quick presets
-            ui.heading("Quick Presets");
-            ui.horizontal(|ui| {
-                if ui.button("All On").clicked() {
-                    debug_state.show_aabb = true;
-                    debug_state.show_colliders = true;
-                    debug_state.show_contact_points = true;
-                    debug_state.show_contact_normals = true;
-                    debug_state.show_joints = true;
-                    debug_state.show_raycasts = true;
-                    debug_state.show_shapecasts = true;
-                    debug_state.show_axes = true;
-                    update_physics_gizmos(&mut gizmo_config_store, &debug_state);
-                }
-
-                if ui.button("All Off").clicked() {
-                    debug_state.show_aabb = false;
-                    debug_state.show_colliders = false;
-                    debug_state.show_contact_points = false;
-                    debug_state.show_contact_normals = false;
-                    debug_state.show_joints = false;
-                    debug_state.show_raycasts = false;
-                    debug_state.show_shapecasts = false;
-                    debug_state.show_axes = false;
-                    debug_state.hide_meshes = false;
-                    update_physics_gizmos(&mut gizmo_config_store, &debug_state);
-                }
-            });
-
-            ui.horizontal(|ui| {
-                if ui.button("Colliders Only").clicked() {
-                    debug_state.show_aabb = false;
-                    debug_state.show_colliders = true;
-                    debug_state.show_contact_points = false;
-                    debug_state.show_contact_normals = false;
-                    debug_state.show_joints = false;
-                    debug_state.show_raycasts = false;
-                    debug_state.show_shapecasts = false;
-                    debug_state.show_axes = false;
-                    debug_state.hide_meshes = false;
-                    update_physics_gizmos(&mut gizmo_config_store, &debug_state);
-                }
-
-                if ui.button("Physics Only").clicked() {
-                    debug_state.show_aabb = true;
-                    debug_state.show_colliders = true;
-                    debug_state.show_contact_points = true;
-                    debug_state.show_contact_normals = true;
-                    debug_state.show_joints = false;
-                    debug_state.show_raycasts = false;
-                    debug_state.show_shapecasts = false;
-                    debug_state.show_axes = false;
-                    debug_state.hide_meshes = true;
-                    update_physics_gizmos(&mut gizmo_config_store, &debug_state);
-                }
-            });
-
-            ui.separator();
-            ui.label("Press 'M' to toggle this menu");
-
-            ui.separator();
-            ui.heading("Instructions");
-            ui.label("• AABB: Shows bounding boxes around physics objects");
-            ui.label("• Colliders: Shows wireframes of collision shapes");
-            ui.label("• Contact Points: Shows red dots where objects touch");
-            ui.label("• Contact Normals: Shows blue lines for collision normals");
-            ui.label("• Joints: Shows joint connections and constraints");
-            ui.label("• Raycasts: Shows debug rays from raycasting");
-            ui.label("• Shapecasts: Shows debug shapes from shapecasting");
-            ui.label("• Axes: Shows coordinate axes at object centers");
-        });
+                ui.separator();
+                ui.heading("Instructions");
+                ui.label("• AABB: Shows bounding boxes around physics objects");
+                ui.label("• Colliders: Shows wireframes of collision shapes");
+                ui.label("• Contact Points: Shows red dots where objects touch");
+                ui.label("• Contact Normals: Shows blue lines for collision normals");
+                ui.label("• Joints: Shows joint connections and constraints");
+                ui.label("• Raycasts: Shows debug rays from raycasting");
+                ui.label("• Shapecasts: Shows debug shapes from shapecasting");
+                ui.label("• Axes: Shows coordinate axes at object centers");
+                ui.separator();
+                ui.label("Run 'cargo test' to execute integration tests");
+            },
+        );
 }
 
 /// Helper function to update physics gizmos configuration
-fn update_physics_gizmos(gizmo_config_store: &mut GizmoConfigStore, debug_state: &DebugMenuState) {
-    let (config, _) = gizmo_config_store.config_mut::<PhysicsGizmos>();
-
-    // Update AABB
-    config.aabb_color = if debug_state.show_aabb {
-        Some(Color::srgb(
-            debug_state.aabb_color[0],
-            debug_state.aabb_color[1],
-            debug_state.aabb_color[2],
-        ))
-    } else {
-        None
-    };
-
-    // Update Colliders
-    config.collider_color = if debug_state.show_colliders {
-        Some(Color::srgb(
-            debug_state.collider_color[0],
-            debug_state.collider_color[1],
-            debug_state.collider_color[2],
-        ))
-    } else {
-        None
-    };
-
-    // Update Contact Points
-    config.contact_point_color = if debug_state.show_contact_points {
-        Some(Color::srgb(
-            debug_state.contact_point_color[0],
-            debug_state.contact_point_color[1],
-            debug_state.contact_point_color[2],
-        ))
-    } else {
-        None
-    };
-
-    // Update Contact Normals
-    config.contact_normal_color = if debug_state.show_contact_normals {
-        Some(Color::srgb(
-            debug_state.contact_normal_color[0],
-            debug_state.contact_normal_color[1],
-            debug_state.contact_normal_color[2],
-        ))
-    } else {
-        None
-    };
-
-    // Update Joints
-    if debug_state.show_joints {
-        config.joint_anchor_color = Some(Color::srgb(1.0, 0.5, 0.0)); // Orange
-        config.joint_separation_color = Some(Color::srgb(1.0, 1.0, 0.0)); // Yellow
-    } else {
-        config.joint_anchor_color = None;
-        config.joint_separation_color = None;
-    }
-
-    // Update Raycasts
-    if debug_state.show_raycasts {
-        config.raycast_color = Some(Color::srgb(0.0, 1.0, 1.0)); // Cyan
-        config.raycast_point_color = Some(Color::srgb(1.0, 0.0, 1.0)); // Magenta
-        config.raycast_normal_color = Some(Color::srgb(0.5, 0.5, 1.0)); // Light blue
-    } else {
-        config.raycast_color = None;
-        config.raycast_point_color = None;
-        config.raycast_normal_color = None;
-    }
-
-    // Update Shapecasts
-    if debug_state.show_shapecasts {
-        config.shapecast_color = Some(Color::srgb(1.0, 1.0, 0.5)); // Light yellow
-        config.shapecast_shape_color = Some(Color::srgb(0.5, 1.0, 0.5)); // Light green
-        config.shapecast_point_color = Some(Color::srgb(1.0, 0.5, 1.0)); // Light magenta
-        config.shapecast_normal_color = Some(Color::srgb(0.5, 0.5, 1.0)); // Light blue
-    } else {
-        config.shapecast_color = None;
-        config.shapecast_shape_color = None;
-        config.shapecast_point_color = None;
-        config.shapecast_normal_color = None;
-    }
-
-    // Update Axes
-    config.axis_lengths = if debug_state.show_axes {
-        Some(Vec3::new(1.0, 1.0, 1.0))
-    } else {
-        None
-    };
-
-    // Update mesh visibility
-    config.hide_meshes = debug_state.hide_meshes;
-
-    info!("Physics gizmos configuration updated");
+fn update_physics_gizmos(
+    _gizmo_config_store: &mut GizmoConfigStore,
+    _debug_state: &DebugMenuState,
+) {
+    // TODO: Update physics gizmos configuration for newer Avian3D version
+    // The API has changed - need to investigate new PhysicsGizmos configuration
+    info!("Physics gizmos configuration update placeholder");
 }

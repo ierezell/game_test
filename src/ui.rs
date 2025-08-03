@@ -1,4 +1,5 @@
 use crate::combat::{Health, Weapon};
+use crate::enemies::Enemy;
 use crate::game_state::GameState;
 use crate::player::Player;
 use bevy::prelude::*;
@@ -16,6 +17,7 @@ impl Plugin for UIPlugin {
                     update_ammo_ui,
                     update_crosshair,
                     update_stamina_ui, // Add the missing stamina update system
+                    update_enemy_health_bars,
                 )
                     .run_if(in_state(GameState::InGame)),
             );
@@ -36,6 +38,11 @@ pub struct Crosshair;
 
 #[derive(Component)]
 pub struct StaminaBar;
+
+#[derive(Component)]
+pub struct EnemyHealthBar {
+    pub enemy_entity: Entity,
+}
 
 fn setup_ui(mut commands: Commands) {
     // UI Root
@@ -206,7 +213,7 @@ fn setup_ui(mut commands: Commands) {
 
 fn cleanup_ui(mut commands: Commands, ui_query: Query<Entity, With<GameUI>>) {
     for entity in ui_query.iter() {
-        commands.entity(entity).despawn_recursive();
+        commands.entity(entity).despawn();
     }
 }
 
@@ -276,4 +283,79 @@ fn update_crosshair(
             };
         }
     }
+}
+
+fn update_enemy_health_bars(
+    mut commands: Commands,
+    enemy_query: Query<(Entity, &Health, &GlobalTransform), (With<Enemy>, Without<Player>)>,
+    mut health_bar_query: Query<(Entity, &mut Node, &mut BackgroundColor, &EnemyHealthBar)>,
+    camera_query: Query<(&Camera, &GlobalTransform), (With<Camera3d>, Without<Enemy>)>,
+    existing_bars: Query<&EnemyHealthBar>,
+) {
+    if let Ok((camera, camera_transform)) = camera_query.single() {
+        // Remove health bars for dead enemies
+        for (bar_entity, _, _, health_bar) in health_bar_query.iter() {
+            if enemy_query.get(health_bar.enemy_entity).is_err() {
+                commands.entity(bar_entity).despawn();
+            }
+        }
+
+        // Create or update health bars for living enemies
+        for (enemy_entity, health, enemy_transform) in enemy_query.iter() {
+            // Check if this enemy already has a health bar
+            let has_health_bar = existing_bars
+                .iter()
+                .any(|bar| bar.enemy_entity == enemy_entity);
+
+            if !has_health_bar {
+                // Create new health bar
+                spawn_enemy_health_bar(&mut commands, enemy_entity);
+            } else {
+                // Update existing health bar
+                for (_, mut style, mut bg_color, health_bar) in health_bar_query.iter_mut() {
+                    if health_bar.enemy_entity == enemy_entity {
+                        // Calculate screen position
+                        let enemy_pos = enemy_transform.translation() + Vec3::Y * 2.5; // Above enemy
+                        if let Ok(screen_pos) =
+                            camera.world_to_viewport(camera_transform, enemy_pos)
+                        {
+                            // Update position
+                            style.left = Val::Px(screen_pos.x - 25.0);
+                            style.top = Val::Px(screen_pos.y - 10.0);
+
+                            // Update health bar color and width based on health percentage
+                            let health_percent = health.current / health.maximum;
+                            style.width = Val::Px(50.0 * health_percent);
+
+                            *bg_color = if health_percent > 0.6 {
+                                Color::srgb(0.0, 1.0, 0.0).into() // Green
+                            } else if health_percent > 0.3 {
+                                Color::srgb(1.0, 1.0, 0.0).into() // Yellow
+                            } else {
+                                Color::srgb(1.0, 0.0, 0.0).into() // Red
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn spawn_enemy_health_bar(commands: &mut Commands, enemy_entity: Entity) {
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            width: Val::Px(50.0),
+            height: Val::Px(4.0),
+            left: Val::Px(0.0),
+            top: Val::Px(0.0),
+            border: UiRect::all(Val::Px(1.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.0, 1.0, 0.0)),
+        BorderColor(Color::srgb(0.0, 0.0, 0.0)),
+        EnemyHealthBar { enemy_entity },
+        GameUI, // Mark for cleanup
+    ));
 }

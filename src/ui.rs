@@ -286,10 +286,7 @@ fn update_enemy_health_bars(
     if let Ok((camera, camera_transform)) = camera_query.single() {
         for (bar_entity, _, _, health_bar) in health_bar_query.iter() {
             if enemy_query.get(health_bar.enemy_entity).is_err() {
-                debug!(
-                    "Removing health bar for despawned enemy {:?}",
-                    health_bar.enemy_entity
-                );
+                debug!("Removing health bar for despawned enemy");
                 commands.entity(bar_entity).despawn();
             }
         }

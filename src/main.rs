@@ -1,5 +1,5 @@
 use avian3d::prelude::*;
-use bevy::prelude::*;
+use bevy::{log::LogPlugin, prelude::*};
 
 mod audio;
 mod combat;
@@ -13,14 +13,22 @@ mod ui;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "GTFO-Like Game".to_string(),
-                resolution: (800.0, 600.0).into(),
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "GTFO-Like Game".to_string(),
+                        resolution: (800.0, 600.0).into(),
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(LogPlugin {
+                    filter: "error,full=warn".into(),
+                    level: bevy::log::Level::DEBUG,
+                    ..default()
+                }),
+        )
         .add_plugins(PhysicsPlugins::default())
         .add_plugins(PhysicsDebugPlugin::default())
         .init_state::<menu::GameState>()

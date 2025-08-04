@@ -1,8 +1,17 @@
-use crate::combat::{Health, Projectile};
+use crate::combat::Health;
 use crate::enemies::Enemy;
-use crate::game_state::GameState;
-use crate::player::{Player, FirstPersonCamera};
+
+use crate::player::{FirstPersonCamera, Player};
 use bevy::prelude::*;
+#[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub enum GameState {
+    #[default]
+    MainMenu,
+
+    InGame,
+
+    GameOver,
+}
 
 pub struct MenuPlugin;
 
@@ -47,7 +56,6 @@ pub enum MenuAction {
 }
 
 fn setup_main_menu(mut commands: Commands) {
-    // Main menu UI
     commands
         .spawn((
             Node {
@@ -62,7 +70,6 @@ fn setup_main_menu(mut commands: Commands) {
             MainMenuUI,
         ))
         .with_children(|parent| {
-            // Title
             parent.spawn((
                 Text::new("GTFO-Like Game"),
                 TextFont {
@@ -76,7 +83,6 @@ fn setup_main_menu(mut commands: Commands) {
                 },
             ));
 
-            // Start Game Button
             parent
                 .spawn((
                     Button,
@@ -104,7 +110,6 @@ fn setup_main_menu(mut commands: Commands) {
                     ));
                 });
 
-            // Quit Game Button
             parent
                 .spawn((
                     Button,
@@ -131,7 +136,7 @@ fn setup_main_menu(mut commands: Commands) {
                     ));
                 });
 
-            // Instructions
+            
             parent.spawn((
                 Text::new("Press M to open debug menu\nWASD to move, Left Click to shoot\nShift to sprint, Ctrl to crouch"),
                 TextFont {
@@ -147,7 +152,7 @@ fn setup_main_menu(mut commands: Commands) {
             ));
         });
 
-    info!("Main menu setup complete");
+    debug!("Main menu setup complete");
 }
 
 fn cleanup_main_menu(mut commands: Commands, menu_query: Query<Entity, With<MainMenuUI>>) {
@@ -156,33 +161,24 @@ fn cleanup_main_menu(mut commands: Commands, menu_query: Query<Entity, With<Main
     }
 }
 
-// Clean up all game entities when starting/restarting game
 pub fn cleanup_previous_game(
     mut commands: Commands,
-    projectile_query: Query<Entity, With<Projectile>>,
     enemy_query: Query<Entity, With<Enemy>>,
     player_query: Query<Entity, (With<Player>, Without<FirstPersonCamera>)>,
 ) {
-    info!("Cleaning up previous game entities...");
-    
-    // Remove all projectiles
-    for entity in projectile_query.iter() {
-        commands.entity(entity).despawn();
-    }
-    
-    // Remove all enemies
+    debug!("Cleaning up previous game entities...");
+
     for entity in enemy_query.iter() {
         commands.entity(entity).despawn();
     }
-    
-    // Remove old player if exists (will be respawned by player plugin)
-    // BUT DO NOT remove the camera
+
     for entity in player_query.iter() {
         commands.entity(entity).despawn();
     }
-    
-    info!("Previous game cleanup complete");
-}fn main_menu_system(
+
+    debug!("Previous game cleanup complete");
+}
+fn main_menu_system(
     mut interaction_query: Query<
         (&Interaction, &MenuButton, &mut BackgroundColor),
         (Changed<Interaction>, With<Button>),
@@ -194,19 +190,19 @@ pub fn cleanup_previous_game(
         match *interaction {
             Interaction::Pressed => match menu_button.action {
                 MenuAction::StartGame => {
-                    info!("Starting new game");
+                    debug!("Starting new game");
                     next_state.set(GameState::InGame);
                 }
                 MenuAction::QuitGame => {
-                    info!("Quitting game");
+                    debug!("Quitting game");
                     exit.write(AppExit::Success);
                 }
                 MenuAction::RestartGame => {
-                    info!("Restarting game");
+                    debug!("Restarting game");
                     next_state.set(GameState::InGame);
                 }
                 MenuAction::MainMenu => {
-                    info!("Going to main menu");
+                    debug!("Going to main menu");
                     next_state.set(GameState::MainMenu);
                 }
             },
@@ -226,14 +222,13 @@ fn check_player_death(
 ) {
     for health in player_query.iter() {
         if health.current <= 0.0 {
-            info!("Player died! Going to game over screen");
+            debug!("Player died! Going to game over screen");
             next_state.set(GameState::GameOver);
         }
     }
 }
 
 fn setup_game_over_menu(mut commands: Commands) {
-    // Game over UI
     commands
         .spawn((
             Node {
@@ -248,7 +243,6 @@ fn setup_game_over_menu(mut commands: Commands) {
             GameOverUI,
         ))
         .with_children(|parent| {
-            // Game Over Title
             parent.spawn((
                 Text::new("GAME OVER"),
                 TextFont {
@@ -262,7 +256,6 @@ fn setup_game_over_menu(mut commands: Commands) {
                 },
             ));
 
-            // Restart Button
             parent
                 .spawn((
                     Button,
@@ -290,7 +283,6 @@ fn setup_game_over_menu(mut commands: Commands) {
                     ));
                 });
 
-            // Main Menu Button
             parent
                 .spawn((
                     Button,
@@ -318,7 +310,6 @@ fn setup_game_over_menu(mut commands: Commands) {
                     ));
                 });
 
-            // Quit Button
             parent
                 .spawn((
                     Button,
@@ -365,19 +356,19 @@ fn game_over_menu_system(
         match *interaction {
             Interaction::Pressed => match menu_button.action {
                 MenuAction::StartGame => {
-                    info!("Starting new game");
+                    debug!("Starting new game");
                     next_state.set(GameState::InGame);
                 }
                 MenuAction::RestartGame => {
-                    info!("Restarting game");
+                    debug!("Restarting game");
                     next_state.set(GameState::InGame);
                 }
                 MenuAction::QuitGame => {
-                    info!("Quitting game");
+                    debug!("Quitting game");
                     exit.write(AppExit::Success);
                 }
                 MenuAction::MainMenu => {
-                    info!("Going to main menu");
+                    debug!("Going to main menu");
                     next_state.set(GameState::MainMenu);
                 }
             },

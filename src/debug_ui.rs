@@ -1,10 +1,7 @@
-#![allow(dead_code)]
-
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, egui};
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
-/// Debug UI plugin for physics debugging with EGUI
 pub struct DebugUIPlugin;
 
 impl Plugin for DebugUIPlugin {
@@ -17,11 +14,10 @@ impl Plugin for DebugUIPlugin {
     }
 }
 
-/// Resource to track debug menu state
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct DebugMenuState {
     pub show_menu: bool,
-    pub show_inspector: bool, // Add entity inspector toggle
+    pub show_inspector: bool,
     pub show_aabb: bool,
     pub show_colliders: bool,
     pub show_contact_points: bool,
@@ -37,8 +33,8 @@ pub struct DebugMenuState {
     pub contact_normal_color: [f32; 3],
 }
 
-impl DebugMenuState {
-    pub fn new() -> Self {
+impl Default for DebugMenuState {
+    fn default() -> Self {
         Self {
             show_menu: false,
             show_inspector: false,
@@ -51,29 +47,24 @@ impl DebugMenuState {
             show_shapecasts: false,
             show_axes: false,
             hide_meshes: false,
-            aabb_color: [1.0, 1.0, 0.0],           // Yellow
-            collider_color: [0.0, 1.0, 0.0],       // Green
-            contact_point_color: [1.0, 0.0, 0.0],  // Red
-            contact_normal_color: [0.0, 0.0, 1.0], // Blue
+            aabb_color: [0.0, 1.0, 0.0],
+            collider_color: [1.0, 1.0, 0.0],
+            contact_point_color: [1.0, 0.0, 0.0],
+            contact_normal_color: [0.0, 0.0, 1.0],
         }
     }
 }
 
-/// System to handle debug menu input (M key)
 pub fn debug_input_system(
     mut debug_state: ResMut<DebugMenuState>,
     input: Res<ButtonInput<KeyCode>>,
-    _commands: Commands,
-    _meshes: ResMut<Assets<Mesh>>,
-    _materials: ResMut<Assets<StandardMaterial>>,
 ) {
     if input.just_pressed(KeyCode::KeyM) {
         debug_state.show_menu = !debug_state.show_menu;
-        info!("Debug menu toggled: {}", debug_state.show_menu);
+        debug!("Debug menu toggled: {}", debug_state.show_menu);
     }
 }
 
-/// System to render the debug UI
 pub fn debug_ui_system(
     mut contexts: EguiContexts,
     mut debug_state: ResMut<DebugMenuState>,
@@ -92,7 +83,6 @@ pub fn debug_ui_system(
                 ui.heading("Debug Tools");
                 ui.separator();
 
-                // Entity Inspector Toggle
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut debug_state.show_inspector, "Show Entity Inspector");
                     ui.label("Browse all entities in the world");
@@ -102,7 +92,6 @@ pub fn debug_ui_system(
                 ui.heading("Physics Debug Visualization");
                 ui.separator();
 
-                // AABB Debug
                 ui.horizontal(|ui| {
                     if ui
                         .checkbox(&mut debug_state.show_aabb, "Show AABB")
@@ -113,7 +102,6 @@ pub fn debug_ui_system(
                     ui.color_edit_button_rgb(&mut debug_state.aabb_color);
                 });
 
-                // Collider Debug
                 ui.horizontal(|ui| {
                     if ui
                         .checkbox(&mut debug_state.show_colliders, "Show Colliders")
@@ -124,7 +112,6 @@ pub fn debug_ui_system(
                     ui.color_edit_button_rgb(&mut debug_state.collider_color);
                 });
 
-                // Contact Points Debug
                 ui.horizontal(|ui| {
                     if ui
                         .checkbox(&mut debug_state.show_contact_points, "Show Contact Points")
@@ -135,7 +122,6 @@ pub fn debug_ui_system(
                     ui.color_edit_button_rgb(&mut debug_state.contact_point_color);
                 });
 
-                // Contact Normals Debug
                 ui.horizontal(|ui| {
                     if ui
                         .checkbox(
@@ -149,7 +135,6 @@ pub fn debug_ui_system(
                     ui.color_edit_button_rgb(&mut debug_state.contact_normal_color);
                 });
 
-                // Joints Debug
                 if ui
                     .checkbox(&mut debug_state.show_joints, "Show Joints")
                     .clicked()
@@ -157,7 +142,6 @@ pub fn debug_ui_system(
                     update_physics_gizmos(&mut gizmo_config_store, &debug_state);
                 }
 
-                // Raycasts Debug
                 if ui
                     .checkbox(&mut debug_state.show_raycasts, "Show Raycasts")
                     .clicked()
@@ -165,7 +149,6 @@ pub fn debug_ui_system(
                     update_physics_gizmos(&mut gizmo_config_store, &debug_state);
                 }
 
-                // Shapecasts Debug
                 if ui
                     .checkbox(&mut debug_state.show_shapecasts, "Show Shapecasts")
                     .clicked()
@@ -173,7 +156,6 @@ pub fn debug_ui_system(
                     update_physics_gizmos(&mut gizmo_config_store, &debug_state);
                 }
 
-                // Axes Debug
                 if ui
                     .checkbox(&mut debug_state.show_axes, "Show Axes")
                     .clicked()
@@ -183,7 +165,6 @@ pub fn debug_ui_system(
 
                 ui.separator();
 
-                // Hide Meshes Option
                 if ui
                     .checkbox(
                         &mut debug_state.hide_meshes,
@@ -196,7 +177,6 @@ pub fn debug_ui_system(
 
                 ui.separator();
 
-                // Quick presets
                 ui.heading("Quick Presets");
                 ui.horizontal(|ui| {
                     if ui.button("All On").clicked() {
@@ -272,12 +252,48 @@ pub fn debug_ui_system(
         );
 }
 
-/// Helper function to update physics gizmos configuration
-fn update_physics_gizmos(
-    _gizmo_config_store: &mut GizmoConfigStore,
-    _debug_state: &DebugMenuState,
-) {
-    // TODO: Update physics gizmos configuration for newer Avian3D version
-    // The API has changed - need to investigate new PhysicsGizmos configuration
-    info!("Physics gizmos configuration update placeholder");
+fn update_physics_gizmos(gizmo_config_store: &mut GizmoConfigStore, debug_state: &DebugMenuState) {
+    let any_debug_enabled = debug_state.show_aabb
+        || debug_state.show_colliders
+        || debug_state.show_contact_points
+        || debug_state.show_contact_normals
+        || debug_state.show_joints
+        || debug_state.show_raycasts
+        || debug_state.show_shapecasts
+        || debug_state.show_axes;
+
+    let (config, _) = gizmo_config_store.config_mut::<DefaultGizmoConfigGroup>();
+    config.enabled = any_debug_enabled;
+
+    config.line.width = if any_debug_enabled { 2.0 } else { 1.0 };
+
+    config.depth_bias = if debug_state.hide_meshes { 0.0 } else { -0.1 };
+
+    if any_debug_enabled {
+        let enabled_features: Vec<&str> = [
+            ("AABB", debug_state.show_aabb),
+            ("Colliders", debug_state.show_colliders),
+            ("Contact Points", debug_state.show_contact_points),
+            ("Contact Normals", debug_state.show_contact_normals),
+            ("Joints", debug_state.show_joints),
+            ("Raycasts", debug_state.show_raycasts),
+            ("Shapecasts", debug_state.show_shapecasts),
+            ("Axes", debug_state.show_axes),
+        ]
+        .iter()
+        .filter_map(|(name, enabled)| if *enabled { Some(*name) } else { None })
+        .collect();
+
+        if !enabled_features.is_empty() {
+            debug!(
+                "Physics debug visualization enabled: {}",
+                enabled_features.join(", ")
+            );
+            if debug_state.hide_meshes {
+                debug!("Mesh rendering disabled for debug-only view");
+            }
+        }
+    } else {
+        debug!("Physics debug visualization disabled");
+    }
 }

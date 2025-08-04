@@ -95,7 +95,7 @@ cargo run --release
 For development with faster compile times, this project includes several optimizations:
 
 #### Fast Compilation Setup
-The project is configured with optimizations from the [Bevy Setup Guide](https://bevy.org/learn/quick-start/getting-started/setup/):
+The project is configured with optimizations from the [Bevy Setup Guide](https:
 
 - **Dynamic linking**: Bevy uses dynamic linking in debug builds for faster iteration
 - **Optimized dependencies**: Dependencies are compiled with `opt-level = 3` while your code uses `opt-level = 1`

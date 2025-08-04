@@ -1,7 +1,5 @@
-#![allow(dead_code)]
-
 use crate::combat::Health;
-use crate::game_state::GameState;
+use crate::menu::GameState;
 use crate::player::Player;
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -10,7 +8,6 @@ pub struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
-        // Removed spawn_test_enemies to avoid duplicate enemies with static level
         app.add_systems(
             Update,
             (
@@ -41,24 +38,19 @@ pub struct Enemy {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum EnemyType {
-    Striker, // Fast, low health - like GTFO's striker
-    Shooter, // Ranged attacks - like GTFO's shooter
-    Tank,    // High health, slow - like GTFO's big striker
-    Hybrid,  // Balanced
-    Sleeper, // Dormant until awakened - classic GTFO mechanic
-    Scout,   // Fast moving, calls for reinforcements
+    Striker,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum EnemyState {
-    Dormant, // Sleepers start here
+    Dormant,
     Idle,
     Patrolling,
-    Investigating, // Heard something suspicious
+    Investigating,
     Chasing,
     Attacking,
     Searching,
-    Calling, // Calling for backup
+
     Dead,
 }
 
@@ -69,229 +61,6 @@ pub struct EnemyAI {
     pub current_patrol_index: usize,
     pub last_known_player_position: Option<Vec3>,
     pub search_timer: f32,
-    pub reaction_time: f32,
-}
-
-impl Enemy {
-    pub fn new_striker() -> Self {
-        Self {
-            enemy_type: EnemyType::Striker,
-            aggro_range: 8.0,
-            attack_range: 1.5,
-            move_speed: 6.0,
-            attack_damage: 25.0,
-            attack_cooldown: 1.0,
-            last_attack_time: 0.0,
-            state: EnemyState::Patrolling,
-            target: None,
-        }
-    }
-
-    pub fn new_shooter() -> Self {
-        Self {
-            enemy_type: EnemyType::Shooter,
-            aggro_range: 12.0,
-            attack_range: 8.0,
-            move_speed: 3.0,
-            attack_damage: 35.0,
-            attack_cooldown: 2.0,
-            last_attack_time: 0.0,
-            state: EnemyState::Patrolling,
-            target: None,
-        }
-    }
-
-    pub fn new_sleeper() -> Self {
-        Self {
-            enemy_type: EnemyType::Sleeper,
-            aggro_range: 15.0, // Wide detection when awakened
-            attack_range: 1.5,
-            move_speed: 7.0, // Fast when awakened
-            attack_damage: 40.0,
-            attack_cooldown: 1.5,
-            last_attack_time: 0.0,
-            state: EnemyState::Dormant, // Start dormant
-            target: None,
-        }
-    }
-
-    pub fn new_scout() -> Self {
-        Self {
-            enemy_type: EnemyType::Scout,
-            aggro_range: 10.0,
-            attack_range: 1.2,
-            move_speed: 8.0,     // Very fast
-            attack_damage: 20.0, // Lower damage but calls backup
-            attack_cooldown: 0.8,
-            last_attack_time: 0.0,
-            state: EnemyState::Patrolling,
-            target: None,
-        }
-    }
-
-    pub fn new_tank() -> Self {
-        Self {
-            enemy_type: EnemyType::Tank,
-            aggro_range: 6.0,
-            attack_range: 2.0,
-            move_speed: 2.0,
-            attack_damage: 50.0,
-            attack_cooldown: 3.0,
-            last_attack_time: 0.0,
-            state: EnemyState::Patrolling,
-            target: None,
-        }
-    }
-}
-
-impl EnemyAI {
-    pub fn new(patrol_points: Vec<Vec3>) -> Self {
-        Self {
-            detection_radius: 10.0,
-            patrol_points,
-            current_patrol_index: 0,
-            last_known_player_position: None,
-            search_timer: 0.0,
-            reaction_time: 0.5,
-        }
-    }
-}
-
-fn spawn_test_enemies(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let striker_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.9, 0.1, 0.1), // Bright red for visibility
-        emissive: LinearRgba::new(0.3, 0.0, 0.0, 1.0), // More emissive
-        metallic: 0.1,
-        perceptual_roughness: 0.8,
-        ..default()
-    });
-
-    let shooter_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.1, 0.8, 0.1), // Bright green for visibility
-        emissive: LinearRgba::new(0.0, 0.3, 0.0, 1.0), // More emissive
-        metallic: 0.1,
-        perceptual_roughness: 0.8,
-        ..default()
-    });
-
-    let tank_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.7, 0.7, 0.1), // Bright yellow for visibility
-        emissive: LinearRgba::new(0.2, 0.2, 0.0, 1.0), // More emissive
-        metallic: 0.3,
-        perceptual_roughness: 0.6,
-        ..default()
-    });
-
-    let sleeper_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.1, 0.1, 0.7), // Bright blue for visibility
-        emissive: LinearRgba::new(0.0, 0.0, 0.3, 1.0), // More emissive
-        metallic: 0.0,
-        perceptual_roughness: 0.9,
-        ..default()
-    });
-
-    let scout_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.8, 0.4, 0.8), // Bright purple for visibility
-        emissive: LinearRgba::new(0.3, 0.1, 0.3, 1.0), // More emissive
-        metallic: 0.0,
-        perceptual_roughness: 0.7,
-        ..default()
-    });
-
-    // Spawn a Striker (active patrol) - cube shape, red color
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(0.4, 0.8, 0.4))), // Cube shape to distinguish
-        MeshMaterial3d(striker_material.clone()),
-        Transform::from_xyz(-15.0, 0.4, -10.0), // Lower Y position
-        RigidBody::Dynamic,
-        Collider::cuboid(0.2, 0.4, 0.2), // Smaller collider
-        LockedAxes::ROTATION_LOCKED,
-        Enemy::new_striker(),
-        EnemyAI::new(vec![
-            Vec3::new(-15.0, 0.4, -10.0),
-            Vec3::new(-12.0, 0.4, -8.0),
-            Vec3::new(-15.0, 0.4, -6.0),
-        ]),
-        Health::new(50.0),
-        Name::new("Striker Enemy"),
-    ));
-
-    // Spawn Sleepers (dormant until awakened) - smaller and positioned away from spawn
-    for i in 0..3 {
-        commands.spawn((
-            Mesh3d(meshes.add(Capsule3d::new(0.15, 0.6))), // Smaller, crouched appearance
-            MeshMaterial3d(sleeper_material.clone()),
-            Transform::from_xyz(8.0 + i as f32 * 3.0, 0.3, -5.0), // Lower and spread out
-            RigidBody::Dynamic,
-            Collider::capsule(0.6, 0.15), // Smaller collider
-            LockedAxes::ROTATION_LOCKED,
-            Enemy::new_sleeper(),
-            EnemyAI::new(vec![]), // No patrol points when sleeping
-            Health::new(75.0),
-            Name::new(format!("Sleeper Enemy {}", i + 1)),
-        ));
-    }
-
-    // Spawn a Scout (fast, calls for backup) - smaller and farther away
-    commands.spawn((
-        Mesh3d(meshes.add(Capsule3d::new(0.15, 0.7))), // Smaller, agile
-        MeshMaterial3d(scout_material),
-        Transform::from_xyz(20.0, 0.35, 0.0), // Far from spawn point
-        RigidBody::Dynamic,
-        Collider::capsule(0.7, 0.15), // Smaller collider
-        LockedAxes::ROTATION_LOCKED,
-        Enemy::new_scout(),
-        EnemyAI::new(vec![
-            Vec3::new(20.0, 0.35, 0.0),
-            Vec3::new(25.0, 0.35, 5.0),
-            Vec3::new(22.0, 0.35, 8.0),
-            Vec3::new(18.0, 0.35, 3.0),
-        ]),
-        Health::new(30.0),
-        Name::new("Scout Enemy"),
-    ));
-
-    // Spawn a Shooter (ranged enemy) - smaller and positioned away
-    commands.spawn((
-        Mesh3d(meshes.add(Capsule3d::new(0.2, 0.9))), // Smaller but slightly taller
-        MeshMaterial3d(shooter_material),
-        Transform::from_xyz(-8.0, 0.45, 5.0), // Lower position
-        RigidBody::Dynamic,
-        Collider::capsule(0.9, 0.2), // Smaller collider
-        LockedAxes::ROTATION_LOCKED,
-        Enemy::new_shooter(),
-        EnemyAI::new(vec![
-            Vec3::new(-8.0, 0.45, 5.0),
-            Vec3::new(-5.0, 0.45, 7.0),
-            Vec3::new(-10.0, 0.45, 8.0),
-        ]),
-        Health::new(75.0),
-        Name::new("Shooter Enemy"),
-    ));
-
-    // Spawn a Tank (slow but powerful) - sphere shape, yellow color
-    commands.spawn((
-        Mesh3d(meshes.add(Sphere::new(0.4))), // Sphere shape to distinguish as tank
-        MeshMaterial3d(tank_material),
-        Transform::from_xyz(0.0, 0.4, -20.0), // Far from spawn point
-        RigidBody::Dynamic,
-        Collider::sphere(0.4), // Sphere collider
-        LockedAxes::ROTATION_LOCKED,
-        Enemy::new_tank(),
-        EnemyAI::new(vec![
-            Vec3::new(0.0, 0.4, -20.0),
-            Vec3::new(-3.0, 0.4, -18.0),
-            Vec3::new(3.0, 0.4, -18.0),
-        ]),
-        Health::new(150.0),
-        Name::new("Tank Enemy"),
-    ));
-
-    info!("Spawned test enemies: 1 Striker, 3 Sleepers, 1 Scout, 1 Shooter, 1 Tank");
 }
 
 fn enemy_ai_system(
@@ -305,14 +74,18 @@ fn enemy_ai_system(
     for (_enemy_entity, mut enemy, mut ai, enemy_transform) in enemy_query.iter_mut() {
         let _current_time = time.elapsed_secs();
 
-        // Find closest player
         let mut closest_player: Option<(Entity, f32)> = None;
         for (player_entity, player_transform) in player_query.iter() {
             let distance = enemy_transform
                 .translation
                 .distance(player_transform.translation);
 
-            if distance <= ai.detection_radius {
+            // For dormant enemies, always check proximity regardless of detection radius
+            // For active enemies, use detection radius
+            let should_detect =
+                enemy.state == EnemyState::Dormant || distance <= ai.detection_radius;
+
+            if should_detect {
                 if let Some((_, closest_distance)) = closest_player {
                     if distance < closest_distance {
                         closest_player = Some((player_entity, distance));
@@ -323,11 +96,32 @@ fn enemy_ai_system(
             }
         }
 
-        // Update AI state based on player detection
         match enemy.state {
             EnemyState::Dormant => {
-                // Sleepers stay dormant until awakened by sound/damage
-                // This is handled in the sleeper_awakening_system
+                // Dormant enemies should wake up when players get close
+                for (player_entity, player_transform) in player_query.iter() {
+                    let distance = enemy_transform
+                        .translation
+                        .distance(player_transform.translation);
+
+                    // Wake up if player is within 3.0 units (close proximity)
+                    if distance <= 3.0 {
+                        enemy.state = EnemyState::Chasing;
+                        enemy.target = Some(player_entity);
+                        ai.last_known_player_position = Some(player_transform.translation);
+                        debug!(
+                            "Enemy awakened by close proximity! Distance: {:.2}",
+                            distance
+                        );
+                        break;
+                    } else if distance <= 5.0 {
+                        // Debug: log when player is getting close but not close enough
+                        debug!(
+                            "Player approaching dormant enemy. Distance: {:.2}",
+                            distance
+                        );
+                    }
+                }
             }
             EnemyState::Idle | EnemyState::Patrolling => {
                 if let Some((player_entity, distance)) = closest_player {
@@ -342,7 +136,6 @@ fn enemy_ai_system(
                 }
             }
             EnemyState::Investigating => {
-                // Move towards suspicious sound/location
                 if let Some((player_entity, distance)) = closest_player {
                     if distance <= enemy.aggro_range {
                         enemy.state = EnemyState::Chasing;
@@ -366,9 +159,8 @@ fn enemy_ai_system(
                         enemy.state = EnemyState::Attacking;
                     }
                 } else {
-                    // Lost sight of player, start searching
                     enemy.state = EnemyState::Searching;
-                    ai.search_timer = 5.0; // Search for 5 seconds
+                    ai.search_timer = 5.0;
                 }
             }
             EnemyState::Attacking => {
@@ -389,22 +181,13 @@ fn enemy_ai_system(
                     ai.last_known_player_position = None;
                 }
 
-                // Check if player comes back into range during search
                 if let Some((player_entity, _)) = closest_player {
                     enemy.state = EnemyState::Chasing;
                     enemy.target = Some(player_entity);
                 }
             }
-            EnemyState::Calling => {
-                // Scout calls for backup - handled in separate system
-                ai.search_timer -= time.delta_secs();
-                if ai.search_timer <= 0.0 {
-                    enemy.state = EnemyState::Chasing;
-                }
-            }
-            EnemyState::Dead => {
-                // Dead enemies don't do anything
-            }
+
+            EnemyState::Dead => {}
         }
     }
 }
@@ -430,10 +213,9 @@ fn enemy_movement(
                         ai.current_patrol_index =
                             (ai.current_patrol_index + 1) % ai.patrol_points.len();
                     } else {
-                        // Only calculate movement in X and Z directions (horizontal)
                         let horizontal_direction = Vec3::new(
                             target_point.x - transform.translation.x,
-                            0.0, // Don't move in Y direction
+                            0.0,
                             target_point.z - transform.translation.z,
                         )
                         .normalize();
@@ -444,10 +226,9 @@ fn enemy_movement(
             EnemyState::Chasing => {
                 if let Some(target_entity) = enemy.target {
                     if let Ok(player_transform) = player_query.get(target_entity) {
-                        // Only chase horizontally, don't fly towards player
                         let horizontal_direction = Vec3::new(
                             player_transform.translation.x - transform.translation.x,
-                            0.0, // Don't move in Y direction
+                            0.0,
                             player_transform.translation.z - transform.translation.z,
                         )
                         .normalize();
@@ -460,10 +241,9 @@ fn enemy_movement(
                 if let Some(last_pos) = ai.last_known_player_position {
                     let distance_to_last_pos = transform.translation.distance(last_pos);
                     if distance_to_last_pos > 1.0 {
-                        // Only search horizontally
                         let horizontal_direction = Vec3::new(
                             last_pos.x - transform.translation.x,
-                            0.0, // Don't move in Y direction
+                            0.0,
                             last_pos.z - transform.translation.z,
                         )
                         .normalize();
@@ -472,13 +252,11 @@ fn enemy_movement(
                 }
             }
             EnemyState::Attacking => {
-                // Don't move while attacking, just face the target
                 if let Some(target_entity) = enemy.target {
                     if let Ok(player_transform) = player_query.get(target_entity) {
-                        // Only look horizontally, don't tilt up/down
                         let look_direction = Vec3::new(
                             player_transform.translation.x - transform.translation.x,
-                            0.0, // Keep level, don't look up or down
+                            0.0,
                             player_transform.translation.z - transform.translation.z,
                         )
                         .normalize();
@@ -491,19 +269,14 @@ fn enemy_movement(
             _ => {}
         }
 
-        // Apply movement
         if movement_direction.length() > 0.1 {
             velocity.x = movement_direction.x * enemy.move_speed;
             velocity.z = movement_direction.z * enemy.move_speed;
-            // Keep Y velocity for gravity but don't add movement
-            // velocity.y remains unchanged (for gravity/physics)
 
-            // Rotate to face movement direction
             transform.look_to(movement_direction, Vec3::Y);
         } else {
-            velocity.x *= 0.8; // Apply friction
+            velocity.x *= 0.8;
             velocity.z *= 0.8;
-            // Don't modify Y velocity - let gravity handle it
         }
     }
 }
@@ -523,15 +296,10 @@ fn enemy_attack_system(
                         player_health.take_damage(enemy.attack_damage, current_time);
                         enemy.last_attack_time = current_time;
 
-                        info!(
+                        debug!(
                             "Enemy {} attacked player for {} damage!",
                             match enemy.enemy_type {
                                 EnemyType::Striker => "Striker",
-                                EnemyType::Shooter => "Shooter",
-                                EnemyType::Tank => "Tank",
-                                EnemyType::Hybrid => "Hybrid",
-                                EnemyType::Sleeper => "Sleeper",
-                                EnemyType::Scout => "Scout",
                             },
                             enemy.attack_damage
                         );
@@ -543,39 +311,46 @@ fn enemy_attack_system(
 }
 
 fn enemy_death_system(
-    _commands: Commands,
     mut enemy_query: Query<(Entity, &mut Enemy, &Health), Without<crate::player::Player>>,
 ) {
-    for (_entity, mut enemy, health) in enemy_query.iter_mut() {
+    for (entity, mut enemy, health) in enemy_query.iter_mut() {
+        debug!(
+            "Enemy {:?} health check: current={}, max={}, is_dead={}",
+            entity,
+            health.current,
+            health.maximum,
+            health.is_dead()
+        );
+
         if health.is_dead() && enemy.state != EnemyState::Dead {
             enemy.state = EnemyState::Dead;
-            info!("Enemy died!");
-
-            // In a real game, you might want to play death animation,
-            // drop loot, etc. For now, we'll just mark it as dead
-            // You could despawn after a delay:
-            // commands.entity(entity).despawn();
+            debug!(
+                "Enemy {:?} marked as dead (health: {})",
+                entity, health.current
+            );
         }
     }
 }
 
-// GTFO-like sleeper awakening system
 fn sleeper_awakening_system(
     mut enemy_query: Query<(&mut Enemy, &mut EnemyAI, &Transform)>,
     player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
     _time: Res<Time>,
 ) {
     for (mut enemy, mut ai, transform) in enemy_query.iter_mut() {
-        if enemy.enemy_type == EnemyType::Sleeper && enemy.state == EnemyState::Dormant {
-            // Check if player is too close
+        // This system handles sleeper-specific awakening (different from general dormant awakening)
+        if enemy.state == EnemyState::Dormant {
             for player_transform in player_query.iter() {
                 let distance = transform.translation.distance(player_transform.translation);
 
-                // Awaken if player gets too close (like in GTFO)
-                if distance < 3.0 {
+                // Sleepers have a slightly larger awakening range
+                if distance < 4.0 {
                     enemy.state = EnemyState::Chasing;
                     ai.last_known_player_position = Some(player_transform.translation);
-                    info!("Sleeper awakened by close proximity!");
+                    debug!(
+                        "Sleeper awakened by close proximity! Distance: {:.2}",
+                        distance
+                    );
                     break;
                 }
             }
@@ -583,7 +358,6 @@ fn sleeper_awakening_system(
     }
 }
 
-// Sound detection system for stealth mechanics
 fn sound_detection_system(
     mut enemy_query: Query<(&mut Enemy, &mut EnemyAI, &Transform)>,
     player_query: Query<(&crate::player::PlayerController, &Transform), With<Player>>,
@@ -595,13 +369,12 @@ fn sound_detection_system(
                     .translation
                     .distance(player_transform.translation);
 
-                // Detect running/sprinting players from further away
                 let detection_range = if player_controller.is_sprinting {
                     15.0
                 } else if player_controller.speed > 3.0 {
                     8.0
                 } else {
-                    5.0 // Walking/crouching
+                    5.0
                 };
 
                 if distance < detection_range && enemy.state != EnemyState::Chasing {

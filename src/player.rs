@@ -1,7 +1,5 @@
-#![allow(dead_code)]
-
 use crate::combat::{Health, Weapon};
-use crate::game_state::GameState;
+use crate::menu::GameState;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy::window::CursorGrabMode;
@@ -55,13 +53,10 @@ impl PlayerAction {
         use PlayerAction::*;
         let mut input_map = InputMap::default();
 
-        // Movement (WASD)
         input_map.insert_dual_axis(Move, VirtualDPad::wasd());
 
-        // Mouse look
         input_map.insert_dual_axis(Look, MouseMove::default());
 
-        // Individual key bindings
         input_map.insert(Jump, KeyCode::Space);
         input_map.insert(Sprint, KeyCode::ShiftLeft);
         input_map.insert(Crouch, KeyCode::ControlLeft);
@@ -115,8 +110,7 @@ impl Default for PlayerController {
 pub struct Flashlight {
     pub is_on: bool,
     pub intensity: f32,
-    pub range: f32,
-    pub angle: f32,
+
     pub battery: f32,
     pub max_battery: f32,
     pub drain_rate: f32,
@@ -125,13 +119,12 @@ pub struct Flashlight {
 impl Default for Flashlight {
     fn default() -> Self {
         Self {
-            is_on: true,        // Start with flashlight on for testing
-            intensity: 15000.0, // Increased from 10000 for better visibility
-            range: 25.0,
-            angle: 45.0,
+            is_on: true,
+            intensity: 15000.0,
+
             battery: 100.0,
             max_battery: 100.0,
-            drain_rate: 3.0, // Reduced drain rate for testing
+            drain_rate: 3.0,
         }
     }
 }
@@ -157,9 +150,7 @@ pub struct PlayerBundle {
     pub name: Name,
 }
 
-fn spawn_player(
-    mut commands: Commands,
-) {
+fn spawn_player(mut commands: Commands) {
     let player = commands
         .spawn(PlayerBundle {
             player: Player,
@@ -169,7 +160,7 @@ fn spawn_player(
             health: Health {
                 current: 100.0,
                 maximum: 100.0,
-                regeneration_rate: 0.0,
+
                 last_damage_time: 0.0,
             },
             rigid_body: RigidBody::Dynamic,
@@ -187,11 +178,10 @@ fn spawn_player(
         })
         .id();
 
-    // Add flashlight as a child entity (starts on for testing)
     commands.entity(player).with_children(|parent| {
         parent.spawn((
             SpotLight {
-                intensity: 15000.0, // Start bright for testing
+                intensity: 15000.0,
                 range: 25.0,
                 radius: 0.1,
                 outer_angle: 0.8,
@@ -210,71 +200,21 @@ fn spawn_player(
     });
 }
 
-// Respawn player when entering game state (for restarts)
 fn respawn_player(mut commands: Commands, player_query: Query<Entity, With<Player>>) {
-    info!(
+    debug!(
         "Respawn player called. Current players: {}",
         player_query.iter().count()
     );
 
-    // Clean up any existing players first
     for entity in player_query.iter() {
-        info!("Removing existing player entity: {:?}", entity);
+        debug!("Removing existing player entity: {:?}", entity);
         commands.entity(entity).despawn();
     }
 
-    info!("Spawning fresh player...");
+    debug!("Spawning fresh player...");
 
-    let player = commands
-        .spawn(PlayerBundle {
-            player: Player,
-            controller: PlayerController::default(),
-            flashlight: Flashlight::default(),
-            weapon: Weapon::new_assault_rifle(),
-            health: Health {
-                current: 100.0,
-                maximum: 100.0,
-                regeneration_rate: 0.0,
-                last_damage_time: 0.0,
-            },
-            rigid_body: RigidBody::Dynamic,
-            collider: Collider::capsule(0.5, 1.8),
-            mass: Mass(70.0),
-            locked_axes: LockedAxes::ROTATION_LOCKED,
-            transform: Transform::from_xyz(-2.0, 0.9, 0.0),
-            global_transform: GlobalTransform::default(),
-            visibility: Visibility::default(),
-            inherited_visibility: InheritedVisibility::default(),
-            view_visibility: ViewVisibility::default(),
-            input_map: PlayerAction::default_input_map(),
-            action_state: ActionState::<PlayerAction>::default(),
-            name: Name::new("Player - Respawned"),
-        })
-        .id();
-
-    // Add flashlight as a child entity
-    commands.entity(player).with_children(|parent| {
-        parent.spawn((
-            SpotLight {
-                intensity: 15000.0,
-                range: 25.0,
-                radius: 0.1,
-                outer_angle: 0.8,
-                inner_angle: 0.6,
-                shadows_enabled: true,
-                color: Color::srgb(1.0, 0.95, 0.8),
-                ..default()
-            },
-            Transform::from_xyz(0.2, 0.5, 0.3),
-            GlobalTransform::default(),
-            Visibility::default(),
-            InheritedVisibility::default(),
-            ViewVisibility::default(),
-            Name::new("Flashlight - Respawned"),
-        ));
-    });
-
-    info!("Player respawned successfully with entity: {:?}", player);
+    spawn_player(commands);
+    debug!("Player respawned successfully");
 }
 
 fn player_movement(
@@ -292,19 +232,16 @@ fn player_movement(
     for (transform, mut velocity, mut controller, action_state) in query.iter_mut() {
         let mut movement = Vec3::ZERO;
 
-        // Get movement input
         let move_data = action_state.axis_pair(&PlayerAction::Move);
         if move_data != Vec2::ZERO {
             movement.x = move_data.x;
-            movement.z = move_data.y; // W = forward (+Z), S = backward (-Z)
+            movement.z = move_data.y;
         }
 
-        // Handle sprinting and crouching
         controller.is_sprinting =
             action_state.pressed(&PlayerAction::Sprint) && controller.stamina > 0.0;
         controller.is_crouching = action_state.pressed(&PlayerAction::Crouch);
 
-        // Calculate speed
         let speed = if controller.is_sprinting {
             controller.sprint_speed
         } else if controller.is_crouching {
@@ -313,16 +250,13 @@ fn player_movement(
             controller.speed
         };
 
-        // Apply movement relative to player rotation
         let forward: Vec3 = transform.forward().into();
         let right: Vec3 = transform.right().into();
         let movement_world: Vec3 = (right * movement.x + forward * movement.z) * speed;
 
-        // Apply movement to velocity, preserving Y velocity for gravity
         velocity.x = movement_world.x;
         velocity.z = movement_world.z;
 
-        // Jumping
         if action_state.just_pressed(&PlayerAction::Jump) && velocity.y.abs() < 0.1 {
             velocity.y = controller.jump_force;
         }
@@ -342,14 +276,11 @@ fn player_look(
     for (mut transform, mut controller, action_state) in query.iter_mut() {
         let look_delta = action_state.axis_pair(&PlayerAction::Look);
         if look_delta != Vec2::ZERO {
-            // Update yaw (horizontal rotation)
             controller.yaw -= look_delta.x * controller.sensitivity;
 
-            // Update pitch (vertical rotation) and clamp it
             controller.pitch -= look_delta.y * controller.sensitivity;
             controller.pitch = controller.pitch.clamp(-1.5, 1.5);
 
-            // Apply yaw rotation to player transform
             transform.rotation = Quat::from_rotation_y(controller.yaw);
         }
     }
@@ -365,12 +296,10 @@ fn update_camera_to_player(
     if let (Ok((player_transform, controller)), Ok(mut camera_transform)) =
         (player_query.single(), camera_query.single_mut())
     {
-        // Position camera at player head height
         let eye_height = if controller.is_crouching { 1.2 } else { 1.7 };
         let camera_position = player_transform.translation + Vec3::new(0.0, eye_height, 0.0);
         camera_transform.translation = camera_position;
 
-        // Apply player's yaw and camera's pitch
         let yaw_rotation = Quat::from_rotation_y(controller.yaw);
         let pitch_rotation = Quat::from_rotation_x(controller.pitch);
         camera_transform.rotation = yaw_rotation * pitch_rotation;
@@ -385,23 +314,19 @@ fn update_flashlight(
 ) {
     for mut flashlight in flashlight_query.iter_mut() {
         if let Ok(action_state) = action_query.single() {
-            // Toggle flashlight
             if action_state.just_pressed(&PlayerAction::Flashlight) {
                 flashlight.is_on = !flashlight.is_on;
             }
 
-            // Drain battery when on
             if flashlight.is_on && flashlight.battery > 0.0 {
                 flashlight.battery -= flashlight.drain_rate * time.delta_secs();
                 flashlight.battery = flashlight.battery.max(0.0);
             }
 
-            // Turn off if battery is dead
             if flashlight.battery <= 0.0 {
                 flashlight.is_on = false;
             }
 
-            // Update light intensity
             for mut light in light_query.iter_mut() {
                 light.intensity = if flashlight.is_on {
                     flashlight.intensity * (flashlight.battery / flashlight.max_battery).max(0.1)
@@ -416,12 +341,10 @@ fn update_flashlight(
 fn stamina_system(time: Res<Time>, mut query: Query<&mut PlayerController, With<Player>>) {
     for mut controller in query.iter_mut() {
         if controller.is_sprinting {
-            // Drain stamina while sprinting
             controller.stamina -= 20.0 * time.delta_secs();
             controller.stamina = controller.stamina.max(0.0);
-            info!("Sprinting! Stamina: {:.1}", controller.stamina);
+            debug!("Sprinting! Stamina: {:.1}", controller.stamina);
         } else {
-            // Regenerate stamina when not sprinting
             controller.stamina += 15.0 * time.delta_secs();
             controller.stamina = controller.stamina.min(controller.max_stamina);
         }

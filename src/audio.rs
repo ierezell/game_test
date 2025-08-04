@@ -1,6 +1,4 @@
-#![allow(dead_code)]
-
-use crate::game_state::GameState;
+use crate::menu::GameState;
 use bevy::prelude::*;
 use bevy_kira_audio::AudioSource as KiraAudioSource;
 use bevy_kira_audio::prelude::*;
@@ -16,9 +14,11 @@ impl Plugin for GameAudioPlugin {
                 Update,
                 (
                     play_footsteps,
-                    play_weapon_sounds,
+                    play_weapon_reload_sounds,
                     play_ambient_sounds,
-                    handle_weapon_fire_events,
+                    play_weapon_fire_sounds,
+                    play_damage_sounds,
+                    play_enemy_detection_sounds,
                 )
                     .run_if(in_state(GameState::InGame)),
             );
@@ -35,26 +35,7 @@ pub struct GameAudio {
     pub damage_taken: Handle<KiraAudioSource>,
 }
 
-#[derive(Component)]
-pub struct AudioEmitter {
-    pub sound_type: SoundType,
-    pub volume: f32,
-    pub range: f32,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum SoundType {
-    Footstep,
-    WeaponFire,
-    Reload,
-    Ambient,
-    EnemyAlert,
-    DamageTaken,
-}
-
 fn setup_audio(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // In a real game, you would load actual audio files
-    // For now, we'll just create handles to placeholder audio
     let game_audio = GameAudio {
         footstep_concrete: asset_server.load("audio/footstep_concrete.mp3"),
         weapon_fire: asset_server.load("audio/weapon_fire.mp3"),
@@ -66,19 +47,7 @@ fn setup_audio(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     commands.insert_resource(game_audio);
 
-    // Create ambient audio emitter
-    commands.spawn((
-        Transform::default(),
-        Visibility::default(),
-        AudioEmitter {
-            sound_type: SoundType::Ambient,
-            volume: 0.3,
-            range: 50.0,
-        },
-        Name::new("Ambient Audio"),
-    ));
-
-    info!("Audio system initialized");
+    debug!("Audio system initialized");
 }
 
 fn play_footsteps(
@@ -96,7 +65,6 @@ fn play_footsteps(
     for (player_controller, velocity) in player_query.iter() {
         let speed = velocity.length();
 
-        // Play footsteps based on movement speed with proper timing
         if speed > 0.5 {
             let footstep_volume = if player_controller.is_sprinting {
                 0.8
@@ -106,16 +74,14 @@ fn play_footsteps(
                 0.5
             };
 
-            // Calculate footstep interval based on movement speed and state
             let footstep_interval = if player_controller.is_sprinting {
-                0.3 // Fast footsteps when sprinting
+                0.3
             } else if player_controller.is_crouching {
-                0.8 // Slow footsteps when crouching
+                0.8
             } else {
-                0.5 // Normal walking pace
+                0.5
             };
 
-            // Only play footstep if enough time has passed and player is moving fast enough
             if speed > 1.0 && current_time - *last_footstep_time > footstep_interval {
                 kira_audio
                     .play(audio.footstep_concrete.clone())
@@ -127,7 +93,7 @@ fn play_footsteps(
     }
 }
 
-fn play_weapon_sounds(
+fn play_weapon_reload_sounds(
     audio: Res<GameAudio>,
     kira_audio: Res<bevy_kira_audio::Audio>,
     weapon_query: Query<(Entity, &crate::combat::Weapon), Changed<crate::combat::Weapon>>,
@@ -137,11 +103,9 @@ fn play_weapon_sounds(
     let current_time = time.elapsed_secs();
 
     for (entity, weapon) in weapon_query.iter() {
-        // Play reload sound when starting to reload, but throttle to prevent rapid firing
         if weapon.is_reloading {
             let last_reload_time = last_reload_sounds.get(&entity).copied().unwrap_or(0.0);
 
-            // Only play reload sound if it's been at least 0.5 seconds since last reload sound
             if current_time - last_reload_time > 0.5 {
                 kira_audio
                     .play(audio.weapon_reload.clone())
@@ -162,63 +126,91 @@ fn play_ambient_sounds(
 ) {
     let current_time = time.elapsed_secs();
 
-    // Play ambient sounds every 30 seconds, but only if not already playing
     if current_time - *last_ambient_time > 30.0 && !*ambient_playing {
         kira_audio.play(audio.ambient_hum.clone()).with_volume(0.1);
 
         *last_ambient_time = current_time;
         *ambient_playing = true;
-
-        // Reset the playing flag after expected duration of ambient sound
-        // This is a simplified approach - in a real game you'd track the actual playback state
     } else if current_time - *last_ambient_time > 35.0 {
         *ambient_playing = false;
     }
 }
 
-fn handle_weapon_fire_events(
-    mut commands: Commands,
+fn play_weapon_fire_sounds(
+    mut weapon_fire_events: EventReader<crate::combat::WeaponFireEvent>,
     audio: Res<GameAudio>,
     kira_audio: Res<bevy_kira_audio::Audio>,
-    weapon_fire_query: Query<
-        Entity,
-        (
-            With<crate::combat::WeaponFireEvent>,
-            Added<crate::combat::WeaponFireEvent>,
-        ),
-    >,
 ) {
-    for entity in weapon_fire_query.iter() {
-        // Play weapon fire sound
+    for _event in weapon_fire_events.read() {
         kira_audio.play(audio.weapon_fire.clone()).with_volume(0.7);
-
-        // Remove the event component after handling
-        commands
-            .entity(entity)
-            .remove::<crate::combat::WeaponFireEvent>();
     }
 }
 
-// Cleanup all audio when entering game state (prevents stacking)
 fn cleanup_audio(kira_audio: Res<bevy_kira_audio::Audio>) {
-    info!("Stopping all audio to prevent stacking");
+    debug!("Stopping all audio to prevent stacking");
     kira_audio.stop();
 }
 
-// Helper functions for playing specific sounds
-pub fn play_weapon_fire_sound(audio: &GameAudio, kira_audio: &bevy_kira_audio::Audio) {
-    kira_audio.play(audio.weapon_fire.clone()).with_volume(0.7);
-}
-
-pub fn play_damage_sound(audio: &GameAudio, kira_audio: &bevy_kira_audio::Audio) {
-    kira_audio.play(audio.damage_taken.clone()).with_volume(0.5);
-}
-
-pub fn play_enemy_alert_sound(
-    audio: &GameAudio,
-    kira_audio: &bevy_kira_audio::Audio,
-    _position: Vec3,
+fn play_damage_sounds(
+    audio: Res<GameAudio>,
+    kira_audio: Res<bevy_kira_audio::Audio>,
+    time: Res<Time>,
+    health_query: Query<
+        (Entity, &crate::combat::Health),
+        (
+            Changed<crate::combat::Health>,
+            Or<(With<crate::player::Player>, With<crate::enemies::Enemy>)>,
+        ),
+    >,
+    player_query: Query<(), With<crate::player::Player>>,
+    enemy_query: Query<(), With<crate::enemies::Enemy>>,
+    mut last_damage_times: Local<std::collections::HashMap<bevy::prelude::Entity, f32>>,
 ) {
-    // Note: Spatial audio might need additional setup in bevy_kira_audio
-    kira_audio.play(audio.enemy_alert.clone()).with_volume(0.6);
+    let current_time = time.elapsed_secs();
+
+    for (entity, health) in health_query.iter() {
+        let last_damage_time = last_damage_times.get(&entity).copied().unwrap_or(0.0);
+
+        // Check if this entity recently took damage (within the last 0.1 seconds to avoid spam)
+        if health.last_damage_time > last_damage_time
+            && current_time - health.last_damage_time < 0.1
+        {
+            if player_query.get(entity).is_ok() {
+                // Player took damage
+                debug!("Playing player damage sound");
+                kira_audio.play(audio.damage_taken.clone()).with_volume(0.7);
+            } else if enemy_query.get(entity).is_ok() {
+                // Enemy took damage
+                debug!("Playing enemy damage sound");
+                kira_audio.play(audio.damage_taken.clone()).with_volume(0.4);
+            }
+
+            last_damage_times.insert(entity, health.last_damage_time);
+        }
+    }
+}
+
+fn play_enemy_detection_sounds(
+    audio: Res<GameAudio>,
+    kira_audio: Res<bevy_kira_audio::Audio>,
+    enemy_query: Query<
+        (Entity, &crate::enemies::Enemy, &Transform),
+        (Changed<crate::enemies::Enemy>, With<crate::enemies::Enemy>),
+    >,
+    mut last_alert_times: Local<std::collections::HashMap<bevy::prelude::Entity, f32>>,
+    time: Res<Time>,
+) {
+    let current_time = time.elapsed_secs();
+
+    for (entity, enemy, _transform) in enemy_query.iter() {
+        let last_alert_time = last_alert_times.get(&entity).copied().unwrap_or(0.0);
+
+        if enemy.state == crate::enemies::EnemyState::Chasing
+            && current_time - last_alert_time > 3.0
+        {
+            debug!("Enemy detected player! Playing alert sound");
+            kira_audio.play(audio.enemy_alert.clone()).with_volume(0.6);
+            last_alert_times.insert(entity, current_time);
+        }
+    }
 }

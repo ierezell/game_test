@@ -1,6 +1,4 @@
-#![allow(dead_code)]
-
-use crate::game_state::GameState;
+use crate::menu::GameState;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
@@ -8,17 +6,15 @@ use rand::Rng;
 
 pub struct CombatPlugin;
 
+#[derive(Event)]
+pub struct WeaponFireEvent;
+
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
+        app.add_event::<WeaponFireEvent>().add_systems(
             Update,
-            (
-                weapon_fire,
-                projectile_movement,
-                damage_system,
-                cleanup_projectiles,
-                remove_dead_entities,
-            )
+            (weapon_fire, remove_dead_entities)
+                .chain() // Run systems in order
                 .run_if(in_state(GameState::InGame)),
         );
     }
@@ -28,20 +24,10 @@ impl Plugin for CombatPlugin {
 pub struct Health {
     pub current: f32,
     pub maximum: f32,
-    pub regeneration_rate: f32,
     pub last_damage_time: f32,
 }
 
 impl Health {
-    pub fn new(max_health: f32) -> Self {
-        Self {
-            current: max_health,
-            maximum: max_health,
-            regeneration_rate: 0.0,
-            last_damage_time: 0.0,
-        }
-    }
-
     pub fn take_damage(&mut self, damage: f32, time: f32) {
         self.current = (self.current - damage).max(0.0);
         self.last_damage_time = time;
@@ -50,66 +36,34 @@ impl Health {
     pub fn is_dead(&self) -> bool {
         self.current <= 0.0
     }
-
-    pub fn heal(&mut self, amount: f32) {
-        self.current = (self.current + amount).min(self.maximum);
-    }
 }
 
 #[derive(Component)]
 pub struct Weapon {
-    pub weapon_type: WeaponType,
     pub damage: f32,
-    pub range: f32,
-    pub rate_of_fire: f32, // shots per second
+
+    pub rate_of_fire: f32,
     pub last_shot_time: f32,
     pub ammo_current: u32,
     pub ammo_max: u32,
     pub reload_time: f32,
     pub is_reloading: bool,
     pub reload_start_time: f32,
-    pub accuracy: f32, // 0.0 to 1.0
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum WeaponType {
-    AssaultRifle,
-    Shotgun,
-    Pistol,
-    SniperRifle,
-    SMG,
+    pub accuracy: f32,
 }
 
 impl Weapon {
     pub fn new_assault_rifle() -> Self {
         Self {
-            weapon_type: WeaponType::AssaultRifle,
-            damage: 25.0, // Reduced damage for better balance
-            range: 50.0,
+            damage: 25.0,
             rate_of_fire: 8.0,
-            last_shot_time: -1.0, // Initialize to allow immediate firing
+            last_shot_time: -1.0,
             ammo_current: 30,
             ammo_max: 30,
             reload_time: 2.5,
             is_reloading: false,
             reload_start_time: 0.0,
             accuracy: 0.85,
-        }
-    }
-
-    pub fn new_shotgun() -> Self {
-        Self {
-            weapon_type: WeaponType::Shotgun,
-            damage: 40.0, // Reduced damage
-            range: 15.0,
-            rate_of_fire: 1.2,
-            last_shot_time: -1.0, // Initialize to allow immediate firing
-            ammo_current: 8,
-            ammo_max: 8,
-            reload_time: 3.0,
-            is_reloading: false,
-            reload_start_time: 0.0,
-            accuracy: 0.7,
         }
     }
 
@@ -134,45 +88,33 @@ impl Weapon {
     }
 }
 
-#[derive(Component)]
-pub struct Projectile {
-    pub damage: f32,
-    pub speed: f32,
-    pub lifetime: f32,
-    pub penetration: u32,
-    pub owner: Entity,
-}
-
-#[derive(Component)]
-pub struct WeaponFireEvent;
-
 fn weapon_fire(
     time: Res<Time>,
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut weapon_query: Query<(Entity, &mut Weapon)>,
+    mut weapon_fire_events: EventWriter<WeaponFireEvent>,
+    mut weapon_query: Query<&mut Weapon>,
     input_query: Query<&ActionState<crate::player::PlayerAction>, With<crate::player::Player>>,
     camera_query: Query<&GlobalTransform, With<crate::player::FirstPersonCamera>>,
+    spatial_query: SpatialQuery,
+    mut health_query: Query<&mut Health>,
+    enemy_query: Query<Entity, With<crate::enemies::Enemy>>,
 ) {
     let current_time = time.elapsed_secs();
 
-    for (entity, mut weapon) in weapon_query.iter_mut() {
+    for mut weapon in weapon_query.iter_mut() {
         weapon.update_reload(current_time);
 
-        // Check if this weapon belongs to a player who is firing
         if let Ok(action_state) = input_query.single() {
             if action_state.pressed(&crate::player::PlayerAction::PrimaryFire) {
                 if weapon.can_fire(current_time) {
                     if let Ok(camera_transform) = camera_query.single() {
-                        fire_weapon(
-                            &mut commands,
-                            &mut meshes,
-                            &mut materials,
-                            entity,
+                        fire_raycast_weapon(
                             &mut weapon,
                             camera_transform,
                             current_time,
+                            &spatial_query,
+                            &mut health_query,
+                            &enemy_query,
+                            &mut weapon_fire_events,
                         );
                     }
                 }
@@ -185,197 +127,189 @@ fn weapon_fire(
     }
 }
 
-fn fire_weapon(
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
-    owner: Entity,
+fn fire_raycast_weapon(
     weapon: &mut Weapon,
     camera_transform: &GlobalTransform,
     current_time: f32,
+    spatial_query: &SpatialQuery,
+    health_query: &mut Query<&mut Health>,
+    enemy_query: &Query<Entity, With<crate::enemies::Enemy>>,
+    weapon_fire_events: &mut EventWriter<WeaponFireEvent>,
 ) {
     weapon.last_shot_time = current_time;
     weapon.ammo_current = weapon.ammo_current.saturating_sub(1);
 
-    // Use camera's forward direction instead of weapon transform
-    let forward = camera_transform.forward();
-    let position = camera_transform.translation() + forward * 0.5; // Small offset from camera
+    // Send weapon fire event for audio
+    weapon_fire_events.write(WeaponFireEvent);
 
-    // Add accuracy spread
+    let forward = camera_transform.forward();
+    let position = camera_transform.translation() + forward * 0.5;
+
+    // Apply weapon accuracy with spread
     let mut rng = rand::rng();
-    let spread = (1.0 - weapon.accuracy) * 0.05; // Reduced spread for better accuracy
+    let spread = (1.0 - weapon.accuracy) * 0.05;
     let spread_x = rng.random_range(-spread..spread);
     let spread_y = rng.random_range(-spread..spread);
     let spread_z = rng.random_range(-spread..spread);
 
     let direction = (*forward + Vec3::new(spread_x, spread_y, spread_z)).normalize();
+    let direction = Dir3::new(direction).unwrap_or(Dir3::new(*forward).unwrap());
 
-    // Create projectile with proper physics
-    let projectile_entity = commands
-        .spawn((
-            Mesh3d(meshes.add(Sphere::new(0.03))), // Smaller bullet
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(1.0, 1.0, 0.0),
-                emissive: Color::srgb(0.8, 0.8, 0.2).into(),
-                ..default()
-            })),
-            Transform::from_translation(position),
-            RigidBody::Dynamic, // Use Dynamic for proper collision detection
-            Collider::sphere(0.03),
-            CollisionLayers::default(), // Use default collision layers for now
-            LinearVelocity(direction * 30.0), // Slightly slower for better collision detection
-            Mass(0.01),                 // Very light
-            Restitution::new(0.0),      // No bounce
-            Friction::new(0.0),         // No friction
-            Projectile {
-                damage: weapon.damage,
-                speed: 30.0,
-                lifetime: 3.0, // Shorter lifetime
-                penetration: 1,
-                owner,
-            },
-            Name::new("Projectile"),
-            WeaponFireEvent,
-        ))
-        .id();
+    // Cast ray with maximum range
+    let max_range = 100.0;
 
-    info!(
-        "Spawned projectile {:?} at {:?} with velocity {:?} and damage {}",
-        projectile_entity,
-        position,
-        direction * 30.0,
-        weapon.damage
-    );
+    // Create filter to exclude player from raycast
+    let filter = SpatialQueryFilter::default();
 
-    info!("Fired weapon! Ammo remaining: {}", weapon.ammo_current);
-}
+    if let Some(hit) = spatial_query.cast_ray(position, direction, max_range, true, &filter) {
+        let hit_entity = hit.entity;
 
-fn projectile_movement(
-    time: Res<Time>,
-    mut projectile_query: Query<(Entity, &mut Projectile, &mut Transform)>,
-    mut commands: Commands,
-) {
-    for (entity, mut projectile, _transform) in projectile_query.iter_mut() {
-        projectile.lifetime -= time.delta_secs();
+        debug!(
+            "Raycast hit entity {:?} at distance {:.2} (position: {:?})",
+            hit_entity,
+            hit.distance,
+            position + direction * hit.distance
+        );
 
-        if projectile.lifetime <= 0.0 {
-            commands.entity(entity).despawn();
-        }
-    }
-}
+        // Check if we hit an enemy
+        if enemy_query.get(hit_entity).is_ok() {
+            if let Ok(mut health) = health_query.get_mut(hit_entity) {
+                let damage_dealt = weapon.damage;
+                health.take_damage(damage_dealt, current_time);
 
-fn damage_system(
-    mut commands: Commands,
-    mut collision_events: EventReader<CollisionStarted>,
-    projectile_query: Query<&Projectile>,
-    mut health_query: Query<(Entity, &mut Health)>,
-    enemy_query: Query<(), With<crate::enemies::Enemy>>,
-    wall_query: Query<
-        (),
-        (
-            With<Collider>,
-            With<RigidBody>,
-            Without<crate::enemies::Enemy>,
-            Without<crate::player::Player>,
-        ),
-    >,
-    time: Res<Time>,
-) {
-    for CollisionStarted(entity1, entity2) in collision_events.read() {
-        info!("Collision detected between {:?} and {:?}", entity1, entity2);
-
-        let mut projectile_hit = false;
-        let current_time = time.elapsed_secs();
-
-        // Check if entity1 is projectile hitting entity2
-        if let Ok(projectile) = projectile_query.get(*entity1) {
-            // Check if hitting an enemy with health
-            if let Ok((_health_entity, mut health)) = health_query.get_mut(*entity2) {
-                if enemy_query.get(*entity2).is_ok() {
-                    info!(
-                        "Projectile {:?} hit enemy {:?}! Damage: {}, Health before: {}",
-                        entity1, entity2, projectile.damage, health.current
-                    );
-
-                    health.take_damage(projectile.damage, current_time);
-                    commands.entity(*entity1).despawn(); // Remove projectile
-                    projectile_hit = true;
-
-                    info!("Health after damage: {}", health.current);
-                }
-            }
-            // Check if hitting a wall/static object
-            else if wall_query.get(*entity2).is_ok() {
-                info!(
-                    "Projectile {:?} hit wall/static object {:?}",
-                    entity1, entity2
+                debug!(
+                    "Hit enemy {:?}! Dealt {} damage, health now: {}/{}",
+                    hit_entity, damage_dealt, health.current, health.maximum
                 );
-                commands.entity(*entity1).despawn(); // Remove projectile when hitting wall
-                projectile_hit = true;
             }
+        } else {
+            debug!("Hit non-enemy entity {:?}", hit_entity);
         }
-
-        // Check if entity2 is projectile hitting entity1
-        if !projectile_hit {
-            if let Ok(projectile) = projectile_query.get(*entity2) {
-                // Check if hitting an enemy with health
-                if let Ok((_health_entity, mut health)) = health_query.get_mut(*entity1) {
-                    if enemy_query.get(*entity1).is_ok() {
-                        info!(
-                            "Projectile {:?} hit enemy {:?}! Damage: {}, Health before: {}",
-                            entity2, entity1, projectile.damage, health.current
-                        );
-
-                        health.take_damage(projectile.damage, current_time);
-                        commands.entity(*entity2).despawn(); // Remove projectile
-
-                        info!("Health after damage: {}", health.current);
-                    }
-                }
-                // Check if hitting a wall/static object
-                else if wall_query.get(*entity1).is_ok() {
-                    info!(
-                        "Projectile {:?} hit wall/static object {:?}",
-                        entity2, entity1
-                    );
-                    commands.entity(*entity2).despawn(); // Remove projectile when hitting wall
-                }
-            }
-        }
+    } else {
+        debug!("Raycast missed - no hit detected");
     }
-}
 
-fn cleanup_projectiles(
-    mut commands: Commands,
-    projectile_query: Query<(Entity, &Projectile, &Transform)>,
-    _time: Res<Time>,
-) {
-    // Clean up projectiles that are stuck or have traveled too far
-    for (entity, projectile, transform) in projectile_query.iter() {
-        // Remove projectiles that are too far from origin (likely stuck)
-        if transform.translation.length() > 100.0 {
-            info!(
-                "Removing stuck projectile at distance: {}",
-                transform.translation.length()
-            );
-            commands.entity(entity).despawn();
-        }
-
-        // Additional cleanup for projectiles with negative lifetime (shouldn't happen but safety check)
-        if projectile.lifetime < -1.0 {
-            commands.entity(entity).despawn();
-        }
-    }
+    debug!("Fired weapon! Ammo remaining: {}", weapon.ammo_current);
 }
 
 fn remove_dead_entities(
     mut commands: Commands,
     health_query: Query<(Entity, &Health), Without<crate::player::Player>>,
+    enemy_query: Query<(), With<crate::enemies::Enemy>>,
 ) {
     for (entity, health) in health_query.iter() {
         if health.current <= 0.0 {
-            info!("Entity died! Removing entity: {:?}", entity);
+            if enemy_query.get(entity).is_ok() {
+                debug!(
+                    "Enemy died! Removing enemy entity: {:?} (health: {})",
+                    entity, health.current
+                );
+            } else {
+                debug!(
+                    "Entity died! Removing entity: {:?} (health: {})",
+                    entity, health.current
+                );
+            }
             commands.entity(entity).despawn();
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{Health, Weapon};
+
+    #[test]
+    fn test_health_system() {
+        let mut health = Health {
+            current: 100.0,
+            maximum: 100.0,
+            last_damage_time: 0.0,
+        };
+        assert_eq!(health.current, 100.0);
+        assert_eq!(health.maximum, 100.0);
+        assert!(!health.is_dead());
+
+        health.take_damage(30.0, 1.0);
+        assert_eq!(health.current, 70.0);
+        assert_eq!(health.last_damage_time, 1.0);
+        assert!(!health.is_dead());
+
+        health.take_damage(80.0, 2.0);
+        assert_eq!(health.current, 0.0);
+        assert!(health.is_dead());
+
+        let mut health2 = Health {
+            current: 100.0,
+            maximum: 100.0,
+            last_damage_time: 0.0,
+        };
+        health2.take_damage(50.0, 1.0);
+
+        assert_eq!(health2.current, 50.0);
+    }
+
+    #[test]
+    fn test_weapon_firing_rate() {
+        let mut weapon = Weapon::new_assault_rifle();
+        assert!(weapon.can_fire(0.0));
+
+        weapon.last_shot_time = 0.0;
+        let fire_interval = 1.0 / weapon.rate_of_fire;
+
+        assert!(!weapon.can_fire(0.05));
+        assert!(weapon.can_fire(fire_interval));
+    }
+
+    #[test]
+    fn test_weapon_ammo_system() {
+        let mut weapon = Weapon::new_assault_rifle();
+
+        assert_eq!(weapon.ammo_current, 30);
+        assert!(weapon.can_fire(0.0));
+
+        for i in 0..30 {
+            weapon.ammo_current = weapon.ammo_current.saturating_sub(1);
+            if i < 29 {
+                assert!(weapon.ammo_current > 0);
+            }
+        }
+
+        assert_eq!(weapon.ammo_current, 0);
+        assert!(!weapon.can_fire(1.0));
+    }
+
+    #[test]
+    fn test_weapon_reload_system() {
+        let mut weapon = Weapon::new_assault_rifle();
+
+        weapon.ammo_current = 0;
+        assert!(!weapon.can_fire(0.0));
+
+        weapon.start_reload(0.0);
+        assert!(weapon.is_reloading);
+        assert_eq!(weapon.reload_start_time, 0.0);
+        assert!(!weapon.can_fire(1.0));
+
+        weapon.update_reload(1.0);
+        assert!(weapon.is_reloading);
+        assert_eq!(weapon.ammo_current, 0);
+
+        weapon.update_reload(2.5);
+        assert!(!weapon.is_reloading);
+        assert_eq!(weapon.ammo_current, weapon.ammo_max);
+        assert!(weapon.can_fire(2.5));
+    }
+
+    #[test]
+    fn test_raycast_weapon_accuracy() {
+        let weapon = Weapon::new_assault_rifle();
+        assert_eq!(weapon.accuracy, 0.85);
+
+        // Test that weapon has damage
+        assert_eq!(weapon.damage, 25.0);
+
+        // Test initial ammo
+        assert_eq!(weapon.ammo_current, 30);
     }
 }

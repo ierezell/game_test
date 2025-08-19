@@ -83,12 +83,12 @@ fn main() {
                         ..default()
                     }),
             );
-            
+
             // Add Lightyear server plugins
             app.add_plugins(ServerPlugins {
                 tick_duration: Duration::from_secs_f64(1.0 / protocol::FIXED_TIMESTEP_HZ),
             });
-            
+
             // Add protocol after Lightyear plugins
             app.add_plugins(protocol::ProtocolPlugin);
         }
@@ -119,13 +119,16 @@ fn main() {
                         ..default()
                     }),
             );
-            
+
             // Add Lightyear client plugins for client modes
-            if matches!(&cli.mode, Some(GameMode::Client { .. }) | Some(GameMode::HostClient { .. })) {
+            if matches!(
+                &cli.mode,
+                Some(GameMode::Client { .. }) | Some(GameMode::HostClient { .. })
+            ) {
                 app.add_plugins(ClientPlugins {
                     tick_duration: Duration::from_secs_f64(1.0 / protocol::FIXED_TIMESTEP_HZ),
                 });
-                
+
                 // Add protocol after Lightyear plugins
                 app.add_plugins(protocol::ProtocolPlugin);
             }

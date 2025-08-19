@@ -4,24 +4,11 @@
 
 This is a GTFO-like cooperative survival horror game built with Bevy game engine and Avian physics engine.
 
-## Project Structure
-- `player.rs` - Player movement, actions, and flashlight mechanics
-- `combat.rs` - Weapon systems, projectiles, and damage handling
-- `environment.rs` - Atmospheric environments, lighting, and props
-- `enemies.rs` - AI-driven enemies with different behaviors
-- `ui.rs` - HUD elements including health, ammo, and crosshair
-- `audio.rs` - Sound effects and atmospheric audio
-- `networking.rs` - Multiplayer foundation for cooperative gameplay
-- `utils.rs` - Utility functions for tension, events, and team mechanics
-
 ## Key Features
-- **Player Movement**: WASD movement with crouching, sprinting, and stamina
-- **Combat System**: Realistic weapon mechanics with different weapon types
+- **Combat System**: Realistic mechanics with different weapon types
 - **Enemy AI**: Multiple enemy types with patrol, chase, and attack behaviors
-- **Atmospheric Environment**: Dark corridors with flickering emergency lights
-- **Cooperative Elements**: Foundation for 4-player cooperative gameplay
-- **Tension System**: Dynamic tension that affects gameplay and atmosphere
 - **Procedural** : Adding randomness in levels, map, enemies quests and the like. 
+- **Multiplayer**: Cooperative gameplay for up to 4 players, with shared or not resources and objectives.
 
 ## Coding Guidelines
 - Use Bevy's ECS (Entity Component System) architecture
@@ -30,13 +17,14 @@ This is a GTFO-like cooperative survival horror game built with Bevy game engine
 - Focus on performance for real-time multiplayer gameplay
 - Maintain atmospheric horror elements in all systems
 - Design with cooperative gameplay in mind
+- Use Systems when movement, rendering, input handling, game loops, physics updates, or animation. 
+- Use Events when one-time notifications or messages between systems Handling user input, collisions, state changes, or UI interactions etc...
 
 ## Game Mechanics
-- Health and stamina management
 - Ammunition scarcity
 - Stealth and noise mechanics
 - Environmental interaction
-- Team-based objectives
+- Team-based or not objectives
 - Dynamic lighting and shadows
 - Dynamic Expedition System
 * Procedurally generated facility layouts with hand-crafted room templates

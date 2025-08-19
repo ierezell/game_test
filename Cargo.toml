@@ -5,12 +5,19 @@ edition = "2024"
 authors = ["Your Name <your.email@example.com>"]
 description = "A GTFO-like cooperative survival horror game built with Bevy and Avian"
 
+[features]
+default = ["client", "server", "gui"]
+client = []
+server = []
+gui = ["bevy/bevy_ui"]
+debug = []
+
 [lib]
 name = "gtfo_like_game"
 path = "src/lib.rs"
 
 [[bin]]
-name = "full"
+name = "game"
 path = "src/main.rs"
 
 [dependencies]
@@ -37,18 +44,28 @@ bevy = { version = "0.16", features = [
     "bevy_debug_stepping",
 ] }
 avian3d = "0.3.1"
-bevy_renet = "1.0"
-renet = "1.0"
 bevy_kira_audio = { version = "0.23.0", features = ["mp3", "wav", "ogg"] }
+# Networking dependencies (updated to 0.23.0)
+lightyear = { version = "0.23", features = [
+    "leafwing",
+    "avian3d",
+    "client",
+    "server",
+    "netcode",
+    "udp",
+    "replication",
+] }
+lightyear_avian3d = "0.23"
+clap = { version = "4.4", features = ["derive"] }
 bevy_egui = "0.36.0"
-bevy-inspector-egui = "0.32.0"
+bevy-inspector-egui = "0.33.1"
 rand = "0.9.2"
 noise = "0.9.0"
 bracket-random = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 bincode = "2.0.1"
 leafwing-input-manager = "0.17.1"
-anyhow = "1.0"
+anyhow = "1.0.99"
 
 [profile.dev]
 opt-level = 1
@@ -62,6 +79,9 @@ opt-level = 3
 
 [profile.dev.package.avian3d]
 opt-level = 3
+
+[dev-dependencies]
+serde_json = "1.0"
 
 [profile.release]
 lto = true

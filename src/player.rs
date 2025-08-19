@@ -1,9 +1,16 @@
 use crate::combat::{Health, Weapon};
+use crate::events::{
+    FlashlightToggledEvent, PlayerJumpedEvent, PlayerMovedEvent, SoundTriggeredEvent, SoundType,
+};
 use crate::menu::GameState;
+
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy::window::CursorGrabMode;
 use leafwing_input_manager::prelude::*;
+use serde::{Deserialize, Serialize};
+
+
 
 pub struct PlayerPlugin;
 
@@ -32,7 +39,7 @@ impl Plugin for PlayerPlugin {
 #[derive(Component)]
 pub struct FirstPersonCamera;
 
-#[derive(Actionlike, PartialEq, Eq, Clone, Copy, Hash, Debug, Reflect)]
+#[derive(Actionlike, PartialEq, Eq, Clone, Copy, Hash, Debug, Reflect, Serialize, Deserialize)]
 pub enum PlayerAction {
     #[actionlike(DualAxis)]
     Move,
@@ -221,6 +228,7 @@ fn player_movement(
     _time: Res<Time>,
     mut query: Query<
         (
+            Entity,
             &mut Transform,
             &mut LinearVelocity,
             &mut PlayerController,
@@ -228,8 +236,11 @@ fn player_movement(
         ),
         With<Player>,
     >,
+    mut movement_events: EventWriter<PlayerMovedEvent>,
+    mut jump_events: EventWriter<PlayerJumpedEvent>,
+    mut sound_events: EventWriter<SoundTriggeredEvent>,
 ) {
-    for (transform, mut velocity, mut controller, action_state) in query.iter_mut() {
+    for (entity, transform, mut velocity, mut controller, action_state) in query.iter_mut() {
         let mut movement = Vec3::ZERO;
 
         let move_data = action_state.axis_pair(&PlayerAction::Move);
@@ -257,8 +268,37 @@ fn player_movement(
         velocity.x = movement_world.x;
         velocity.z = movement_world.z;
 
+        // Send movement event if player is moving
+        if movement != Vec3::ZERO {
+            movement_events.write(PlayerMovedEvent { entity });
+
+            // Send footstep sound event
+            let sound_intensity = if controller.is_sprinting {
+                1.0
+            } else if controller.is_crouching {
+                0.3
+            } else {
+                0.6
+            };
+            sound_events.write(SoundTriggeredEvent {
+                position: transform.translation,
+                sound_type: SoundType::Footstep,
+                intensity: sound_intensity,
+            });
+        }
+
         if action_state.just_pressed(&PlayerAction::Jump) && velocity.y.abs() < 0.1 {
             velocity.y = controller.jump_force;
+
+            // Send jump event
+            jump_events.write(PlayerJumpedEvent { entity });
+
+            // Send jump sound event
+            sound_events.write(SoundTriggeredEvent {
+                position: transform.translation,
+                sound_type: SoundType::Impact, // Using Impact for jump sound
+                intensity: 0.8,
+            });
         }
     }
 }
@@ -308,14 +348,21 @@ fn update_camera_to_player(
 
 fn update_flashlight(
     time: Res<Time>,
-    mut flashlight_query: Query<&mut Flashlight, With<Player>>,
+    mut flashlight_query: Query<(Entity, &mut Flashlight), With<Player>>,
     mut light_query: Query<&mut SpotLight>,
     action_query: Query<&ActionState<PlayerAction>, With<Player>>,
+    mut flashlight_events: EventWriter<FlashlightToggledEvent>,
 ) {
-    for mut flashlight in flashlight_query.iter_mut() {
+    for (entity, mut flashlight) in flashlight_query.iter_mut() {
         if let Ok(action_state) = action_query.single() {
             if action_state.just_pressed(&PlayerAction::Flashlight) {
                 flashlight.is_on = !flashlight.is_on;
+
+                // Send flashlight toggle event
+                flashlight_events.write(FlashlightToggledEvent {
+                    entity,
+                    is_on: flashlight.is_on,
+                });
             }
 
             if flashlight.is_on && flashlight.battery > 0.0 {

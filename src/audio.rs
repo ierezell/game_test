@@ -1,7 +1,10 @@
 use crate::menu::GameState;
+use crate::events::WeaponFireEvent;
 use bevy::prelude::*;
 use bevy_kira_audio::AudioSource as KiraAudioSource;
 use bevy_kira_audio::prelude::*;
+
+
 
 pub struct GameAudioPlugin;
 
@@ -85,7 +88,7 @@ fn play_footsteps(
             if speed > 1.0 && current_time - *last_footstep_time > footstep_interval {
                 kira_audio
                     .play(audio.footstep_concrete.clone())
-                    .with_volume(footstep_volume as f64);
+                    .with_volume(footstep_volume);
 
                 *last_footstep_time = current_time;
             }
@@ -137,7 +140,7 @@ fn play_ambient_sounds(
 }
 
 fn play_weapon_fire_sounds(
-    mut weapon_fire_events: EventReader<crate::combat::WeaponFireEvent>,
+    mut weapon_fire_events: EventReader<WeaponFireEvent>,
     audio: Res<GameAudio>,
     kira_audio: Res<bevy_kira_audio::Audio>,
 ) {

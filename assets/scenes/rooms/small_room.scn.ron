@@ -1,0 +1,167 @@
+(
+  resources: {},
+  entities: {
+    0: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (0.0, 0.0, 0.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (1.0, 1.0, 1.0),
+        ),
+        "yolo::scenes::RoomData": (
+          room_type: SmallRoom,
+          dimensions: (10.0, 3.0, 10.0),
+          lighting_intensity: 1.0,
+          has_ceiling: true,
+          wall_material: Concrete,
+        ),
+        "bevy_core::name::Name": (
+          hash: 0,
+          name: "Small Room",
+        ),
+      },
+    ),
+    1: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (0.0, 0.0, 0.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (10.0, 0.1, 10.0),
+        ),
+        "bevy_pbr::bundle::PbrBundle": (
+          mesh: AssetPath("meshes/cube.glb#Mesh0/Primitive0"),
+          material: Standard((
+            base_color: Srgba(red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0),
+            perceptual_roughness: 0.8,
+            metallic: 0.0,
+            reflectance: 0.04,
+          )),
+        ),
+        "bevy_core::name::Name": (
+          hash: 0,
+          name: "Floor",
+        ),
+      ),
+    ),
+    2: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (5.0, 1.5, 0.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (0.1, 3.0, 10.0),
+        ),
+        "bevy_pbr::bundle::PbrBundle": (
+          mesh: AssetPath("meshes/cube.glb#Mesh0/Primitive0"),
+          material: Standard((
+            base_color: Srgba(red: 0.7, green: 0.7, blue: 0.7, alpha: 1.0),
+            perceptual_roughness: 0.9,
+            metallic: 0.0,
+            reflectance: 0.04,
+          )),
+        ),
+        "bevy_core::name::Name": (
+          hash: 0,
+          name: "East Wall",
+        ),
+      ),
+    ),
+    3: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (-5.0, 1.5, 0.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (0.1, 3.0, 10.0),
+        ),
+        "bevy_pbr::bundle::PbrBundle": (
+          mesh: AssetPath("meshes/cube.glb#Mesh0/Primitive0"),
+          material: Standard((
+            base_color: Srgba(red: 0.7, green: 0.7, blue: 0.7, alpha: 1.0),
+            perceptual_roughness: 0.9,
+            metallic: 0.0,
+            reflectance: 0.04,
+          )),
+        ),
+        "bevy_core::name::Name": (
+          hash: 0,
+          name: "West Wall",
+        ),
+      ),
+    ),
+    4: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (0.0, 1.5, 5.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (10.0, 3.0, 0.1),
+        ),
+        "bevy_pbr::bundle::PbrBundle": (
+          mesh: AssetPath("meshes/cube.glb#Mesh0/Primitive0"),
+          material: Standard((
+            base_color: Srgba(red: 0.7, green: 0.7, blue: 0.7, alpha: 1.0),
+            perceptual_roughness: 0.9,
+            metallic: 0.0,
+            reflectance: 0.04,
+          )),
+        ),
+        "bevy_core::name::Name": (
+          hash: 0,
+          name: "North Wall",
+        ),
+      ),
+    ),
+    5: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (0.0, 1.5, -5.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (10.0, 3.0, 0.1),
+        ),
+        "bevy_pbr::bundle::PbrBundle": (
+          mesh: AssetPath("meshes/cube.glb#Mesh0/Primitive0"),
+          material: Standard((
+            base_color: Srgba(red: 0.7, green: 0.7, blue: 0.7, alpha: 1.0),
+            perceptual_roughness: 0.9,
+            metallic: 0.0,
+            reflectance: 0.04,
+          )),
+        ),
+        "bevy_core::name::Name": (
+          hash: 0,
+          name: "South Wall",
+        ),
+      ),
+    ),
+    6: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (0.0, 2.0, 0.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (1.0, 1.0, 1.0),
+        ),
+        "bevy_pbr::bundle::PointLightBundle": (
+          point_light: (
+            color: Srgba(red: 1.0, green: 1.0, blue: 0.9, alpha: 1.0),
+            intensity: 150.0,
+            range: 15.0,
+            radius: 0.0,
+            shadows_enabled: true,
+            shadow_depth_bias: 0.02,
+            shadow_normal_bias: 0.6,
+          ),
+        ),
+        "yolo::scenes::LightData": (
+          light_type: Point,
+          intensity: 150.0,
+          color: Srgba(red: 1.0, green: 1.0, blue: 0.9, alpha: 1.0),
+          range: 15.0,
+          flicker: false,
+          shadow_enabled: true,
+        ),
+        "bevy_core::name::Name": (
+          hash: 0,
+          name: "Room Light",
+        ),
+      ),
+    ),
+  },
+)

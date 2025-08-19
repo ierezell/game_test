@@ -1,6 +1,8 @@
 use crate::combat::Health;
 use crate::enemies::{Enemy, EnemyAI, EnemyState, EnemyType};
+// Events removed - not needed in static_level
 use crate::menu::GameState;
+use crate::scenes::*;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
@@ -12,16 +14,58 @@ pub struct StaticLevelPlugin;
 
 impl Plugin for StaticLevelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_simple_test_level)
+        app.add_systems(Startup, spawn_scene_based_level)
             .add_systems(
                 OnEnter(GameState::InGame),
-                (delete_level, spawn_simple_test_level).chain(),
+                (delete_level, spawn_scene_based_level).chain(),
             );
     }
 }
 
-fn spawn_simple_test_level(
+fn spawn_scene_based_level(
     mut commands: Commands,
+    _asset_server: Res<AssetServer>,
+    meshes: ResMut<Assets<Mesh>>,
+    materials: ResMut<Assets<StandardMaterial>>,
+    // Level events removed - unused dead code
+) {
+    debug!("Creating scene-based level...");
+
+    // Create level data
+    let level_data = LevelData {
+        name: "Test Level".to_string(),
+        difficulty: 1,
+        enemy_spawn_points: vec![
+            Vec3::new(10.0, 1.0, 10.0),
+            Vec3::new(-10.0, 1.0, -10.0),
+            Vec3::new(20.0, 1.0, 0.0),
+        ],
+        player_spawn_point: Vec3::new(0.0, 1.7, 0.0),
+        ambient_light_color: Color::srgb(0.1, 0.1, 0.2),
+        fog_settings: FogSettings {
+            color: Color::srgb(0.1, 0.1, 0.2),
+            density: 0.02,
+            start_distance: 10.0,
+            end_distance: 50.0,
+        },
+    };
+
+    // Create basic level entity without scene loading to avoid asset errors
+    let _level_entity = commands.spawn((
+        Transform::default(),
+        GlobalTransform::default(),
+        Name::new(format!("Level: {}", level_data.name)),
+        LevelEntity,
+    )).id();
+
+    // Use procedural generation instead of scene loading
+    spawn_simple_test_level_fallback(&mut commands, meshes, materials);
+
+    // Level loaded event removed - unused dead code
+}
+
+fn spawn_simple_test_level_fallback(
+    commands: &mut Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {

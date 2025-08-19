@@ -6,18 +6,26 @@
         "despawn",
         "despawned",
         "Egui",
+        "gltf",
         "GTFO",
         "Kira",
         "leafwing",
         "lightmapped",
+        "luts",
+        "REGEN",
         "respawn",
         "respawned",
         "Respawning",
+        "serde",
         "shapecasting",
         "shapecasts",
         "srgb",
         "srgba",
+        "TIMESTEP",
+        "tonemapping",
         "wasd",
-        "wireframes"
+        "winit",
+        "wireframes",
+        "zstd"
     ]
 }

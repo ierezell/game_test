@@ -1,4 +1,5 @@
 use crate::combat::Health;
+use crate::events::{EnemyState as EventEnemyState, EnemyStateChangedEvent};
 use crate::menu::GameState;
 use crate::player::Player;
 use avian3d::prelude::*;
@@ -20,6 +21,46 @@ impl Plugin for EnemyPlugin {
             )
                 .run_if(in_state(GameState::InGame)),
         );
+    }
+}
+
+// Helper function to change enemy state and emit events
+fn change_enemy_state(
+    entity: Entity,
+    enemy: &mut Enemy,
+    new_state: EnemyState,
+    state_events: &mut EventWriter<EnemyStateChangedEvent>,
+) {
+    if enemy.state != new_state {
+        let old_state = match enemy.state {
+            EnemyState::Dormant => EventEnemyState::Dormant,
+            EnemyState::Idle => EventEnemyState::Patrolling, // Map Idle to Patrolling
+            EnemyState::Patrolling => EventEnemyState::Patrolling,
+            EnemyState::Investigating => EventEnemyState::Investigating,
+            EnemyState::Chasing => EventEnemyState::Chasing,
+            EnemyState::Attacking => EventEnemyState::Attacking,
+            EnemyState::Searching => EventEnemyState::Investigating, // Map Searching to Investigating
+            EnemyState::Dead => EventEnemyState::Dormant,            // Map Dead to Dormant
+        };
+
+        let new_event_state = match new_state {
+            EnemyState::Dormant => EventEnemyState::Dormant,
+            EnemyState::Idle => EventEnemyState::Patrolling,
+            EnemyState::Patrolling => EventEnemyState::Patrolling,
+            EnemyState::Investigating => EventEnemyState::Investigating,
+            EnemyState::Chasing => EventEnemyState::Chasing,
+            EnemyState::Attacking => EventEnemyState::Attacking,
+            EnemyState::Searching => EventEnemyState::Investigating,
+            EnemyState::Dead => EventEnemyState::Dormant,
+        };
+
+        state_events.write(EnemyStateChangedEvent {
+            entity,
+            old_state,
+            new_state: new_event_state,
+        });
+
+        enemy.state = new_state;
     }
 }
 
@@ -70,8 +111,10 @@ fn enemy_ai_system(
         Without<crate::player::Player>,
     >,
     player_query: Query<(Entity, &Transform), With<crate::player::Player>>,
+    mut state_events: EventWriter<EnemyStateChangedEvent>,
+    // Detection events removed - unused dead code
 ) {
-    for (_enemy_entity, mut enemy, mut ai, enemy_transform) in enemy_query.iter_mut() {
+    for (enemy_entity, mut enemy, mut ai, enemy_transform) in enemy_query.iter_mut() {
         let _current_time = time.elapsed_secs();
 
         let mut closest_player: Option<(Entity, f32)> = None;
@@ -106,9 +149,17 @@ fn enemy_ai_system(
 
                     // Wake up if player is within 3.0 units (close proximity)
                     if distance <= 3.0 {
-                        enemy.state = EnemyState::Chasing;
+                        change_enemy_state(
+                            enemy_entity,
+                            &mut enemy,
+                            EnemyState::Chasing,
+                            &mut state_events,
+                        );
                         enemy.target = Some(player_entity);
                         ai.last_known_player_position = Some(player_transform.translation);
+
+                        // Detection event removed - unused dead code
+
                         debug!(
                             "Enemy awakened by close proximity! Distance: {:.2}",
                             distance
@@ -126,12 +177,19 @@ fn enemy_ai_system(
             EnemyState::Idle | EnemyState::Patrolling => {
                 if let Some((player_entity, distance)) = closest_player {
                     if distance <= enemy.aggro_range {
-                        enemy.state = EnemyState::Chasing;
+                        change_enemy_state(
+                            enemy_entity,
+                            &mut enemy,
+                            EnemyState::Chasing,
+                            &mut state_events,
+                        );
                         enemy.target = Some(player_entity);
                         ai.last_known_player_position = player_query
                             .get(player_entity)
                             .ok()
                             .map(|(_, transform)| transform.translation);
+
+                        // Detection event removed - unused dead code
                     }
                 }
             }
@@ -289,21 +347,20 @@ fn enemy_attack_system(
     let current_time = time.elapsed_secs();
 
     for (mut enemy, _enemy_transform) in enemy_query.iter_mut() {
-        if enemy.state == EnemyState::Attacking {
-            if current_time - enemy.last_attack_time >= enemy.attack_cooldown {
-                if let Some(target_entity) = enemy.target {
-                    if let Ok(mut player_health) = player_query.get_mut(target_entity) {
-                        player_health.take_damage(enemy.attack_damage, current_time);
-                        enemy.last_attack_time = current_time;
+        if enemy.state == EnemyState::Attacking
+            && current_time - enemy.last_attack_time >= enemy.attack_cooldown {
+            if let Some(target_entity) = enemy.target {
+                if let Ok(mut player_health) = player_query.get_mut(target_entity) {
+                    player_health.take_damage(enemy.attack_damage, current_time);
+                    enemy.last_attack_time = current_time;
 
-                        debug!(
-                            "Enemy {} attacked player for {} damage!",
-                            match enemy.enemy_type {
-                                EnemyType::Striker => "Striker",
-                            },
-                            enemy.attack_damage
-                        );
-                    }
+                    debug!(
+                        "Enemy {} attacked player for {} damage!",
+                        match enemy.enemy_type {
+                            EnemyType::Striker => "Striker",
+                        },
+                        enemy.attack_damage
+                    );
                 }
             }
         }

@@ -1,1 +1,9 @@
-/target
+debug/
+target/
+**/*.rs.bk
+*.pdb
+.vscode/
+
+**/*.pem
+server.err
+server.log

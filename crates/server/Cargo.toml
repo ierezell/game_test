@@ -1,0 +1,17 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+common = { path = "../common" }
+lightyear.workspace = true
+bevy-inspector-egui.workspace = true
+leafwing-input-manager.workspace = true
+avian3d.workspace = true
+serde.workspace = true
+bevy.workspace = true
+
+
+[lints]
+workspace = true

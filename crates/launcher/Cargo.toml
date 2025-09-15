@@ -1,0 +1,45 @@
+[package]
+name = "launcher"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+common = { path = "../common" }
+server = { path = "../server" }
+client = { path = "../client" }
+lightyear.workspace = true
+bevy.workspace = true
+serde.workspace = true
+ron = "0.11.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["rt", "fs"] } # need async to load certs
+clap = { version = "4.5", features = ["derive"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.101"
+wasm-bindgen-futures = "0.4.40"
+console_error_panic_hook = "0.1.6"
+js-sys = "0.3.67"
+web-sys = { version = "0.3.77", features = [
+    "Location",
+    "UrlSearchParams",
+    "console",
+    "Document",
+    "Window",
+    "Element",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "RequestInit",
+    "RequestMode",
+    "Request",
+    "Response",
+    "Headers",
+] }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "launcher"
+path = "src/main.rs"

@@ -1,12 +1,10 @@
-use bevy::prelude::{
-    AppExtStates, Click, CommandsStatesExt, Entity, PluginGroup, Pointer, State, TextFont, Trigger,
-};
-use bevy::prelude::{IntoScheduleConfigs, Reflect, in_state};
+use bevy::prelude::IntoScheduleConfigs;
+use bevy::prelude::{Click, CommandsStatesExt, Entity, Pointer, TextFont, Trigger};
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
         AlignItems, App, BackgroundColor, Commands, Component, FlexDirection, JustifyContent, Node,
-        OnEnter, Plugin, Query, Res, ResMut, Text, UiRect, Val, With, default,
+        OnEnter, Plugin, Query, Text, UiRect, Val, With, default,
     },
 };
 
@@ -36,7 +34,6 @@ pub struct MainMenuStatusText;
 pub struct ConnectButton;
 
 fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<MainMenu>>) {
-    // Despawn any existing copies of the menu
     for entity in &q_main_menu {
         commands.entity(entity).despawn();
     }
@@ -95,13 +92,7 @@ fn despawn_main_menu_buttons(
 
 fn on_client_begin_loading(mut q_status_text: Query<&mut Text, With<MainMenuStatusText>>) {
     for mut text in q_status_text.iter_mut() {
-        text.0 = String::from("Loading");
-    }
-}
-
-fn on_client_begin_hosting(mut q_status_text: Query<&mut Text, With<MainMenuStatusText>>) {
-    for mut text in q_status_text.iter_mut() {
-        text.0 = String::from("Hosting");
+        text.0 = String::from("Loading game...");
     }
 }
 

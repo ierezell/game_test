@@ -169,7 +169,7 @@ async fn initialize_game() -> Result<(), JsValue> {
             auth,
             config: ClientNetcodeConfig {
                 token_expire_secs: -1,
-                client_timeout_secs: 5,
+                client_timeout_secs: 3,
                 ..default()
             },
             io: transport_config,

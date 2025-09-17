@@ -1,16 +1,15 @@
 use bevy::prelude::{
     App, Commands, CommandsStatesExt, Entity, Name, OnAdd, OnEnter, OnRemove, Plugin, Query, Res,
-    ResMut, Resource, Startup, State, Trigger, Update, With, default, error, info, warn,
+    ResMut, Resource, Startup, State, Trigger, Update, With, error, info,
 };
-use common::{CLIENT_ADDR, PRIVATE_KEY, PROTOCOL_ID, SERVER_ADDR};
-use lightyear::netcode::Key;
+
 use lightyear::prelude::client::*;
 use lightyear::prelude::*;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use shared::{CLIENT_ADDR, SERVER_ADDR, SHARED_SETTINGS};
 
 use crate::game_state::GameState;
-use common::NetTransport;
-use common::protocol::PlayerId;
+
+use shared::protocol::PlayerId;
 pub struct NetworkPlugin;
 
 #[derive(Resource, Default)]
@@ -32,7 +31,6 @@ impl Plugin for NetworkPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ConnectionState::default());
 
-        // Initialize AutoConnect resource if not already present
         if !app.world().contains_resource::<AutoConnect>() {
             app.insert_resource(AutoConnect::default());
         }
@@ -40,7 +38,6 @@ impl Plugin for NetworkPlugin {
         app.add_systems(OnEnter(GameState::ConnectingRemote), start_connection);
         app.add_systems(OnEnter(GameState::MainMenu), cleanup_client_connection);
 
-        // Conditionally add auto-connect system based on resource
         app.add_systems(Startup, conditional_auto_connect);
 
         app.add_systems(Update, monitor_connection_status);
@@ -84,15 +81,15 @@ fn start_connection(
 
     let auth = Authentication::Manual {
         server_addr: SERVER_ADDR,
-        client_id: client_id.0,
-        private_key: PRIVATE_KEY,
-        protocol_id: PROTOCOL_ID,
+        client_id: client_id.0.to_bits(),
+        private_key: SHARED_SETTINGS.private_key,
+        protocol_id: SHARED_SETTINGS.protocol_id,
     };
 
     let netcode_config = NetcodeConfig {
         num_disconnect_packets: 10,
         keepalive_packet_send_rate: 1.0 / 10.0,
-        client_timeout_secs: 15,
+        client_timeout_secs: 3,
         token_expire_secs: 30,
     };
 
@@ -150,7 +147,6 @@ fn log_connection_events(
             connection_state.logged_waiting = true;
         }
     } else {
-        // Reset state when not connecting
         if connection_state.was_connected || connection_state.logged_waiting {
             connection_state.was_connected = false;
             connection_state.logged_waiting = false;
@@ -163,7 +159,6 @@ fn monitor_connection_status(
     client_query: Query<Entity, With<Client>>,
     mut commands: Commands,
     current_state: Res<State<GameState>>,
-    connection_state: Res<ConnectionState>,
 ) {
     let current_state_value = current_state.get();
 
@@ -172,7 +167,7 @@ fn monitor_connection_status(
             // Don't monitor disconnection while initially connecting
             // Let the connection attempt complete first
         }
-        GameState::Loading | GameState::Spawning | GameState::Playing => {
+        GameState::Loading | GameState::Playing => {
             // Only check for disconnection in these states after initial connection
             if connected_query.is_empty() && !client_query.is_empty() {
                 info!(
@@ -193,7 +188,11 @@ fn handle_client_connected(
     mut commands: Commands,
     current_state: Res<State<GameState>>,
 ) {
-    info!("🎉 Client successfully connected to server!");
+    info!(
+        "🎉 Client {:?} successfully connected to server! in state {:?}",
+        trigger.target(),
+        current_state
+    );
     if *current_state.get() == GameState::ConnectingRemote {
         info!("📥 Transitioning to Loading state");
         commands.set_state(GameState::Loading);
@@ -207,7 +206,8 @@ fn handle_client_disconnected(
 ) {
     let current_state_value = current_state.get();
     info!(
-        "💔 Client disconnected from server while in state: {:?}",
+        "💔 Client {:?} disconnected from server while in state: {:?}",
+        trigger.target(),
         current_state_value
     );
 
@@ -217,7 +217,6 @@ fn handle_client_disconnected(
     }
 }
 
-// Conditional auto-connect system that respects CLI flag
 fn conditional_auto_connect(
     mut commands: Commands,
     current_state: Res<State<GameState>>,

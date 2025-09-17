@@ -1,25 +1,35 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::time::Duration;
 
-use avian3d::{PhysicsPlugins, prelude::PhysicsInterpolationPlugin};
-use bevy::prelude::{App, FixedPostUpdate, FixedUpdate, Or, Plugin, PluginGroup, Resource, With};
-use leafwing_input_manager::plugin::InputManagerPlugin;
+use bevy::prelude::{App, Or, Plugin, Resource, With};
+
+use avian3d::prelude::*;
+
 use lightyear::prelude::{Interpolated, PreSpawned, Predicted, Replicated, ReplicationGroup};
 use protocol::ProtocolPlugin;
 pub mod game_state;
 pub mod input;
 pub mod protocol;
-pub struct CommonPlugin;
-use crate::input::NetworkedInput;
+pub mod scene;
 
-// Server binds to all interfaces (0.0.0.0) to accept connections from any IP
+pub struct SharedSettings {
+    pub protocol_id: u64,
+    pub private_key: [u8; 32],
+}
+
+pub const SHARED_SETTINGS: SharedSettings = SharedSettings {
+    protocol_id: 0x1122334455667788,
+    private_key: [0; 32],
+};
+
+pub const FIXED_TIMESTEP_HZ: f64 = 64.0;
+pub const SEND_INTERVAL: Duration = Duration::from_millis(100);
+
 pub const SERVER_BIND_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 5001);
-// Client connects to localhost (127.0.0.1) for local testing
+
 pub const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 5001);
 pub const CLIENT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 4000);
-pub const PRIVATE_KEY: [u8; 32] = [0u8; 32];
-pub const PROTOCOL_ID: u64 = 0x1122334455667788;
 
-/// Supported transports for Lightyear networking
 #[derive(Clone, Debug, Resource)]
 pub enum NetTransport {
     Udp,
@@ -29,16 +39,12 @@ pub enum NetTransport {
     // WebSocket,
 }
 
-impl Plugin for CommonPlugin {
+#[derive(Clone)]
+pub struct SharedPlugin;
+
+impl Plugin for SharedPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
-            InputManagerPlugin::<NetworkedInput>::default(),
-            ProtocolPlugin,
-            PhysicsPlugins::new(FixedPostUpdate)
-                .build()
-                .disable::<PhysicsInterpolationPlugin>(),
-        ));
-        app.add_systems(FixedUpdate, input::shared_player_movement);
+        app.add_plugins((ProtocolPlugin, PhysicsPlugins::default()));
     }
 }
 

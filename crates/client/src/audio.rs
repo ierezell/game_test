@@ -2,9 +2,8 @@ use crate::game_state::GameState;
 
 use bevy::log::debug;
 use bevy::prelude::{
-    App, AppExtStates, AssetServer, Changed, Commands, CommandsStatesExt, Component, Entity,
-    EventReader, Handle, IntoScheduleConfigs, Local, OnEnter, Or, Plugin, PluginGroup, Query, Res,
-    ResMut, Resource, Startup, Time, Transform, Update, With, default, in_state,
+    App, AssetServer, Commands, Component, Handle, IntoScheduleConfigs, Local, OnEnter, Plugin,
+    Query, Res, Resource, Startup, Time, Update, in_state,
 };
 
 use bevy_kira_audio::AudioControl;
@@ -13,9 +12,6 @@ use bevy_kira_audio::prelude::{Audio, AudioPlugin};
 
 use avian3d::prelude::LinearVelocity;
 
-use std::collections::HashMap;
-
-// Simple PlayerController component for audio system
 #[derive(Component)]
 pub struct PlayerController {
     pub is_sprinting: bool,

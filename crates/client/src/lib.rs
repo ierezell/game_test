@@ -1,7 +1,7 @@
 pub mod app;
-mod audio;
-mod game_state;
-
-mod menu;
-mod network;
-mod render;
+pub mod audio;
+pub mod game_state;
+pub mod input;
+pub mod menu;
+pub mod network;
+pub mod render;

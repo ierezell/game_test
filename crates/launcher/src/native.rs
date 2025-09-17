@@ -4,10 +4,7 @@ use bevy::prelude::App;
 use clap::{Parser, ValueEnum};
 use client::app::{add_audio_to_client_app, add_basics_to_client_app, add_network_to_client_app};
 
-use common::NetTransport;
 use server::app::{add_basics_to_server_app, add_network_to_server_app};
-use std::time::Duration;
-const FIXED_TIMESTEP_HZ: f64 = 64.0;
 
 #[derive(Parser)]
 #[command(name = "yolo-game")]
@@ -31,13 +28,11 @@ struct Cli {
 enum Mode {
     Client,
     Server,
-    Host,
 }
 
 pub fn run() {
     let cli = Cli::parse();
     let asset_path = "../../assets".to_string();
-    let transport = NetTransport::Udp;
 
     match cli.mode {
         Mode::Client => {
@@ -47,10 +42,9 @@ pub fn run() {
                 );
             }
 
-            let transport = NetTransport::Udp;
             let mut client_app = App::new();
             add_basics_to_client_app(&mut client_app, asset_path.clone(), cli.autoconnect);
-            add_network_to_client_app(&mut client_app, cli.client_id, transport);
+            add_network_to_client_app(&mut client_app, cli.client_id);
 
             add_audio_to_client_app(&mut client_app);
 
@@ -58,17 +52,9 @@ pub fn run() {
         }
         Mode::Server => {
             let mut server_app = App::new();
-            add_basics_to_server_app(&mut server_app, asset_path, cli.headless);
+            add_basics_to_server_app(&mut server_app, cli.headless);
             add_network_to_server_app(&mut server_app);
             server_app.run();
-        }
-        Mode::Host => {
-            if cli.client_id == 0 {
-                panic!(
-                    "No --client_id specified for host mode. Specify a unique client id with --client_id <id>"
-                );
-            }
-            // TODO: Implement host mode (client + server in same app)
         }
     }
 }

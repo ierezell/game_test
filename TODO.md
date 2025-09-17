@@ -1,6 +1,5 @@
-- Bullets are not going where I look. 
-- Bullet goes through walls. 
-- Bullets made the enemy too much recoil... 
-- More rooms, GTFO/Nemesis like, connected
-
-https://github.com/Piefayth/lightyear-template
+- [ ] ensure https://cbournhonesque.github.io/lightyear/book/tutorial/advanced_systems.html
+- [ ] Ensure https://github.com/Piefayth/lightyear-template
+- [ ] Add ennemy
+- [ ] Add pwew pwew (guns)
+- [ ] Do we want that ? https://github.com/cBournhonesque/lightyear/tree/main/examples/client_replication  (bullets, player spawn etc..) 

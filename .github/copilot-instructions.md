@@ -11,6 +11,7 @@ You are an expert AI pair programmer. Your primary goal is to make precise, high
 
 You will read and follow the documentation of the dependencies: 
 - https://github.com/cBournhonesque/lightyear
+- https://github.com/cBournhonesque/lightyear/tree/main/examples
 - https://github.com/cBournhonesque/lightyear/releases
 - https://docs.rs/lightyear/latest/lightyear/index.html
 - https://cbournhonesque.github.io/lightyear/book/tutorial/build_client_server.html
@@ -20,6 +21,8 @@ You will read and follow the documentation of the dependencies:
 - https://bevy.org/
 - https://bevy.org/learn/quick-start/introduction/
 
+For Lightyear (networking-client-server), you will read thoroughly the examples as they provide the best practices.
+https://github.com/cBournhonesque/lightyear/tree/main/examples
 
 # Yolo-Game Development Instructions
 

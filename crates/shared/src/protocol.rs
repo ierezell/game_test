@@ -1,13 +1,12 @@
-//! Network protocol for multiplayer functionality.
-//! Based on Lightyear 0.23.0 API following examples from the official repository.
-
-use crate::input;
+use crate::input::{PlayerAction, PlayerVelocity};
+use crate::scene::*;
 
 use avian3d::prelude::{Position, Rotation};
-use bevy::prelude::{
-    App, Color, Component, Entity, Event, Plugin, Resource, Transform, Vec2, Vec3, default, info,
-};
+use bevy::prelude::{App, Entity, Event, Name, Plugin, Resource, Vec3, default, info};
+use leafwing_input_manager::prelude::ActionState;
 
+use lightyear::input::prelude::InputConfig;
+use lightyear::prelude::input::leafwing;
 use lightyear::prelude::*;
 use lightyear::prelude::{
     AppChannelExt, AppMessageExt, ChannelMode, ChannelSettings, NetworkDirection, PeerId,
@@ -16,10 +15,7 @@ use lightyear::prelude::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Resource, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerId(pub u64);
-
-#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerColor(pub Color);
+pub struct PlayerId(pub PeerId);
 
 #[derive(Event, Debug, Clone)]
 pub struct PlayerMovedEvent {
@@ -51,7 +47,6 @@ pub struct ClientLevelLoadComplete;
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ClientHostRequestShutdown;
 
-// Additional message types for better multiplayer experience
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PlayerJoined {
     pub player_id: PeerId,
@@ -69,41 +64,60 @@ pub struct ChatMessage {
     pub message: String,
 }
 
-// Channel types
 pub struct UnorderedReliableChannel;
 pub struct ReliableChannel;
 pub struct UnreliableChannel;
 
-// Protocol plugin
 #[derive(Clone)]
 pub struct ProtocolPlugin;
 
 impl Plugin for ProtocolPlugin {
     fn build(&self, app: &mut App) {
-        // Register components, messages, and inputs using the dedicated modules
-        // Register PlayerColor component
+        app.add_plugins(leafwing::InputPlugin::<PlayerAction> {
+            config: InputConfig::<PlayerAction> {
+                rebroadcast_inputs: true,
+                ..default()
+            },
+        });
+
+        app.register_component::<PlayerMarker>()
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
+
+        app.register_component::<FloorMarker>()
+            .add_prediction(PredictionMode::Once);
+
+        app.register_component::<WallMarker>()
+            .add_prediction(PredictionMode::Once);
+
         app.register_component::<PlayerColor>()
             .add_prediction(PredictionMode::Once)
             .add_interpolation(InterpolationMode::Once);
 
-        // Register physics components if available
+        app.register_component::<Name>()
+            .add_prediction(PredictionMode::Once);
+
         app.register_component::<Position>()
+            .add_delta_compression()
             .add_prediction(PredictionMode::Full)
             .add_interpolation(InterpolationMode::Full)
-            .add_interpolation_fn(|start, end, t| Position(start.0.lerp(end.0, t)))
-            .add_correction_fn(|start, end, t| Position(start.0.lerp(end.0, t)));
+            .add_linear_interpolation_fn();
 
         app.register_component::<Rotation>()
+            .add_delta_compression()
             .add_prediction(PredictionMode::Full)
             .add_interpolation(InterpolationMode::Full)
-            .add_interpolation_fn(|start, end, t| Rotation(*start.slerp(end, t)))
-            .add_correction_fn(|start, end, t| Rotation(*start.slerp(end, t)));
+            .add_linear_interpolation_fn();
 
-        // Register events
+        app.register_component::<PlayerVelocity>()
+            .add_prediction(PredictionMode::Full);
+
+        app.register_component::<ActionState<PlayerAction>>()
+            .add_prediction(PredictionMode::Full);
+
         app.add_event::<PlayerMovedEvent>()
             .add_event::<SoundTriggeredEvent>();
 
-        // Existing messages
         app.add_message::<ServerWelcome>()
             .add_direction(NetworkDirection::ServerToClient);
         app.add_message::<ClientLevelLoadComplete>()
@@ -111,7 +125,6 @@ impl Plugin for ProtocolPlugin {
         app.add_message::<ClientHostRequestShutdown>()
             .add_direction(NetworkDirection::ClientToServer);
 
-        // New messages
         app.add_message::<PlayerJoined>()
             .add_direction(NetworkDirection::ServerToClient);
         app.add_message::<PlayerLeft>()
@@ -119,7 +132,6 @@ impl Plugin for ProtocolPlugin {
         app.add_message::<ChatMessage>()
             .add_direction(NetworkDirection::Bidirectional);
 
-        // Channel configurations
         app.add_channel::<UnorderedReliableChannel>(ChannelSettings {
             mode: ChannelMode::UnorderedReliable(ReliableSettings::default()),
             ..default()

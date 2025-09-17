@@ -1,18 +1,19 @@
 use crate::audio::GameAudioPlugin;
 use crate::game_state::GameLifecyclePlugin;
+use crate::input::ClientInputPlugin;
 use crate::menu::MenuPlugin;
 use crate::network::NetworkPlugin;
 use crate::render::RenderPlugin;
-use bevy::asset::AssetMetaCheck;
+
 use bevy::prelude::*;
-use bevy::prelude::{AssetMode, AssetPlugin, IntoScheduleConfigs, default};
+use bevy::prelude::{AssetPlugin, default};
 use bevy::window::{Window, WindowPlugin};
-use common::protocol::{PlayerId, ProtocolPlugin};
-use common::{CommonPlugin, NetTransport};
 use lightyear::prelude::client::ClientPlugins;
-use lightyear::prelude::client::*;
-use lightyear::prelude::input::InputBuffer;
+
 use lightyear::prelude::*;
+use shared::SharedPlugin;
+use shared::protocol::PlayerId;
+use std::time::Duration;
 
 #[derive(Resource, Clone)]
 pub struct ClientAssetPath(pub String);
@@ -22,39 +23,34 @@ pub fn add_basics_to_client_app(app: &mut App, asset_path: String, autoconnect: 
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Client".to_string(),
+                    title: "Yolo Game - Client".to_string(),
                     ..default()
                 }),
                 ..default()
             })
             .set(AssetPlugin {
                 file_path: asset_path,
-
                 ..Default::default()
             }),
         RenderPlugin,
         MenuPlugin,
-        CommonPlugin,
+        SharedPlugin,
         GameLifecyclePlugin,
+        ClientInputPlugin,
     ));
 
-    // Insert AutoConnect resource based on CLI flag
     app.insert_resource(crate::network::AutoConnect(autoconnect));
 
     app
 }
 
-pub fn add_network_to_client_app(
-    app: &mut App,
-    client_id: u64,
-    transport: NetTransport,
-) -> &mut App {
-    // Lightyear's ClientPlugins
+pub fn add_network_to_client_app(app: &mut App, client_id: u64) -> &mut App {
+    // Lightyear's ClientPlugins - following examples pattern
     app.add_plugins(ClientPlugins {
-        tick_duration: std::time::Duration::from_secs_f64(1.0 / 60.0),
+        tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
-    app.insert_resource(PlayerId(client_id));
-    app.insert_resource(transport);
+    app.insert_resource(PlayerId(PeerId::Local(client_id)));
+
     app.add_plugins(NetworkPlugin);
     app
 }

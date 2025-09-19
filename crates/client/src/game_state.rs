@@ -1,9 +1,11 @@
+use bevy::log::debug;
 use bevy::prelude::{
     App, AppExtStates, Commands, CommandsStatesExt, Entity, OnExit, Or, Plugin, Query, Res, State,
-    States, Update, With, info,
+    States, Update, With,
 };
 use lightyear::prelude::{Confirmed, Controlled, Predicted, Replicated};
-use shared::scene::{FloorMarker, PlayerMarker, WallMarker};
+use shared::protocol::PlayerId;
+use shared::scene::{FloorMarker, WallMarker};
 
 #[derive(States, Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub enum GameState {
@@ -29,10 +31,10 @@ fn check_assets_loaded(
     current_state: Res<State<GameState>>,
     floor_query: Query<Entity, With<FloorMarker>>,
     wall_query: Query<Entity, With<WallMarker>>,
-    controlled_player_query: Query<Entity, (With<PlayerMarker>, With<Controlled>, With<Predicted>)>,
-    all_player_query: Query<Entity, With<PlayerMarker>>,
-    predicted_query: Query<Entity, (With<PlayerMarker>, With<Predicted>)>,
-    controlled_query: Query<Entity, (With<PlayerMarker>, With<Controlled>)>,
+    controlled_player_query: Query<Entity, (With<PlayerId>, With<Controlled>, With<Predicted>)>,
+    all_player_query: Query<Entity, With<PlayerId>>,
+    predicted_query: Query<Entity, (With<PlayerId>, With<Predicted>)>,
+    controlled_query: Query<Entity, (With<PlayerId>, With<Controlled>)>,
 ) {
     if *current_state.get() == GameState::Loading {
         let has_floor = !floor_query.is_empty();
@@ -40,7 +42,7 @@ fn check_assets_loaded(
         let has_controlled_player = !controlled_player_query.is_empty();
         let has_controlled_player_any = !controlled_query.is_empty();
 
-        info!(
+        debug!(
             "🔍 Loading check - Floor: {}, Walls: {}, All Players: {}, Predicted Players: {}, Controlled Players: {}, Controlled+Predicted: {}",
             has_floor,
             wall_query.iter().count(),
@@ -51,7 +53,7 @@ fn check_assets_loaded(
         );
 
         if has_floor && has_walls && (has_controlled_player || has_controlled_player_any) {
-            info!(
+            debug!(
                 "🎮 Scene and player loaded! Floor: {}, Walls: {}, Controlled Player: {} - Transitioning to Playing",
                 has_floor,
                 wall_query.iter().count(),

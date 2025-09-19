@@ -9,12 +9,6 @@ pub const WALL_THICKNESS: f32 = 0.5;
 pub const FLOOR_THICKNESS: f32 = 0.2;
 
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerMarker;
-
-#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerColor(pub Color);
-
-#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct FloorMarker;
 
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -65,7 +59,7 @@ impl Default for PlayerPhysicsBundle {
 
         Self {
             collider: Collider::capsule(PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS),
-            rigid_body: RigidBody::Kinematic,
+            rigid_body: RigidBody::Dynamic,
         }
     }
 }

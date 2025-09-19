@@ -33,7 +33,7 @@ fn startup_server(mut commands: Commands, transport: Res<NetTransport>) {
                     NetcodeServer::new(netcode_config),
                     LocalAddr(SERVER_BIND_ADDR),
                     ServerUdpIo::default(),
-                    DeltaManager::default(), // Enable delta compression
+                    // DeltaManager::default(), // Enable delta compression
                 ))
                 .id();
 

@@ -50,6 +50,7 @@ lightyear = { version = "0.24.2", features = [
     "udp",
     "replication",
     "crossbeam",
+    "prediction",
     "frame_interpolation",
     "lightyear_aeronet",
     "netcode",

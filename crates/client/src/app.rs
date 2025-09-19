@@ -1,4 +1,5 @@
 use crate::audio::GameAudioPlugin;
+use crate::camera::CameraPlugin;
 use crate::game_state::GameLifecyclePlugin;
 use crate::input::ClientInputPlugin;
 use crate::menu::MenuPlugin;
@@ -10,20 +11,31 @@ use bevy::prelude::{AssetPlugin, default};
 use bevy::window::{Window, WindowPlugin};
 use lightyear::prelude::client::ClientPlugins;
 
-use lightyear::prelude::*;
 use shared::SharedPlugin;
-use shared::protocol::PlayerId;
 use std::time::Duration;
 
 #[derive(Resource, Clone)]
 pub struct ClientAssetPath(pub String);
 
-pub fn add_basics_to_client_app(app: &mut App, asset_path: String, autoconnect: bool) -> &mut App {
+#[derive(Resource)]
+pub struct LocalPlayerId(pub u64);
+
+pub fn add_basics_to_client_app(
+    app: &mut App,
+    asset_path: String,
+    autoconnect: bool,
+    client_id: u64,
+) -> &mut App {
+    let offset_x = (100.0 * (client_id as f32)) as i32;
+    let offset_y = (100.0 * (client_id as f32)) as i32;
+
     app.add_plugins((
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Yolo Game - Client".to_string(),
+                    title: format!("Yolo Game - Client {}", client_id),
+                    resolution: (1280., 720.).into(), // Better resolution for first-person camera
+                    position: WindowPosition::At((offset_x, offset_y).into()),
                     ..default()
                 }),
                 ..default()
@@ -37,6 +49,7 @@ pub fn add_basics_to_client_app(app: &mut App, asset_path: String, autoconnect: 
         SharedPlugin,
         GameLifecyclePlugin,
         ClientInputPlugin,
+        CameraPlugin,
     ));
 
     app.insert_resource(crate::network::AutoConnect(autoconnect));
@@ -45,11 +58,12 @@ pub fn add_basics_to_client_app(app: &mut App, asset_path: String, autoconnect: 
 }
 
 pub fn add_network_to_client_app(app: &mut App, client_id: u64) -> &mut App {
-    // Lightyear's ClientPlugins - following examples pattern
+    // Lightyear's ClientPlugins
     app.add_plugins(ClientPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
-    app.insert_resource(PlayerId(PeerId::Local(client_id)));
+    app.insert_resource(LocalPlayerId(client_id));
+    debug!("🔧 Client configured with Netcode PeerId: {}", client_id);
 
     app.add_plugins(NetworkPlugin);
     app

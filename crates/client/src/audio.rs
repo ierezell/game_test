@@ -1,5 +1,6 @@
 use crate::game_state::GameState;
 
+use avian3d::prelude::LinearVelocity;
 use bevy::log::debug;
 use bevy::prelude::{
     App, AssetServer, Commands, Component, Handle, IntoScheduleConfigs, Local, OnEnter, Plugin,
@@ -9,8 +10,6 @@ use bevy::prelude::{
 use bevy_kira_audio::AudioControl;
 use bevy_kira_audio::AudioSource;
 use bevy_kira_audio::prelude::{Audio, AudioPlugin};
-
-use avian3d::prelude::LinearVelocity;
 
 #[derive(Component)]
 pub struct PlayerController {
@@ -27,7 +26,10 @@ impl Plugin for GameAudioPlugin {
             .add_systems(OnEnter(GameState::Playing), cleanup_audio)
             .add_systems(
                 Update,
-                (play_footsteps, play_ambient_sounds).run_if(in_state(GameState::Playing)),
+                (
+                    play_footsteps,
+                    play_ambient_sounds,
+                ).run_if(in_state(GameState::Playing)),
             );
     }
 }

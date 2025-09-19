@@ -43,11 +43,14 @@ pub fn run() {
             }
 
             let mut client_app = App::new();
-            add_basics_to_client_app(&mut client_app, asset_path.clone(), cli.autoconnect);
+            add_basics_to_client_app(
+                &mut client_app,
+                asset_path.clone(),
+                cli.autoconnect,
+                cli.client_id,
+            );
             add_network_to_client_app(&mut client_app, cli.client_id);
-
             add_audio_to_client_app(&mut client_app);
-
             client_app.run();
         }
         Mode::Server => {

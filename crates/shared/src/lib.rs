@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use bevy::prelude::{App, Or, Plugin, Resource, With};
+use bevy::prelude::{App, Or, Plugin, Resource, Vec3, With};
 
 use avian3d::prelude::*;
 
@@ -10,6 +10,7 @@ use protocol::ProtocolPlugin;
 pub mod game_state;
 pub mod input;
 pub mod protocol;
+pub mod render;
 pub mod scene;
 
 pub struct SharedSettings {
@@ -45,6 +46,9 @@ pub struct SharedPlugin;
 impl Plugin for SharedPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((ProtocolPlugin, PhysicsPlugins::default()));
+
+        // Configure gravity for realistic physics simulation
+        app.insert_resource(Gravity(Vec3::new(0.0, -9.81, 0.0)));
     }
 }
 

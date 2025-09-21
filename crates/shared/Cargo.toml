@@ -12,8 +12,5 @@ serde.workspace = true
 bevy.workspace = true
 bevy-inspector-egui.workspace = true
 
-[target.'cfg(all(any(target_arch = "wasm32", target_arch = "wasm64"), target_os = "unknown"))'.dependencies]
-lightyear = { workspace = true, features = ["webtransport"] }
-
 [lints]
 workspace = true

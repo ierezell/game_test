@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use leafwing_input_manager::prelude::*;
 use lightyear::connection::client::Connected;
 use lightyear::connection::server::Started;
+
 use lightyear::prelude::server::*;
 use lightyear::prelude::*;
 use shared::input::{PLAYER_CAPSULE_HEIGHT, PlayerAction, shared_player_movement};
@@ -13,8 +14,6 @@ pub struct ServerGameplayPlugin;
 
 impl Plugin for ServerGameplayPlugin {
     fn build(&self, app: &mut App) {
-        // Wait for server to be started before setting up scene
-
         app.add_observer(setup_scene_on_server_start);
         app.add_observer(handle_connected);
         app.add_systems(FixedUpdate, server_player_movement);
@@ -39,30 +38,37 @@ fn handle_connected(
 
     let y = (PLAYER_CAPSULE_HEIGHT / 2.0) + 1.0; // Capsule center at half-height above ground
 
-    info!("🎯 Setting up prediction target for peer_id: {:?}", peer_id);
+    info!(
+        "🎯 Setting up prediction target for client_id: {:?} (peer_id: {})",
+        client_id, peer_id
+    );
+    info!(
+        "🔍 Client entity: {:?}, RemoteId bits: {}",
+        trigger.target(),
+        client_id.to_bits()
+    );
 
     let player = commands
         .spawn((
-            Replicate::to_clients(NetworkTarget::All),
-            PredictionTarget::to_clients(NetworkTarget::Single(peer_id)),
-            InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(peer_id)),
-            ControlledBy {
-                owner: trigger.target(),
-                lifetime: Default::default(),
-            },
-            Name::new("Player"),
+            Name::new(format!("Player_{}", client_id.to_bits())),
             PlayerId(peer_id),
             LinearVelocity::default(),
             Position(Vec3::new(x, y, z)),
             Rotation::default(),
-            PlayerPhysicsBundle::default(),
             PlayerColor(color),
-            ActionState::<PlayerAction>::default(),
-            // Note: PlayerCamera is client-only, not replicated
+            ControlledBy {
+                owner: trigger.target(),
+                lifetime: Default::default(),
+            },
+            Replicate::to_clients(NetworkTarget::All),
+            PredictionTarget::to_clients(NetworkTarget::Single(peer_id)),
+            InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(peer_id)),
+            // Not preplicated
+            PlayerPhysicsBundle::default(),
         ))
         .id();
 
-    info!("Created player entity {player:?} for client {client_id:?} with prediction enabled");
+    info!("Created player entity {player:?} for client {client_id:?}");
     info!(
         "🔍 ControlledBy owner set to client entity: {:?}",
         trigger.target()
@@ -75,7 +81,7 @@ pub fn server_player_movement(
         (
             Entity,
             &mut Position,
-            &Rotation,
+            &mut Rotation,
             &mut LinearVelocity,
             &ActionState<PlayerAction>,
         ),
@@ -84,7 +90,8 @@ pub fn server_player_movement(
         (With<PlayerId>, Without<Predicted>, Without<Confirmed>),
     >,
 ) {
-    for (entity, mut position, rotation, mut velocity, action_state) in player_query.iter_mut() {
+    for (entity, mut position, mut rotation, mut velocity, action_state) in player_query.iter_mut()
+    {
         let axis_pair = action_state.axis_pair(&PlayerAction::Move);
         if axis_pair != Vec2::ZERO || !action_state.get_pressed().is_empty() {
             debug!(
@@ -95,7 +102,13 @@ pub fn server_player_movement(
             );
         }
 
-        shared_player_movement(&time, action_state, &mut position, rotation, &mut velocity);
+        shared_player_movement(
+            &time,
+            action_state,
+            &mut position,
+            &mut rotation,
+            &mut velocity,
+        );
     }
 }
 

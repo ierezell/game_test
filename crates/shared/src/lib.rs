@@ -46,8 +46,6 @@ pub struct SharedPlugin;
 impl Plugin for SharedPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((ProtocolPlugin, PhysicsPlugins::default()));
-
-        // Configure gravity for realistic physics simulation
         app.insert_resource(Gravity(Vec3::new(0.0, -9.81, 0.0)));
     }
 }

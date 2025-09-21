@@ -23,7 +23,6 @@ pub struct ProtocolPlugin;
 
 impl Plugin for ProtocolPlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<PlayerAction>();
         app.add_plugins(leafwing::InputPlugin::<PlayerAction> {
             config: InputConfig::<PlayerAction> {
                 rebroadcast_inputs: true,
@@ -59,7 +58,8 @@ impl Plugin for ProtocolPlugin {
 
         app.register_component::<LinearVelocity>()
             .add_prediction(PredictionMode::Full)
-            .add_interpolation(InterpolationMode::Full);
+            .add_interpolation(InterpolationMode::Full)
+            .add_interpolation_fn(|a, b, t| LinearVelocity(a.0.lerp(b.0, t)));
 
         debug!("✅ Protocol plugin initialized with components, messages, inputs, and events");
     }

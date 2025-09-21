@@ -62,6 +62,7 @@ pub fn add_network_to_client_app(app: &mut App, client_id: u64) -> &mut App {
     app.add_plugins(ClientPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
+    
     app.insert_resource(LocalPlayerId(client_id));
     debug!("🔧 Client configured with Netcode PeerId: {}", client_id);
 
@@ -73,3 +74,4 @@ pub fn add_audio_to_client_app(app: &mut App) -> &mut App {
     app.add_plugins(GameAudioPlugin);
     app
 }
+

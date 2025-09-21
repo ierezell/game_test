@@ -1,8 +1,8 @@
 use avian3d::prelude::*;
 
+use crate::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-
 pub const ROOM_SIZE: f32 = 20.0;
 pub const WALL_HEIGHT: f32 = 3.0;
 pub const WALL_THICKNESS: f32 = 0.5;
@@ -48,18 +48,23 @@ impl Default for WallPhysicsBundle {
 }
 
 #[derive(Bundle)]
+
 pub struct PlayerPhysicsBundle {
     pub collider: Collider,
     pub rigid_body: RigidBody,
+    pub linear_damping: LinearDamping,
+    pub angular_damping: AngularDamping,
+    pub locked_axes: LockedAxes, // Prevent capsizing
 }
 
 impl Default for PlayerPhysicsBundle {
     fn default() -> Self {
-        use crate::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
-
         Self {
             collider: Collider::capsule(PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS),
             rigid_body: RigidBody::Dynamic,
+            linear_damping: LinearDamping(8.0),
+            angular_damping: AngularDamping(8.0),
+            locked_axes: LockedAxes::new().lock_rotation_z().lock_rotation_x(),
         }
     }
 }

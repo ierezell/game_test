@@ -116,6 +116,9 @@ fn start_connection(
             PeerAddr(SERVER_ADDR),
             Link::new(None),
             ReplicationReceiver::default(),
+            // 🔧 FIX: Manually add PredictionManager like examples show
+            PredictionManager::default(),
+            InterpolationManager::default(),
             netcode_client,
             UdpIo::default(),
             Name::new(format!("Client {}", client_id.0)),

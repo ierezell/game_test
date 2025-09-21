@@ -2,13 +2,14 @@ use crate::game_state::GameState;
 use bevy::log::debug;
 use bevy::prelude::IntoScheduleConfigs;
 
+use bevy::prelude::OnEnter;
 use bevy::prelude::{Click, CommandsStatesExt, Entity, Pointer, TextFont, Trigger};
-use bevy::prelude::{OnEnter, OnExit};
+use bevy::render::camera::Camera;
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
         AlignItems, App, BackgroundColor, Camera2d, Commands, Component, FlexDirection,
-        JustifyContent, Node, Plugin, Query, Text, Transform, UiRect, Val, With, default,
+        JustifyContent, Name, Node, Plugin, Query, Text, Transform, UiRect, Val, With, default,
     },
 };
 
@@ -24,7 +25,7 @@ impl Plugin for MainMenuPlugin {
         );
         app.add_systems(OnEnter(GameState::Loading), on_client_begin_loading);
         app.add_systems(OnEnter(GameState::Playing), despawn_main_menu_ui);
-        app.add_systems(OnExit(GameState::MainMenu), despawn_menu_camera);
+        // app.add_systems(OnExit(GameState::MainMenu), despawn_menu_camera);
     }
 }
 #[derive(Component)]
@@ -32,15 +33,17 @@ pub struct MenuCamera;
 
 fn spawn_menu_camera(mut commands: Commands) {
     // Bevy 0.16: Use Camera2d component directly for UI rendering
-    commands.spawn((Camera2d, Transform::from_xyz(0.0, 0.0, 999.9), MenuCamera));
+    commands.spawn((
+        Camera {
+            order: 1,
+            ..default()
+        },
+        Camera2d,
+        Transform::from_xyz(0.0, 0.0, 999.9),
+        MenuCamera,
+        Name::new("MenuCamera"),
+    ));
     debug!("Spawned fallback 2D camera for menu (z=999.9)");
-}
-
-fn despawn_menu_camera(mut commands: Commands, q: Query<Entity, With<MenuCamera>>) {
-    for entity in &q {
-        commands.entity(entity).despawn();
-    }
-    debug!("Despawned fallback 2D camera for menu");
 }
 
 #[derive(Component)]

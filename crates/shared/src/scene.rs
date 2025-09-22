@@ -64,7 +64,7 @@ impl Default for PlayerPhysicsBundle {
             rigid_body: RigidBody::Dynamic,
             linear_damping: LinearDamping(8.0),
             angular_damping: AngularDamping(8.0),
-            locked_axes: LockedAxes::new().lock_rotation_z().lock_rotation_x(),
+            locked_axes: LockedAxes::ROTATION_LOCKED.unlock_rotation_y(),
         }
     }
 }

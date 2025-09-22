@@ -1,6 +1,7 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
+use bevy::window::{CursorGrabMode, PrimaryWindow};
 use leafwing_input_manager::prelude::*;
 
 use lightyear::prelude::*;
@@ -20,27 +21,31 @@ impl Plugin for ClientInputPlugin {
 }
 
 fn handle_player_spawn(
-    trigger: Trigger<OnAdd, (PlayerId, Predicted)>,
-    player_query: Query<(&Name, &PlayerColor), (With<Predicted>, With<Controlled>)>,
+    trigger: Trigger<OnAdd, (Predicted, Controlled, PlayerId)>,
+    player_query: Query<
+        (&Name, &PlayerColor, &PlayerId),
+        (With<Predicted>, With<Controlled>, With<PlayerId>),
+    >,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    local_player_id: Res<crate::app::LocalPlayerId>,
 ) {
     let entity = trigger.target();
-    if let Ok((name, color)) = player_query.single() {
-        commands.entity(entity).insert((
-            Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
-            MeshMaterial3d(materials.add(color.0)),
-            // PlayerPhysicsBundle::default(),
-        ));
+    if let Ok((name, color, player_id)) = player_query.get(entity) {
+        if player_id.0.to_bits() == local_player_id.0 {
+            info!(
+                "🚀 Attaching mesh and input map to PREDICTED player: {:?} ({:?})",
+                entity, name
+            );
+            commands.entity(entity).insert((
+                Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
+                MeshMaterial3d(materials.add(color.0)),
+            ));
 
-        let input_map = get_player_input_map();
-
-        commands.entity(entity).insert(input_map);
-        info!(
-            "🚀 PREDICTED SPAWN! Entity: {:?} Player: {:?} ",
-            entity, name,
-        );
+            let input_map = get_player_input_map();
+            commands.entity(entity).insert(input_map);
+        }
     }
 }
 
@@ -69,7 +74,6 @@ fn client_player_movement(
     mut player_query: Query<
         (
             Entity,
-            &mut Position,
             &mut Rotation,
             &mut LinearVelocity,
             &ActionState<PlayerAction>,
@@ -77,8 +81,7 @@ fn client_player_movement(
         (With<PlayerId>, With<Predicted>, With<Controlled>),
     >,
 ) {
-    for (entity, mut position, mut rotation, mut velocity, action_state) in player_query.iter_mut()
-    {
+    for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
         let move_axis_pair = action_state.axis_pair(&PlayerAction::Move);
         let look_axis_pair = action_state.axis_pair(&PlayerAction::Look);
 
@@ -87,19 +90,13 @@ fn client_player_movement(
             || !action_state.get_pressed().is_empty()
             || look_axis_pair != Vec2::ZERO
         {
-            info!(
+            debug!(
                 "🎮 Player input: Entity {:?}, Move: {:?}, Look: {:?}",
                 entity, move_axis_pair, look_axis_pair
             );
         }
 
-        shared_player_movement(
-            &time,
-            action_state,
-            &mut position,
-            &mut rotation,
-            &mut velocity,
-        );
+        shared_player_movement(&time, action_state, &mut rotation, &mut velocity);
     }
 }
 
@@ -113,4 +110,10 @@ fn get_player_input_map() -> InputMap<PlayerAction> {
     .with_dual_axis(PlayerAction::Look, MouseMove::default());
 
     input_map
+}
+
+pub fn is_cursor_locked(window_query: &Query<&Window, With<PrimaryWindow>>) -> bool {
+    window_query.single().map_or(false, |w| {
+        w.cursor_options.grab_mode == CursorGrabMode::Locked
+    })
 }

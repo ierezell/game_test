@@ -1,4 +1,4 @@
-use avian3d::prelude::{LinearVelocity, Position, Rotation};
+use avian3d::prelude::{LinearVelocity, Rotation};
 use bevy::prelude::{Reflect, Res, Time, Vec2, Vec3};
 
 use leafwing_input_manager::Actionlike;
@@ -34,13 +34,12 @@ pub const JUMP_HEIGHT: f32 = 1.5;
 pub const MOUSE_SENSITIVITY: f32 = 0.005;
 const LOOK_DEADZONE_SQUARED: f32 = 0.000001; // 0.001^2
 const MOVEMENT_DEADZONE_SQUARED: f32 = 0.000001;
-const PITCH_LIMIT_RADIANS: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
-const ROTATION_SMOOTHING_RATE: f32 = 25.0; // Higher = more responsive
+pub const PITCH_LIMIT_RADIANS: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
+pub const ROTATION_SMOOTHING_RATE: f32 = 25.0; // Higher = more responsive
 
 pub fn shared_player_movement(
     time: &Res<Time>,
     action_state: &ActionState<PlayerAction>,
-    position: &mut Position,
     rotation: &mut Rotation,
     velocity: &mut LinearVelocity,
 ) {
@@ -53,7 +52,6 @@ pub fn shared_player_movement(
     }
 
     update_player_velocity(velocity, rotation, move_input);
-    update_position_from_velocity(position, velocity, dt);
 }
 
 #[inline]
@@ -80,19 +78,15 @@ fn get_look_input(action_state: &ActionState<PlayerAction>) -> Option<Vec2> {
     }
 }
 
-fn update_position_from_velocity(position: &mut Position, velocity: &LinearVelocity, dt: f32) {
-    position.0 += velocity.0 * dt;
-}
-
 fn update_player_rotation(rotation: &mut Rotation, mouse_delta: Vec2, dt: f32) {
     let yaw_delta = -mouse_delta.x * MOUSE_SENSITIVITY;
-    let pitch_delta = -mouse_delta.y * MOUSE_SENSITIVITY;
+    // let pitch_delta = mouse_delta.y * MOUSE_SENSITIVITY;
 
-    let (mut yaw, mut pitch, _) = rotation.0.to_euler(EulerRot::YXZ);
+    let (mut yaw, _, _) = rotation.0.to_euler(EulerRot::YXZ);
     yaw = (yaw + yaw_delta).rem_euclid(std::f32::consts::TAU);
-    pitch = (pitch + pitch_delta).clamp(-PITCH_LIMIT_RADIANS, PITCH_LIMIT_RADIANS);
+    // pitch = (pitch + pitch_delta).clamp(-PITCH_LIMIT_RADIANS, PITCH_LIMIT_RADIANS);
 
-    let target_rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+    let target_rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0.0, 0.0);
 
     let smoothing_factor = 1.0 - (-ROTATION_SMOOTHING_RATE * dt).exp();
     rotation.0 = rotation.0.slerp(target_rotation, smoothing_factor);

@@ -50,12 +50,14 @@ fn handle_connected(
 
     let player = commands
         .spawn((
+            // Replicated
             Name::new(format!("Player_{}", client_id.to_bits())),
             PlayerId(peer_id),
             LinearVelocity::default(),
             Position(Vec3::new(x, y, z)),
             Rotation::default(),
             PlayerColor(color),
+            // Lightyear config
             ControlledBy {
                 owner: trigger.target(),
                 lifetime: Default::default(),
@@ -63,7 +65,7 @@ fn handle_connected(
             Replicate::to_clients(NetworkTarget::All),
             PredictionTarget::to_clients(NetworkTarget::Single(peer_id)),
             InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(peer_id)),
-            // Not preplicated
+            // Should not be replicated
             PlayerPhysicsBundle::default(),
         ))
         .id();
@@ -80,8 +82,7 @@ pub fn server_player_movement(
     mut player_query: Query<
         (
             Entity,
-            &mut Position,
-            &mut Rotation,
+            &mut Rotation, // Position is now controlled by the physics engine
             &mut LinearVelocity,
             &ActionState<PlayerAction>,
         ),
@@ -90,8 +91,7 @@ pub fn server_player_movement(
         (With<PlayerId>, Without<Predicted>, Without<Confirmed>),
     >,
 ) {
-    for (entity, mut position, mut rotation, mut velocity, action_state) in player_query.iter_mut()
-    {
+    for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
         let axis_pair = action_state.axis_pair(&PlayerAction::Move);
         if axis_pair != Vec2::ZERO || !action_state.get_pressed().is_empty() {
             debug!(
@@ -102,13 +102,7 @@ pub fn server_player_movement(
             );
         }
 
-        shared_player_movement(
-            &time,
-            action_state,
-            &mut position,
-            &mut rotation,
-            &mut velocity,
-        );
+        shared_player_movement(&time, action_state, &mut rotation, &mut velocity);
     }
 }
 

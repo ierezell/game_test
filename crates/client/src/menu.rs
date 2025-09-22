@@ -1,5 +1,7 @@
 use crate::game_state::GameState;
+
 use bevy::log::debug;
+use bevy::log::info;
 use bevy::prelude::IntoScheduleConfigs;
 
 use bevy::prelude::OnEnter;
@@ -9,13 +11,13 @@ use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
         AlignItems, App, BackgroundColor, Camera2d, Commands, Component, FlexDirection,
-        JustifyContent, Name, Node, Plugin, Query, Text, Transform, UiRect, Val, With, default,
+        JustifyContent, Name, Node, Plugin, Query, Text, UiRect, Val, With, default,
     },
 };
 
-pub struct MainMenuPlugin;
+pub struct MenuPlugin;
 
-impl Plugin for MainMenuPlugin {
+impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::MainMenu), spawn_main_menu_ui);
         app.add_systems(OnEnter(GameState::MainMenu), spawn_menu_camera);
@@ -25,11 +27,19 @@ impl Plugin for MainMenuPlugin {
         );
         app.add_systems(OnEnter(GameState::Loading), on_client_begin_loading);
         app.add_systems(OnEnter(GameState::Playing), despawn_main_menu_ui);
-        // app.add_systems(OnExit(GameState::MainMenu), despawn_menu_camera);
+        app.add_systems(OnEnter(GameState::Playing), despawn_menu_camera);
     }
 }
+
 #[derive(Component)]
 pub struct MenuCamera;
+
+fn despawn_menu_camera(mut commands: Commands, q_menu_camera: Query<Entity, With<MenuCamera>>) {
+    for entity in &q_menu_camera {
+        commands.entity(entity).despawn();
+    }
+    info!("Despawned menu camera");
+}
 
 fn spawn_menu_camera(mut commands: Commands) {
     // Bevy 0.16: Use Camera2d component directly for UI rendering
@@ -38,12 +48,11 @@ fn spawn_menu_camera(mut commands: Commands) {
             order: 1,
             ..default()
         },
-        Camera2d,
-        Transform::from_xyz(0.0, 0.0, 999.9),
+        Camera2d::default(),
         MenuCamera,
         Name::new("MenuCamera"),
     ));
-    debug!("Spawned fallback 2D camera for menu (z=999.9)");
+    debug!("Spawned fallback 2D camera for menu (z=10.0)");
 }
 
 #[derive(Component)]

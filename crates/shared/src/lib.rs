@@ -1,11 +1,10 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use bevy::prelude::{App, Or, Plugin, Resource, Vec3, With};
+use bevy::prelude::{App, Plugin, Resource};
 
 use avian3d::prelude::*;
 
-use lightyear::prelude::{Interpolated, PreSpawned, Predicted, Replicated, ReplicationGroup};
 use protocol::ProtocolPlugin;
 pub mod game_state;
 pub mod input;
@@ -46,11 +45,5 @@ pub struct SharedPlugin;
 impl Plugin for SharedPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((ProtocolPlugin, PhysicsPlugins::default()));
-        app.insert_resource(Gravity(Vec3::new(0.0, -9.81, 0.0)));
     }
 }
-
-pub const REPLICATION_GROUP_PREDICTED: ReplicationGroup = ReplicationGroup::new_id(42);
-
-pub type Simulated = Or<(With<Predicted>, With<PreSpawned>, With<Replicated>)>;
-pub type Rendered = Or<(Simulated, With<Interpolated>)>;

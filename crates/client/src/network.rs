@@ -4,8 +4,13 @@ use bevy::prelude::{
     ResMut, Resource, Startup, State, Trigger, Update, With, error,
 };
 
-use lightyear::prelude::client::*;
-use lightyear::prelude::*;
+use lightyear::prelude::client::{NetcodeClient, NetcodeConfig};
+
+use lightyear::prelude::{
+    Authentication, Client, Connect, Connected, InterpolationManager, Link, LocalAddr, PeerAddr,
+    PredictionManager, ReplicationReceiver, UdpIo,
+};
+
 use shared::{SERVER_ADDR, SHARED_SETTINGS};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 

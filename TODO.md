@@ -1,3 +1,5 @@
+- [ ] When rotating player x and change to clamped 0 or 3.142
+- [ ] Iddle y constantly change of +- 0.01
 - [ ] ensure https://cbournhonesque.github.io/lightyear/book/tutorial/advanced_systems.html
 - [ ] Ensure https://github.com/Piefayth/lightyear-template
 - [ ] Add ennemy

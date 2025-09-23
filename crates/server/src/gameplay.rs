@@ -17,6 +17,22 @@ impl Plugin for ServerGameplayPlugin {
         app.add_observer(setup_scene_on_server_start);
         app.add_observer(handle_connected);
         app.add_systems(FixedUpdate, server_player_movement);
+        app.add_systems(FixedUpdate, debug_player_position);
+    }
+}
+
+fn debug_player_position(
+    query: Query<(&Name, &Position, &LinearVelocity), With<PlayerId>>,
+    timeline: Single<&LocalTimeline, With<Server>>,
+) {
+    for (name, pos, vel) in query.iter() {
+        info!(
+            "S:{:?} pos:{:?} vel:{:?} tick:{:?}",
+            name,
+            pos,
+            vel,
+            timeline.tick()
+        );
     }
 }
 
@@ -35,8 +51,7 @@ fn handle_connected(
     let angle: f32 = client_id.to_bits() as f32 * 6.28 / 4.0; // Distribute around circle
     let x = 5.0 * angle.cos();
     let z = 5.0 * angle.sin();
-
-    let y = (PLAYER_CAPSULE_HEIGHT / 2.0) + 1.0; // Capsule center at half-height above ground
+    let y = PLAYER_CAPSULE_HEIGHT + 10.0;
 
     info!(
         "🎯 Setting up prediction target for client_id: {:?} (peer_id: {})",
@@ -78,12 +93,13 @@ fn handle_connected(
 }
 
 pub fn server_player_movement(
-    time: Res<Time>,
     mut player_query: Query<
         (
             Entity,
             &mut Rotation, // Position is now controlled by the physics engine
+            &Position,
             &mut LinearVelocity,
+            &mut ExternalForce,
             &ActionState<PlayerAction>,
         ),
         // Based on lightyear examples - avoid applying movement to predicted/confirmed entities
@@ -91,7 +107,9 @@ pub fn server_player_movement(
         (With<PlayerId>, Without<Predicted>, Without<Confirmed>),
     >,
 ) {
-    for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
+    for (entity, mut rotation, position, mut velocity, mut external_force, action_state) in
+        player_query.iter_mut()
+    {
         let axis_pair = action_state.axis_pair(&PlayerAction::Move);
         if axis_pair != Vec2::ZERO || !action_state.get_pressed().is_empty() {
             debug!(
@@ -102,7 +120,13 @@ pub fn server_player_movement(
             );
         }
 
-        shared_player_movement(&time, action_state, &mut rotation, &mut velocity);
+        shared_player_movement(
+            action_state,
+            &position,
+            &mut rotation,
+            &mut velocity,
+            &mut external_force,
+        );
     }
 }
 

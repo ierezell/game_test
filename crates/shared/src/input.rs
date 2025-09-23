@@ -1,5 +1,5 @@
-use avian3d::prelude::{LinearVelocity, Rotation};
-use bevy::prelude::{Reflect, Res, Time, Vec2, Vec3};
+use avian3d::prelude::{ExternalForce, LinearVelocity, Position, Rotation};
+use bevy::prelude::{Reflect, Vec2, Vec3};
 
 use leafwing_input_manager::Actionlike;
 
@@ -38,20 +38,21 @@ pub const PITCH_LIMIT_RADIANS: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
 pub const ROTATION_SMOOTHING_RATE: f32 = 25.0; // Higher = more responsive
 
 pub fn shared_player_movement(
-    time: &Res<Time>,
     action_state: &ActionState<PlayerAction>,
+    position: &Position,
     rotation: &mut Rotation,
     velocity: &mut LinearVelocity,
+    _external_force: &mut ExternalForce,
 ) {
-    let dt = time.delta_secs();
-
     let move_input = get_movement_input(action_state);
 
     if let Some(mouse_delta) = get_look_input(action_state) {
-        update_player_rotation(rotation, mouse_delta, dt);
+        update_player_rotation(rotation, mouse_delta);
     }
 
-    update_player_velocity(velocity, rotation, move_input);
+    update_player_velocity(velocity, rotation, position, move_input);
+    // OR
+    // apply_movement_force(external_force, rotation, move_input, velocity);
 }
 
 #[inline]
@@ -78,33 +79,47 @@ fn get_look_input(action_state: &ActionState<PlayerAction>) -> Option<Vec2> {
     }
 }
 
-fn update_player_rotation(rotation: &mut Rotation, mouse_delta: Vec2, dt: f32) {
+fn update_player_rotation(rotation: &mut Rotation, mouse_delta: Vec2) {
     let yaw_delta = -mouse_delta.x * MOUSE_SENSITIVITY;
-    // let pitch_delta = mouse_delta.y * MOUSE_SENSITIVITY;
-
-    let (mut yaw, _, _) = rotation.0.to_euler(EulerRot::YXZ);
-    yaw = (yaw + yaw_delta).rem_euclid(std::f32::consts::TAU);
-    // pitch = (pitch + pitch_delta).clamp(-PITCH_LIMIT_RADIANS, PITCH_LIMIT_RADIANS);
-
-    let target_rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0.0, 0.0);
-
-    let smoothing_factor = 1.0 - (-ROTATION_SMOOTHING_RATE * dt).exp();
-    rotation.0 = rotation.0.slerp(target_rotation, smoothing_factor);
+    let yaw_delta_quat = Quat::from_rotation_y(yaw_delta);
+    rotation.0 = yaw_delta_quat * rotation.0;
+    rotation.0 = rotation.0.normalize();
 }
 
-fn update_player_velocity(velocity: &mut LinearVelocity, rotation: &Rotation, move_input: Vec2) {
-    if move_input == Vec2::ZERO {
-        velocity.0.x = 0.0;
-        velocity.0.z = 0.0;
-        return;
-    }
-
-    let (yaw, _, _) = rotation.0.to_euler(EulerRot::YXZ);
-    let yaw_rotation = Quat::from_rotation_y(yaw);
+fn update_player_velocity(
+    velocity: &mut LinearVelocity,
+    rotation: &Rotation,
+    position: &Position,
+    move_input: Vec2,
+) {
+    let yaw_rotation = rotation.0;
 
     let input_direction = Vec3::new(move_input.x, 0.0, -move_input.y);
     let world_direction = yaw_rotation * input_direction;
-
-    velocity.0.x = world_direction.x * MAX_SPEED;
-    velocity.0.z = world_direction.z * MAX_SPEED;
+    let desired_velocity = world_direction * MAX_SPEED;
+    if position.0.y <= (PLAYER_CAPSULE_HEIGHT + 0.5) && velocity.0.y <= 0.0 {
+        velocity.0 = Vec3::new(desired_velocity.x, 0.0, desired_velocity.z);
+    } else {
+        velocity.0 = Vec3::new(desired_velocity.x, velocity.0.y, desired_velocity.z);
+    }
 }
+
+// fn apply_movement_force(
+//     external_force: &mut ExternalForce,
+//     rotation: &Rotation,
+//     move_input: Vec2,
+//     current_velocity: &LinearVelocity,
+// ) {
+//     let yaw_rotation = rotation.0;
+//     let input_direction = Vec3::new(move_input.x, 0.0, -move_input.y);
+//     let world_direction = yaw_rotation * input_direction;
+//     let desired_velocity = world_direction * MAX_SPEED;
+
+//     // Calculate force needed to reach desired velocity
+//     let current_horizontal = Vec3::new(current_velocity.0.x, 0.0, current_velocity.0.z);
+//     let velocity_difference = desired_velocity - current_horizontal;
+
+//     // Apply force (adjust multiplier as needed)
+//     let force_multiplier = 10.0; // Tune this value
+//     external_force.set_force(velocity_difference * force_multiplier);
+// }

@@ -9,6 +9,7 @@ use shared::input::{
     PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS, PlayerAction, shared_player_movement,
 };
 use shared::protocol::{PlayerColor, PlayerId};
+use shared::scene::PlayerPhysicsBundle;
 
 pub struct ClientInputPlugin;
 
@@ -17,6 +18,25 @@ impl Plugin for ClientInputPlugin {
         app.add_systems(FixedUpdate, client_player_movement);
         app.add_observer(handle_player_spawn);
         app.add_observer(handle_other_players_spawn);
+        app.add_systems(FixedUpdate, debug_player_position);
+    }
+}
+
+fn debug_player_position(
+    player_query: Query<
+        (&Name, &Position, &LinearVelocity),
+        (With<PlayerId>, With<Predicted>, With<Controlled>),
+    >,
+    timeline: Single<&LocalTimeline, With<PredictionManager>>,
+) {
+    for (name, position, linear_velocity) in player_query.iter() {
+        info!(
+            "C:{:?} pos:{:?} vel:{:?} tick:{:?}",
+            name,
+            position,
+            linear_velocity,
+            timeline.tick()
+        );
     }
 }
 
@@ -35,12 +55,13 @@ fn handle_player_spawn(
     if let Ok((name, color, player_id)) = player_query.get(entity) {
         if player_id.0.to_bits() == local_player_id.0 {
             info!(
-                "🚀 Attaching mesh and input map to PREDICTED player: {:?} ({:?})",
+                "🚀 Attaching mesh, physics, and input map to PREDICTED player: {:?} ({:?})",
                 entity, name
             );
             commands.entity(entity).insert((
                 Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
                 MeshMaterial3d(materials.add(color.0)),
+                PlayerPhysicsBundle::default(),
             ));
 
             let input_map = get_player_input_map();
@@ -70,18 +91,21 @@ fn handle_other_players_spawn(
 }
 
 fn client_player_movement(
-    time: Res<Time>,
     mut player_query: Query<
         (
             Entity,
             &mut Rotation,
+            &Position,
             &mut LinearVelocity,
+            &mut ExternalForce,
             &ActionState<PlayerAction>,
         ),
         (With<PlayerId>, With<Predicted>, With<Controlled>),
     >,
 ) {
-    for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
+    for (entity, mut rotation, position, mut velocity, mut external_force, action_state) in
+        player_query.iter_mut()
+    {
         let move_axis_pair = action_state.axis_pair(&PlayerAction::Move);
         let look_axis_pair = action_state.axis_pair(&PlayerAction::Look);
 
@@ -96,7 +120,13 @@ fn client_player_movement(
             );
         }
 
-        shared_player_movement(&time, action_state, &mut rotation, &mut velocity);
+        shared_player_movement(
+            action_state,
+            &position,
+            &mut rotation,
+            &mut velocity,
+            &mut external_force,
+        );
     }
 }
 

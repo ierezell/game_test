@@ -96,10 +96,8 @@ pub fn server_player_movement(
     mut player_query: Query<
         (
             Entity,
-            &mut Rotation, // Position is now controlled by the physics engine
-            &Position,
+            &mut Rotation,
             &mut LinearVelocity,
-            &mut ExternalForce,
             &ActionState<PlayerAction>,
         ),
         // Based on lightyear examples - avoid applying movement to predicted/confirmed entities
@@ -107,9 +105,7 @@ pub fn server_player_movement(
         (With<PlayerId>, Without<Predicted>, Without<Confirmed>),
     >,
 ) {
-    for (entity, mut rotation, position, mut velocity, mut external_force, action_state) in
-        player_query.iter_mut()
-    {
+    for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
         let axis_pair = action_state.axis_pair(&PlayerAction::Move);
         if axis_pair != Vec2::ZERO || !action_state.get_pressed().is_empty() {
             debug!(
@@ -120,13 +116,7 @@ pub fn server_player_movement(
             );
         }
 
-        shared_player_movement(
-            action_state,
-            &position,
-            &mut rotation,
-            &mut velocity,
-            &mut external_force,
-        );
+        shared_player_movement(action_state, &mut rotation, &mut velocity);
     }
 }
 

@@ -4,13 +4,13 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 use leafwing_input_manager::prelude::*;
 
+use crate::app::LocalPlayerId;
 use lightyear::prelude::*;
 use shared::input::{
     PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS, PlayerAction, shared_player_movement,
 };
 use shared::protocol::{PlayerColor, PlayerId};
 use shared::scene::PlayerPhysicsBundle;
-
 pub struct ClientInputPlugin;
 
 impl Plugin for ClientInputPlugin {
@@ -49,7 +49,7 @@ fn handle_player_spawn(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    local_player_id: Res<crate::app::LocalPlayerId>,
+    local_player_id: Res<LocalPlayerId>,
 ) {
     let entity = trigger.target();
     if let Ok((name, color, player_id)) = player_query.get(entity) {
@@ -95,17 +95,13 @@ fn client_player_movement(
         (
             Entity,
             &mut Rotation,
-            &Position,
             &mut LinearVelocity,
-            &mut ExternalForce,
             &ActionState<PlayerAction>,
         ),
         (With<PlayerId>, With<Predicted>, With<Controlled>),
     >,
 ) {
-    for (entity, mut rotation, position, mut velocity, mut external_force, action_state) in
-        player_query.iter_mut()
-    {
+    for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
         let move_axis_pair = action_state.axis_pair(&PlayerAction::Move);
         let look_axis_pair = action_state.axis_pair(&PlayerAction::Look);
 
@@ -120,13 +116,7 @@ fn client_player_movement(
             );
         }
 
-        shared_player_movement(
-            action_state,
-            &position,
-            &mut rotation,
-            &mut velocity,
-            &mut external_force,
-        );
+        shared_player_movement(action_state, &mut rotation, &mut velocity);
     }
 }
 

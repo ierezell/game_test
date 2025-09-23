@@ -30,48 +30,40 @@ impl Plugin for ProtocolPlugin {
                 ..default()
             },
         });
-        app.register_component::<PlayerId>()
-            .add_prediction(PredictionMode::Once)
-            // .add_interpolation(InterpolationMode::Once)
-            ;
 
-        app.register_component::<FloorMarker>();
-        app.register_component::<WallMarker>();
+        app.register_component::<PlayerId>()
+            .add_prediction(PredictionMode::Once);
+
+        app.register_component::<FloorMarker>()
+            .add_prediction(PredictionMode::Once);
+
+        app.register_component::<WallMarker>()
+            .add_prediction(PredictionMode::Once);
+
         app.register_component::<PlayerColor>()
-            .add_prediction(PredictionMode::Once)
-            // .add_interpolation(InterpolationMode::Once)
-            ;
+            .add_prediction(PredictionMode::Once);
 
         app.register_component::<Name>()
-            .add_prediction(PredictionMode::Once)
-            // .add_interpolation(InterpolationMode::Once)
-            ;
+            .add_prediction(PredictionMode::Once);
 
         app.register_component::<Rotation>()
-                        // .add_delta_compression()
-                        .add_prediction(PredictionMode::Full)
-                        // .add_interpolation(InterpolationMode::Full)
-                        // .add_linear_interpolation_fn()
-                        ;
+            .add_prediction(PredictionMode::Full);
 
         app.register_component::<Position>()
-            // .add_delta_compression()
             .add_prediction(PredictionMode::Full)
-            .add_should_rollback(|old: &Position, new: &Position| {
-                (old.0.y - new.0.y).abs() > 2.0
-            })
-            // .add_interpolation(InterpolationMode::Full)
-            // .add_linear_interpolation_fn()
-            ;
+            .add_should_rollback(|old: &Position, new: &Position| (old.0.y - new.0.y).abs() > 2.0);
 
         app.register_component::<LinearVelocity>()
             .add_prediction(PredictionMode::Full)
             .add_should_rollback(|old: &LinearVelocity, new: &LinearVelocity| {
                 (old.0.y - new.0.y).abs() > 0.5
             });
-        // .add_interpolation(InterpolationMode::Full);
-        // .add_interpolation_fn(|a, b, t| LinearVelocity(a.0.lerp(b.0, t)))
 
         debug!("✅ Protocol plugin initialized with components, messages, inputs, and events");
     }
 }
+
+// .add_delta_compression()
+// .add_linear_interpolation_fn()
+// .add_interpolation(InterpolationMode::Full);
+// .add_interpolation_fn(|a, b, t| LinearVelocity(a.0.lerp(b.0, t)))

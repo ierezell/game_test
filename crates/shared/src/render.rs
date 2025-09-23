@@ -2,38 +2,38 @@ use avian3d::prelude::Position;
 use bevy::{
     color::palettes::css::{GREEN, WHITE},
     prelude::{
-        Added, Assets, Capsule3d, Commands, Cuboid, DirectionalLight, Entity, Mesh, Mesh3d,
-        MeshMaterial3d, Name, Query, ResMut, StandardMaterial, Transform, Vec3, Without, debug,
-        default,
+        Assets, Commands, Cuboid, DirectionalLight, Entity, Mesh, Mesh3d, MeshMaterial3d, Name,
+        OnAdd, Query, ResMut, StandardMaterial, Transform, Trigger, Vec3, Without, debug, default,
     },
 };
 
-use crate::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
-use crate::protocol::PlayerId;
 use crate::scene::{
     FLOOR_THICKNESS, FloorMarker, ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS, WallMarker,
 };
 
 pub fn add_floor_visuals(
+    trigger: Trigger<OnAdd, FloorMarker>,
+    floor_query: Query<(Entity, &Position)>,
     mut commands: Commands,
-    floor_query: Query<(Entity, &Position), Added<FloorMarker>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    for (entity, position) in &floor_query {
-        commands.entity(entity).insert((
-            Mesh3d(meshes.add(Cuboid::new(
-                ROOM_SIZE * 2.0,
-                FLOOR_THICKNESS,
-                ROOM_SIZE * 2.0,
-            ))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: GREEN.into(), // Changed from GRAY to GREEN for visibility
-                ..default()
-            })),
-        ));
-        debug!("Added floor visuals at position: {:?}", position.0);
-    }
+    let Ok((entity, position)) = floor_query.get(trigger.target()) else {
+        debug!("Failed to get floor entity for visual addition.");
+        return;
+    };
+    commands.entity(entity).insert((
+        Mesh3d(meshes.add(Cuboid::new(
+            ROOM_SIZE * 2.0,
+            FLOOR_THICKNESS,
+            ROOM_SIZE * 2.0,
+        ))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: GREEN.into(), // Changed from GRAY to GREEN for visibility
+            ..default()
+        })),
+    ));
+    debug!("Added floor visuals at position: {:?}", position.0);
 }
 
 pub fn setup_lighting(mut commands: Commands) {
@@ -59,48 +59,33 @@ pub fn setup_lighting(mut commands: Commands) {
 }
 
 pub fn add_wall_visuals(
+    trigger: Trigger<OnAdd, WallMarker>,
+    wall_query: Query<(Entity, &Position, &Name), Without<Mesh3d>>,
     mut commands: Commands,
-    wall_query: Query<(Entity, &Position, &Name), (Added<WallMarker>, Without<Mesh3d>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    for (entity, position, name) in &wall_query {
-        let (width, height, depth) =
-            if name.as_str().contains("North") || name.as_str().contains("South") {
-                (ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS)
-            } else {
-                (WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE)
-            };
+    let Ok((entity, position, name)) = wall_query.get(trigger.target()) else {
+        debug!("Failed to get wall entity for visual addition.");
+        return;
+    };
+    let (width, height, depth) =
+        if name.as_str().contains("North") || name.as_str().contains("South") {
+            (ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS)
+        } else {
+            (WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE)
+        };
 
-        commands.entity(entity).insert((
-            Mesh3d(meshes.add(Cuboid::new(width, height, depth))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: WHITE.into(),
-                ..default()
-            })),
-        ));
-        debug!(
-            "Added wall visuals for {} at position: {:?}",
-            name.as_str(),
-            position.0
-        );
-    }
-}
-
-pub fn add_player_visuals(
-    mut commands: Commands,
-    player_query: Query<(Entity, &Position), (Added<PlayerId>, Without<Mesh3d>)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    for (entity, position) in &player_query {
-        commands.entity(entity).insert((
-            Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: GREEN.into(),
-                ..default()
-            })),
-        ));
-        debug!("Added player visuals at position: {:?}", position.0);
-    }
+    commands.entity(entity).insert((
+        Mesh3d(meshes.add(Cuboid::new(width, height, depth))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: WHITE.into(),
+            ..default()
+        })),
+    ));
+    debug!(
+        "Added wall visuals for {} at position: {:?}",
+        name.as_str(),
+        position.0
+    );
 }

@@ -10,7 +10,8 @@ pub struct RenderPlugin;
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, (setup_lighting, spawn_debug_camera));
-        app.add_systems(Update, (add_floor_visuals, add_wall_visuals));
+        app.add_observer(add_floor_visuals);
+        app.add_observer(add_wall_visuals);
         app.insert_resource(EguiGlobalSettings {
             auto_create_primary_context: false,
             ..Default::default()

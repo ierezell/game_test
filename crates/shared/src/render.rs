@@ -1,9 +1,10 @@
 use avian3d::prelude::Position;
 use bevy::{
     color::palettes::css::{GREEN, WHITE},
+    pbr::{AmbientLight, DirectionalLight},
     prelude::{
-        Assets, Commands, Cuboid, DirectionalLight, Entity, Mesh, Mesh3d, MeshMaterial3d, Name,
-        OnAdd, Query, ResMut, StandardMaterial, Transform, Trigger, Vec3, Without, debug, default,
+        Assets, Commands, Cuboid, Entity, Mesh, Mesh3d, MeshMaterial3d, Name, OnAdd, Query, ResMut,
+        StandardMaterial, Transform, Trigger, Vec3, Without, debug, default,
     },
 };
 
@@ -38,7 +39,7 @@ pub fn add_floor_visuals(
 
 pub fn setup_lighting(mut commands: Commands) {
     // Add ambient lighting for better visibility
-    commands.insert_resource(bevy::pbr::AmbientLight {
+    commands.insert_resource(AmbientLight {
         color: WHITE.into(),
         brightness: 0.3,
         affects_lightmapped_meshes: true,

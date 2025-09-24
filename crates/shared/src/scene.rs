@@ -81,3 +81,41 @@ pub fn color_from_id(id: u64) -> Color {
     let hue = (id as f32 * 137.508) % 360.0;
     Color::hsl(hue, 0.8, 0.6)
 }
+
+pub fn add_floor_physics(
+    trigger: Trigger<OnAdd, FloorMarker>,
+    floor_query: Query<Entity>,
+    mut commands: Commands,
+) {
+    let Ok(entity) = floor_query.get(trigger.target()) else {
+        debug!("Failed to get floor entity for visual addition.");
+        return;
+    };
+    commands
+        .entity(entity)
+        .insert((FloorPhysicsBundle::default(),));
+    debug!("Added floor physics at position");
+}
+
+pub fn add_wall_physics(
+    trigger: Trigger<OnAdd, WallMarker>,
+    wall_query: Query<(Entity, &Name), Without<Collider>>,
+    mut commands: Commands,
+) {
+    let Ok((entity, name)) = wall_query.get(trigger.target()) else {
+        debug!("Failed to get wall entity for visual addition.");
+        return;
+    };
+    let (width, height, depth) =
+        if name.as_str().contains("North") || name.as_str().contains("South") {
+            (ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS)
+        } else {
+            (WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE)
+        };
+
+    commands.entity(entity).insert(WallPhysicsBundle {
+        collider: Collider::cuboid(width, height, depth),
+        rigid_body: RigidBody::Static,
+    });
+    debug!("Added wall physics for {}", name.as_str());
+}

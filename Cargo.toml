@@ -1,11 +1,5 @@
 [workspace]
-members = [
-    "crates/client",
-    "crates/shared",
-    "crates/launcher",
-    "crates/server",
-    # "crates/local_game",
-]
+members = ["crates/client", "crates/shared", "crates/launcher", "crates/server"]
 resolver = "2"
 default-members = ["crates/launcher"]
 lints = {}

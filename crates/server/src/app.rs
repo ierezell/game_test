@@ -43,6 +43,7 @@ pub fn add_basics_to_server_app(app: &mut App, headless: bool) -> &mut App {
 pub fn add_network_to_server_app(app: &mut App) -> &mut App {
     app.add_plugins(ServerPlugins {
         // Lightyear plugins
+        // tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
     app.add_plugins((NetworkPlugin, ServerGameplayPlugin));

@@ -10,7 +10,7 @@ use shared::input::{
     PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS, PlayerAction, shared_player_movement,
 };
 use shared::protocol::{PlayerColor, PlayerId};
-use shared::scene::PlayerPhysicsBundle;
+use shared::scene::*;
 pub struct ClientInputPlugin;
 
 impl Plugin for ClientInputPlugin {
@@ -19,6 +19,8 @@ impl Plugin for ClientInputPlugin {
         app.add_observer(handle_player_spawn);
         app.add_observer(handle_other_players_spawn);
         app.add_systems(FixedUpdate, debug_player_position);
+        app.add_observer(add_wall_physics);
+        app.add_observer(add_floor_physics);
     }
 }
 

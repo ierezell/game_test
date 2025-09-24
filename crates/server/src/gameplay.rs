@@ -18,6 +18,8 @@ impl Plugin for ServerGameplayPlugin {
         app.add_observer(handle_connected);
         app.add_systems(FixedUpdate, server_player_movement);
         app.add_systems(FixedUpdate, debug_player_position);
+        app.add_observer(add_floor_physics);
+        app.add_observer(add_wall_physics);
     }
 }
 
@@ -128,7 +130,6 @@ fn setup_scene_on_server_start(_trigger: Trigger<OnAdd, Started>, mut commands: 
         FloorMarker,
         Position(Vec3::new(0.0, -FLOOR_THICKNESS / 2.0, 0.0)),
         Rotation::default(),
-        FloorPhysicsBundle::default(),
         Replicate::to_clients(NetworkTarget::All),
     ));
 
@@ -168,19 +169,11 @@ fn setup_scene_on_server_start(_trigger: Trigger<OnAdd, Started>, mut commands: 
     ];
 
     for (position, name) in wall_positions {
-        let mut wall_bundle = WallPhysicsBundle::default();
-
-        // Adjust collider for north/south walls (rotate 90 degrees)
-        if name.contains("North") || name.contains("South") {
-            wall_bundle.collider = Collider::cuboid(ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS);
-        }
-
         commands.spawn((
             Name::new(name),
             WallMarker,
             Position(position),
             Rotation::default(),
-            wall_bundle,
             Replicate::to_clients(NetworkTarget::All),
         ));
     }

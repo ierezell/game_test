@@ -32,7 +32,7 @@ fn debug_player_position(
     timeline: Single<&LocalTimeline, With<PredictionManager>>,
 ) {
     for (name, position, linear_velocity) in player_query.iter() {
-        info!(
+        debug!(
             "C:{:?} pos:{:?} vel:{:?} tick:{:?}",
             name,
             position,

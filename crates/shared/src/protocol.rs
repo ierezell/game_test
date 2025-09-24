@@ -32,29 +32,40 @@ impl Plugin for ProtocolPlugin {
         });
 
         app.register_component::<PlayerId>()
-            .add_prediction(PredictionMode::Once);
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
         app.register_component::<FloorMarker>()
-            .add_prediction(PredictionMode::Once);
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
         app.register_component::<WallMarker>()
-            .add_prediction(PredictionMode::Once);
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
         app.register_component::<PlayerColor>()
-            .add_prediction(PredictionMode::Once);
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
         app.register_component::<Name>()
-            .add_prediction(PredictionMode::Once);
+            .add_prediction(PredictionMode::Once)
+            .add_interpolation(InterpolationMode::Once);
 
         app.register_component::<Rotation>()
-            .add_prediction(PredictionMode::Full);
+            .add_prediction(PredictionMode::Full)
+            .add_interpolation(InterpolationMode::Full)
+            .add_linear_interpolation_fn();
 
         app.register_component::<Position>()
             .add_prediction(PredictionMode::Full)
+            .add_interpolation(InterpolationMode::Full)
+            .add_linear_interpolation_fn()
             .add_should_rollback(|old: &Position, new: &Position| (old.0.y - new.0.y).abs() > 2.0);
 
         app.register_component::<LinearVelocity>()
             .add_prediction(PredictionMode::Full)
+            .add_interpolation(InterpolationMode::Full)
+            .add_interpolation_fn(|a, b, t| LinearVelocity(a.0.lerp(b.0, t)))
             .add_should_rollback(|old: &LinearVelocity, new: &LinearVelocity| {
                 (old.0.y - new.0.y).abs() > 0.5
             });

@@ -9,9 +9,7 @@ lightyear.workspace = true
 bevy-inspector-egui.workspace = true
 leafwing-input-manager.workspace = true
 avian3d.workspace = true
-serde.workspace = true
 bevy.workspace = true
-crossbeam-channel.workspace = true
 bevy_kira_audio = { version = "0.23.0", features = ["mp3", "wav", "ogg"] }
 
 [lints]

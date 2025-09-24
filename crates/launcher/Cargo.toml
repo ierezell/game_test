@@ -9,8 +9,6 @@ server = { path = "../server" }
 client = { path = "../client" }
 lightyear.workspace = true
 bevy.workspace = true
-serde.workspace = true
-ron = "0.11.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1", features = ["rt", "fs"] } # need async to load certs

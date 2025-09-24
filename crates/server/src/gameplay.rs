@@ -28,7 +28,7 @@ fn debug_player_position(
     timeline: Single<&LocalTimeline, With<Server>>,
 ) {
     for (name, pos, vel) in query.iter() {
-        info!(
+        debug!(
             "S:{:?} pos:{:?} vel:{:?} tick:{:?}",
             name,
             pos,

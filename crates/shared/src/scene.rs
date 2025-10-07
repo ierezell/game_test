@@ -1,7 +1,11 @@
-use avian3d::prelude::*;
+use avian3d::prelude::{
+    AngularDamping, Collider, Friction, LinearDamping, LockedAxes, Mass, Restitution, RigidBody,
+};
 
 use crate::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
-use bevy::prelude::*;
+use bevy::prelude::{
+    Add, Bundle, Color, Commands, Component, Entity, Name, On, Query, Without, debug,
+};
 use serde::{Deserialize, Serialize};
 pub const ROOM_SIZE: f32 = 20.0;
 pub const WALL_HEIGHT: f32 = 3.0;
@@ -50,7 +54,6 @@ impl Default for WallPhysicsBundle {
 }
 
 #[derive(Bundle)]
-
 pub struct PlayerPhysicsBundle {
     pub rigid_body: RigidBody,
     pub collider: Collider,
@@ -83,11 +86,11 @@ pub fn color_from_id(id: u64) -> Color {
 }
 
 pub fn add_floor_physics(
-    trigger: Trigger<OnAdd, FloorMarker>,
+    trigger: On<Add, FloorMarker>,
     floor_query: Query<Entity>,
     mut commands: Commands,
 ) {
-    let Ok(entity) = floor_query.get(trigger.target()) else {
+    let Ok(entity) = floor_query.get(trigger.entity) else {
         debug!("Failed to get floor entity for visual addition.");
         return;
     };
@@ -98,11 +101,11 @@ pub fn add_floor_physics(
 }
 
 pub fn add_wall_physics(
-    trigger: Trigger<OnAdd, WallMarker>,
+    trigger: On<Add, WallMarker>,
     wall_query: Query<(Entity, &Name), Without<Collider>>,
     mut commands: Commands,
 ) {
-    let Ok((entity, name)) = wall_query.get(trigger.target()) else {
+    let Ok((entity, name)) = wall_query.get(trigger.entity) else {
         debug!("Failed to get wall entity for visual addition.");
         return;
     };

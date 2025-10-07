@@ -1,4 +1,6 @@
-use bevy::prelude::*;
+use bevy::prelude::{
+    App, Camera, Camera2d, Commands, Component, Plugin, Startup, default,
+};
 use bevy_inspector_egui::{
     bevy_egui::{EguiGlobalSettings, EguiPlugin, PrimaryEguiContext},
     quick::WorldInspectorPlugin,

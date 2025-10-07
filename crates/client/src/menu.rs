@@ -5,8 +5,7 @@ use bevy::log::info;
 use bevy::prelude::IntoScheduleConfigs;
 
 use bevy::prelude::OnEnter;
-use bevy::prelude::{Click, CommandsStatesExt, Entity, Pointer, TextFont, Trigger};
-use bevy::render::camera::Camera;
+use bevy::prelude::{Click, CommandsStatesExt, Entity, Pointer, TextFont, On};
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
@@ -43,15 +42,7 @@ fn despawn_menu_camera(mut commands: Commands, q_menu_camera: Query<Entity, With
 
 fn spawn_menu_camera(mut commands: Commands) {
     // Bevy 0.16: Use Camera2d component directly for UI rendering
-    commands.spawn((
-        Camera {
-            order: 1,
-            ..default()
-        },
-        Camera2d::default(),
-        MenuCamera,
-        Name::new("MenuCamera"),
-    ));
+    commands.spawn((Camera2d, MenuCamera, Name::new("MenuCamera")));
     debug!("Spawned fallback 2D camera for menu (z=10.0)");
 }
 
@@ -107,7 +98,7 @@ fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<Ma
                     },
                 ))
                 .insert(ConnectButton)
-                .observe(|_click: Trigger<Pointer<Click>>, mut commands: Commands| {
+                .observe(|_click: On<Pointer<Click>>, mut commands: Commands| {
                     debug!("Connect button clicked, transitioning to ConnectingRemote");
                     commands.set_state(GameState::ConnectingRemote);
                 });

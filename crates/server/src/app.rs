@@ -1,18 +1,14 @@
-use bevy::prelude::*;
-
+use bevy::prelude::{
+    App, DefaultPlugins, PluginGroup, Resource, default,
+};
 use bevy::window::{Window, WindowPlugin};
-
-use lightyear::prelude::server::*;
-// use lightyear::prelude::{DeltaManager, Server};
-
+use lightyear::prelude::server::ServerPlugins;
 use std::time::Duration;
 
 use crate::gameplay::ServerGameplayPlugin;
 use crate::network::NetworkPlugin;
 use crate::render::RenderPlugin;
 use shared::SharedPlugin;
-
-use bevy::prelude::{App, default};
 
 #[derive(Resource, PartialEq, Eq, Clone, Debug)]
 pub enum ServerMode {
@@ -28,7 +24,7 @@ pub fn add_basics_to_server_app(app: &mut App, headless: bool) -> &mut App {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Yolo Game - Server".to_string(),
-                    resolution: (400., 200.).into(),
+                    resolution: (400, 200).into(),
                     ..default()
                 }),
                 ..default()

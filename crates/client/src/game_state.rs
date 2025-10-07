@@ -3,6 +3,7 @@ use bevy::prelude::{
     App, AppExtStates, Commands, CommandsStatesExt, Entity, OnExit, Or, Plugin, Query, Res, State,
     States, Update, With,
 };
+use avian3d::prelude::Position;
 use lightyear::prelude::{Confirmed, Controlled, Predicted, Replicated};
 use shared::protocol::PlayerId;
 use shared::scene::{FloorMarker, WallMarker};
@@ -70,7 +71,7 @@ fn check_assets_loaded(
 
 fn cleanup_on_exit_to_menu(
     mut commands: Commands,
-    q_everything: Query<Entity, Or<(With<Predicted>, With<Confirmed>, With<Replicated>)>>,
+    q_everything: Query<Entity, Or<(With<Predicted>, With<Confirmed<Position>>, With<Replicated>)>>,
 ) {
     println!("cleaning up on exit to menu");
 

@@ -1,7 +1,8 @@
-use bevy::prelude::{App, Commands, Name, OnAdd, Plugin, Res, Startup, Trigger, info};
-use lightyear::prelude::server::NetcodeConfig;
-use lightyear::prelude::server::Start;
-use lightyear::prelude::*;
+use bevy::prelude::{Add, App, Commands, Name, On, Plugin, Res, Startup, info};
+use lightyear::prelude::{
+    LinkOf, LocalAddr, ReplicationSender, SendUpdatesMode,
+    server::{NetcodeConfig, Start},
+};
 use lightyear::{netcode::NetcodeServer, prelude::server::ServerUdpIo};
 use shared::NetTransport;
 use shared::{SEND_INTERVAL, SERVER_BIND_ADDR, SHARED_SETTINGS};
@@ -37,7 +38,9 @@ fn startup_server(mut commands: Commands, transport: Res<NetTransport>) {
                 ))
                 .id();
 
-            commands.trigger_targets(Start, server_entity);
+            commands.trigger(Start {
+                entity: server_entity,
+            });
 
             info!(
                 "Server started on {} with protocol_id: {:x}",
@@ -47,11 +50,11 @@ fn startup_server(mut commands: Commands, transport: Res<NetTransport>) {
     }
 }
 
-fn handle_new_client(trigger: Trigger<OnAdd, LinkOf>, mut commands: Commands) {
-    info!("🎉 New client connected: {:?}", trigger.target());
+fn handle_new_client(trigger: On<Add, LinkOf>, mut commands: Commands) {
+    info!("🎉 New client connected: {:?}", trigger.entity);
 
-    commands.entity(trigger.target()).insert((
+    commands.entity(trigger.entity).insert((
         ReplicationSender::new(SEND_INTERVAL, SendUpdatesMode::SinceLastAck, false),
-        Name::from(format!("Client-{}", trigger.target())),
+        Name::from(format!("Client-{}", trigger.entity)),
     ));
 }

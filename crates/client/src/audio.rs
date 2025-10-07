@@ -10,6 +10,7 @@ use bevy::prelude::{
 use bevy_kira_audio::AudioControl;
 use bevy_kira_audio::AudioSource;
 use bevy_kira_audio::prelude::{Audio, AudioPlugin};
+// TODO: Maybe use other plugin that Kira.
 
 #[derive(Component)]
 pub struct PlayerController {
@@ -26,10 +27,7 @@ impl Plugin for GameAudioPlugin {
             .add_systems(OnEnter(GameState::Playing), cleanup_audio)
             .add_systems(
                 Update,
-                (
-                    play_footsteps,
-                    play_ambient_sounds,
-                ).run_if(in_state(GameState::Playing)),
+                (play_footsteps, play_ambient_sounds).run_if(in_state(GameState::Playing)),
             );
     }
 }

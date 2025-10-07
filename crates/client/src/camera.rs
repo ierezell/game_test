@@ -1,8 +1,12 @@
 use avian3d::prelude::{Position, Rotation};
-use bevy::prelude::*;
-use bevy::window::{CursorGrabMode, PrimaryWindow, WindowFocused};
+use bevy::prelude::{
+    Add, App, ButtonInput, Camera, Camera3d, Changed, Commands, Component, Entity, EulerRot,
+    KeyCode, MessageReader, Name, On, Or, Plugin, PostUpdate, Quat, Query, Res, Transform, Update,
+    Vec3, With, debug, default, info,
+};
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowFocused};
 use leafwing_input_manager::prelude::ActionState;
-use lightyear::prelude::*;
+use lightyear::prelude::{Controlled, Predicted};
 
 use shared::input::{MOUSE_SENSITIVITY, PITCH_LIMIT_RADIANS, PLAYER_CAPSULE_HEIGHT, PlayerAction};
 use shared::protocol::PlayerId;
@@ -28,12 +32,12 @@ impl Plugin for CameraPlugin {
 }
 
 fn grab_cursor(
-    _trigger: Trigger<OnAdd, (PlayerId, Predicted)>,
-    mut window_query: Query<&mut Window, With<PrimaryWindow>>,
+    _trigger: On<Add, (PlayerId, Predicted)>,
+    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
-    if let Ok(mut window) = window_query.single_mut() {
-        window.cursor_options.grab_mode = CursorGrabMode::Locked;
-        window.cursor_options.visible = false;
+    if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
+        cursor_options.grab_mode = CursorGrabMode::Locked;
+        cursor_options.visible = false;
         info!("🔒 Initial cursor lock enabled for FPS gameplay");
     }
 }
@@ -43,7 +47,7 @@ fn spawn_camera_when_player_spawn(
     // Once for (PlayerId, ShouldBePredicted) (When replicated from server)
     // Once when (Predicted) is added alone
     // Once when (PlayerId with Predicted) is added (The one we want)
-    trigger: Trigger<OnAdd, (Predicted, Controlled, PlayerId)>,
+    trigger: On<Add, (Predicted, Controlled, PlayerId)>,
     player_query: Query<
         (&PlayerId, &Position),
         (With<Predicted>, With<Controlled>, With<PlayerId>),
@@ -56,7 +60,7 @@ fn spawn_camera_when_player_spawn(
         return;
     }
 
-    let entity = trigger.target();
+    let entity = trigger.entity;
     if let Ok((player_id, position)) = player_query.get(entity) {
         // Only spawn camera if this is the local player
         if player_id.0.to_bits() == local_player_id.0 {
@@ -85,15 +89,15 @@ fn spawn_camera_when_player_spawn(
 }
 
 fn handle_focus_change(
-    mut focus_events: EventReader<WindowFocused>,
+    mut focus_events: MessageReader<WindowFocused>,
     mut action_query: Query<
         &mut ActionState<PlayerAction>,
         (With<PlayerId>, With<Predicted>, With<Controlled>),
     >,
-    mut window_query: Query<&mut Window, With<PrimaryWindow>>,
+    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     for event in focus_events.read() {
-        let Ok(mut window) = window_query.single_mut() else {
+        let Ok(mut cursor_options) = cursor_options_query.single_mut() else {
             continue;
         };
         let Ok(mut action_state) = action_query.single_mut() else {
@@ -101,9 +105,9 @@ fn handle_focus_change(
         };
 
         if event.focused {
-            if window.cursor_options.grab_mode != CursorGrabMode::Locked {
-                window.cursor_options.grab_mode = CursorGrabMode::Locked;
-                window.cursor_options.visible = false;
+            if cursor_options.grab_mode != CursorGrabMode::Locked {
+                cursor_options.grab_mode = CursorGrabMode::Locked;
+                cursor_options.visible = false;
                 info!("🔒 Cursor locked on focus gain");
             }
             if action_state.disabled() {
@@ -111,9 +115,9 @@ fn handle_focus_change(
                 info!("🎮 Inputs enabled on focus gain");
             }
         } else {
-            if window.cursor_options.grab_mode != CursorGrabMode::None {
-                window.cursor_options.grab_mode = CursorGrabMode::None;
-                window.cursor_options.visible = true;
+            if cursor_options.grab_mode != CursorGrabMode::None {
+                cursor_options.grab_mode = CursorGrabMode::None;
+                cursor_options.visible = true;
                 info!("🔓 Cursor released on focus loss");
             }
             if !action_state.disabled() {
@@ -187,14 +191,14 @@ fn toggle_cursor_grab(
         &mut ActionState<PlayerAction>,
         (With<PlayerId>, With<Predicted>, With<Controlled>),
     >,
-    mut window_query: Query<&mut Window, With<PrimaryWindow>>,
+    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     if keys.just_pressed(KeyCode::Escape) {
-        if let Ok(mut window) = window_query.single_mut() {
-            match window.cursor_options.grab_mode {
+        if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
+            match cursor_options.grab_mode {
                 CursorGrabMode::None => {
-                    window.cursor_options.grab_mode = CursorGrabMode::Locked;
-                    window.cursor_options.visible = false;
+                    cursor_options.grab_mode = CursorGrabMode::Locked;
+                    cursor_options.visible = false;
                     info!("🔒 Cursor locked");
                     if let Ok(mut action_state) = action_query.single_mut() {
                         action_state.reset_all();
@@ -202,8 +206,8 @@ fn toggle_cursor_grab(
                     }
                 }
                 _ => {
-                    window.cursor_options.grab_mode = CursorGrabMode::None;
-                    window.cursor_options.visible = true;
+                    cursor_options.grab_mode = CursorGrabMode::None;
+                    cursor_options.visible = true;
                     info!("🔓 Cursor released");
                     if let Ok(mut action_state) = action_query.single_mut() {
                         action_state.reset_all();

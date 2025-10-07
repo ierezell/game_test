@@ -1,14 +1,14 @@
 use bevy::log::debug;
 use bevy::prelude::{
-    App, Commands, CommandsStatesExt, Entity, Name, OnAdd, OnEnter, OnRemove, Plugin, Query, Res,
-    ResMut, Resource, Startup, State, Trigger, Update, With, error,
+    Add, App, Commands, CommandsStatesExt, Entity, Name, On, OnEnter, Plugin, Query, Remove, Res,
+    ResMut, Resource, Startup, State, Update, With, error,
 };
 
 use lightyear::prelude::client::{NetcodeClient, NetcodeConfig};
 
 use lightyear::prelude::{
-    Authentication, Client, Connect, Connected, InterpolationManager, Link, LocalAddr, PeerAddr,
-    PredictionManager, ReplicationReceiver, UdpIo,
+    Authentication, Client, Connect, Connected, InterpolationTarget, Link, LocalAddr, PeerAddr,
+    PredictionManager, ReplicationReceiver, UdpIo, NetworkTarget,
 };
 
 use shared::{SERVER_ADDR, SHARED_SETTINGS};
@@ -69,7 +69,7 @@ fn start_connection(
     if !existing_clients.is_empty() {
         debug!("🔄 Client already exists, skipping connection creation");
         for client_entity in existing_clients.iter() {
-            commands.trigger_targets(Connect, client_entity);
+            commands.trigger(Connect { entity: client_entity });
             debug!(
                 "🚀 Re-triggering connection on existing client: {:?}",
                 client_entity
@@ -123,14 +123,14 @@ fn start_connection(
             ReplicationReceiver::default(),
             // 🔧 FIX: Manually add PredictionManager like examples show
             PredictionManager::default(),
-            InterpolationManager::default(),
+            InterpolationTarget::to_clients(NetworkTarget::default()),
             netcode_client,
             UdpIo::default(),
             Name::new(format!("Client {}", client_id.0)),
         ))
         .id();
 
-    commands.trigger_targets(Connect, client);
+    commands.trigger(Connect { entity: client });
     debug!("🚀 Client connection initiated - entity: {:?}", client);
 }
 
@@ -197,13 +197,13 @@ fn monitor_connection_status(
 }
 
 fn handle_client_connected(
-    trigger: Trigger<OnAdd, Connected>,
+    trigger: On<Add, Connected>,
     mut commands: Commands,
     current_state: Res<State<GameState>>,
 ) {
     debug!(
         "🎉 Client {:?} successfully connected to server! in state {:?}",
-        trigger.target(),
+        trigger.entity,
         current_state
     );
     if *current_state.get() == GameState::ConnectingRemote {
@@ -213,14 +213,14 @@ fn handle_client_connected(
 }
 
 fn handle_client_disconnected(
-    trigger: Trigger<OnRemove, Connected>,
+    trigger: On<Remove, Connected>,
     mut commands: Commands,
     current_state: Res<State<GameState>>,
 ) {
     let current_state_value = current_state.get();
     debug!(
         "💔 Client {:?} disconnected from server while in state: {:?}",
-        trigger.target(),
+        trigger.entity,
         current_state_value
     );
 

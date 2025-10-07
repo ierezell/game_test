@@ -6,32 +6,19 @@ lints = {}
 
 
 [workspace.dependencies]
-avian3d = { version = "0.3.1", default-features = true, features = [
+# avian3d = { version = "0.3.1", default-features = true, features = [
+#     "serialize",
+# ] }
+avian3d = { git = "https://github.com/Jondolf/avian", branch = "main", default-features = true, features = [
     "serialize",
 ] }
-bevy = { version = "0.16.1", features = [
-    "serialize",
-    "bevy_asset",
-    "bevy_state",
-    "bevy_pbr",
-    "bevy_ui",
-    "bevy_ui_picking_backend",
-    "default_font",
-    "tonemapping_luts",
-    "animation",
-    "bevy_animation",
-    "bevy_gltf",
-    "png",
-    "bevy_window",
-    "bevy_winit",
-    "webgpu",                  # TODO: Disable this when not on WASM
-    "x11",
-    "dynamic_linking",         # Enable dynamic linking for faster dev builds
-], default-features = false }
-bevy-inspector-egui = "0.33.1"
-bevy_egui = { version = "0.36.0" }
-serde = "1.0.226"
-lightyear = { version = "0.24.2", default-features = true, features = [
+
+bevy = { version = "0.17.2" }
+bevy-inspector-egui = "0.34.0"
+bevy_egui = { version = "0.37.0" }
+serde = "1.0.228"
+# lightyear = { version = "0.24.2", default-features = true, features = [
+lightyear = { git = "https://github.com/cBournhonesque/lightyear", branch = "main", default-features = true, features = [
     "netcode",
     "leafwing",
     "avian3d",
@@ -41,7 +28,7 @@ lightyear = { version = "0.24.2", default-features = true, features = [
     "interpolation",
 ] }
 
-leafwing-input-manager = { version = "0.17.1" }
+leafwing-input-manager = { version = "0.18.0" }
 
 [profile.dev]
 opt-level = 1

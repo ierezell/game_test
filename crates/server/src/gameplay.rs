@@ -1,14 +1,23 @@
-use avian3d::prelude::*;
-use bevy::prelude::*;
-use leafwing_input_manager::prelude::*;
+use avian3d::prelude::{LinearVelocity, Position, Rotation};
+use bevy::prelude::{
+    Add, App, Commands, Entity, FixedUpdate, Name, On, Plugin, Query, Single, Vec2, Vec3, With,
+    Without, debug, info,
+};
+use leafwing_input_manager::prelude::ActionState;
 use lightyear::connection::client::Connected;
 use lightyear::connection::server::Started;
 
-use lightyear::prelude::server::*;
-use lightyear::prelude::*;
+use lightyear::prelude::server::{ClientOf, Server};
+use lightyear::prelude::{
+    Confirmed, ControlledBy, InterpolationTarget, LocalTimeline, NetworkTarget, NetworkTimeline,
+    PredictionTarget, Predicted, RemoteId, Replicate,
+};
 use shared::input::{PLAYER_CAPSULE_HEIGHT, PlayerAction, shared_player_movement};
 use shared::protocol::{PlayerColor, PlayerId};
-use shared::scene::*;
+use shared::scene::{
+    FLOOR_THICKNESS, ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS, FloorMarker, PlayerPhysicsBundle,
+    WallMarker, add_floor_physics, add_wall_physics, color_from_id,
+};
 
 pub struct ServerGameplayPlugin;
 
@@ -39,11 +48,11 @@ fn debug_player_position(
 }
 
 fn handle_connected(
-    trigger: Trigger<OnAdd, Connected>,
+    trigger: On<Add, Connected>,
     query: Query<&RemoteId, With<ClientOf>>,
     mut commands: Commands,
 ) {
-    let Ok(client_id) = query.get(trigger.target()) else {
+    let Ok(client_id) = query.get(trigger.entity) else {
         return;
     };
     let peer_id = client_id.0;
@@ -61,7 +70,7 @@ fn handle_connected(
     );
     info!(
         "🔍 Client entity: {:?}, RemoteId bits: {}",
-        trigger.target(),
+        trigger.entity,
         client_id.to_bits()
     );
 
@@ -76,7 +85,7 @@ fn handle_connected(
             PlayerColor(color),
             // Lightyear config
             ControlledBy {
-                owner: trigger.target(),
+                owner: trigger.entity,
                 lifetime: Default::default(),
             },
             Replicate::to_clients(NetworkTarget::All),
@@ -90,7 +99,7 @@ fn handle_connected(
     info!("Created player entity {player:?} for client {client_id:?}");
     info!(
         "🔍 ControlledBy owner set to client entity: {:?}",
-        trigger.target()
+        trigger.entity
     );
 }
 
@@ -104,7 +113,11 @@ pub fn server_player_movement(
         ),
         // Based on lightyear examples - avoid applying movement to predicted/confirmed entities
         // to prevent conflicts in host-server mode
-        (With<PlayerId>, Without<Predicted>, Without<Confirmed>),
+        (
+            With<PlayerId>,
+            Without<Predicted>,
+            Without<Confirmed<Position>>,
+        ),
     >,
 ) {
     for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
@@ -122,7 +135,7 @@ pub fn server_player_movement(
     }
 }
 
-fn setup_scene_on_server_start(_trigger: Trigger<OnAdd, Started>, mut commands: Commands) {
+fn setup_scene_on_server_start(_trigger: On<Add, Started>, mut commands: Commands) {
     info!("Setting up scene on server (after server started)");
 
     commands.spawn((

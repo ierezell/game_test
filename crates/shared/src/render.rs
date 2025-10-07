@@ -1,10 +1,10 @@
 use avian3d::prelude::Position;
 use bevy::{
     color::palettes::css::{GREEN, WHITE},
-    pbr::{AmbientLight, DirectionalLight},
+    light::{AmbientLight, DirectionalLight},
     prelude::{
-        Assets, Commands, Cuboid, Entity, Mesh, Mesh3d, MeshMaterial3d, Name, OnAdd, Query, ResMut,
-        StandardMaterial, Transform, Trigger, Vec3, Without, debug, default,
+        Add, Assets, Commands, Cuboid, Entity, Mesh, Mesh3d, MeshMaterial3d, Name, On, Query,
+        ResMut, StandardMaterial, Transform, Vec3, Without, debug, default,
     },
 };
 
@@ -13,13 +13,13 @@ use crate::scene::{
 };
 
 pub fn add_floor_visuals(
-    trigger: Trigger<OnAdd, FloorMarker>,
+    trigger: On<Add, FloorMarker>,
     floor_query: Query<(Entity, &Position)>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let Ok((entity, position)) = floor_query.get(trigger.target()) else {
+    let Ok((entity, position)) = floor_query.get(trigger.entity) else {
         debug!("Failed to get floor entity for visual addition.");
         return;
     };
@@ -60,13 +60,13 @@ pub fn setup_lighting(mut commands: Commands) {
 }
 
 pub fn add_wall_visuals(
-    trigger: Trigger<OnAdd, WallMarker>,
+    trigger: On<Add, WallMarker>,
     wall_query: Query<(Entity, &Position, &Name), Without<Mesh3d>>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let Ok((entity, position, name)) = wall_query.get(trigger.target()) else {
+    let Ok((entity, position, name)) = wall_query.get(trigger.entity) else {
         debug!("Failed to get wall entity for visual addition.");
         return;
     };

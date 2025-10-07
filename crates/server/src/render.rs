@@ -1,9 +1,9 @@
 use avian3d::prelude::{PhysicsDebugPlugin, Position};
 
 use bevy::prelude::{
-    App, Assets, Camera, Camera3d, Capsule3d, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d, Name,
-    OnAdd, Plugin, Query, ResMut, StandardMaterial, Startup, Transform, Trigger, Vec3, With,
-    Without, debug, default,
+    Add, App, Assets, Camera, Camera3d, Capsule3d, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d,
+    Name, Plugin, Query, ResMut, StandardMaterial, Startup, Transform, On, Vec3, With, Without,
+    debug, default,
 };
 use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
 use shared::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
@@ -45,13 +45,13 @@ impl Plugin for RenderPlugin {
 }
 
 fn add_player_visuals(
-    trigger: Trigger<OnAdd, PlayerId>,
+    trigger: On<Add, PlayerId>,
     player_query: Query<(Entity, &Position, &PlayerColor), Without<Mesh3d>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,
 ) {
-    let Ok((entity, position, color)) = player_query.get(trigger.target()) else {
+    let Ok((entity, position, color)) = player_query.get(trigger.entity) else {
         debug!("Failed to get player entity for visual addition.");
         return;
     };

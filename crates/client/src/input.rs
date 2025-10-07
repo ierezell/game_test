@@ -1,16 +1,21 @@
-use avian3d::prelude::*;
-use bevy::prelude::*;
-
-use bevy::window::{CursorGrabMode, PrimaryWindow};
-use leafwing_input_manager::prelude::*;
+use avian3d::prelude::{LinearVelocity, Position, Rotation};
+use bevy::prelude::{
+    Add, App, Assets, Capsule3d, Commands, Entity, FixedUpdate, KeyCode, Mesh, Mesh3d,
+    MeshMaterial3d, Name, On, Plugin, Query, Res, ResMut, Single, StandardMaterial, Vec2, With,
+    debug, info,
+};
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use leafwing_input_manager::prelude::{ActionState, InputMap, MouseMove, VirtualDPad};
 
 use crate::app::LocalPlayerId;
-use lightyear::prelude::*;
+use lightyear::prelude::{
+    Controlled, Interpolated, LocalTimeline, NetworkTimeline, Predicted, PredictionManager,
+};
 use shared::input::{
     PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS, PlayerAction, shared_player_movement,
 };
 use shared::protocol::{PlayerColor, PlayerId};
-use shared::scene::*;
+use shared::scene::{PlayerPhysicsBundle, add_floor_physics, add_wall_physics};
 pub struct ClientInputPlugin;
 
 impl Plugin for ClientInputPlugin {
@@ -43,7 +48,7 @@ fn debug_player_position(
 }
 
 fn handle_player_spawn(
-    trigger: Trigger<OnAdd, (Predicted, Controlled, PlayerId)>,
+    trigger: On<Add, (Predicted, Controlled, PlayerId)>,
     player_query: Query<
         (&Name, &PlayerColor, &PlayerId),
         (With<Predicted>, With<Controlled>, With<PlayerId>),
@@ -53,7 +58,7 @@ fn handle_player_spawn(
     mut materials: ResMut<Assets<StandardMaterial>>,
     local_player_id: Res<LocalPlayerId>,
 ) {
-    let entity = trigger.target();
+    let entity = trigger.entity;
     if let Ok((name, color, player_id)) = player_query.get(entity) {
         if player_id.0.to_bits() == local_player_id.0 {
             info!(
@@ -73,13 +78,13 @@ fn handle_player_spawn(
 }
 
 fn handle_other_players_spawn(
-    trigger: Trigger<OnAdd, (PlayerId, Interpolated)>,
+    trigger: On<Add, (PlayerId, Interpolated)>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     player_query: Query<(&Name, &PlayerColor), With<Interpolated>>,
 ) {
-    let entity = trigger.target();
+    let entity = trigger.entity;
     if let Ok((name, color)) = player_query.get(entity) {
         commands.entity(entity).insert((
             Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
@@ -134,8 +139,10 @@ fn get_player_input_map() -> InputMap<PlayerAction> {
     input_map
 }
 
-pub fn is_cursor_locked(window_query: &Query<&Window, With<PrimaryWindow>>) -> bool {
-    window_query.single().map_or(false, |w| {
-        w.cursor_options.grab_mode == CursorGrabMode::Locked
-    })
+pub fn is_cursor_locked(cursor_options_query: &Query<&CursorOptions, With<PrimaryWindow>>) -> bool {
+    cursor_options_query
+        .single()
+        .map_or(false, |cursor_options| {
+            cursor_options.grab_mode == CursorGrabMode::Locked
+        })
 }

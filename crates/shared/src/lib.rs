@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bevy::prelude::{App, Plugin, Resource};
 
-use avian3d::prelude::*;
+use avian3d::PhysicsPlugins;
 
 use protocol::ProtocolPlugin;
 pub mod game_state;

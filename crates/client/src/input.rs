@@ -11,11 +11,12 @@ use crate::app::LocalPlayerId;
 use lightyear::prelude::{
     Controlled, Interpolated, LocalTimeline, NetworkTimeline, Predicted, PredictionManager,
 };
+use shared::entity_implementations::EnhancedPlayerPhysicsBundle;
 use shared::input::{
     PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS, PlayerAction, shared_player_movement,
 };
 use shared::protocol::{PlayerColor, PlayerId};
-use shared::scene::{PlayerPhysicsBundle, add_floor_physics, add_wall_physics};
+use shared::scene::{add_floor_physics, add_wall_physics};
 pub struct ClientInputPlugin;
 
 impl Plugin for ClientInputPlugin {
@@ -68,7 +69,7 @@ fn handle_player_spawn(
             commands.entity(entity).insert((
                 Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
                 MeshMaterial3d(materials.add(color.0)),
-                PlayerPhysicsBundle::default(),
+                EnhancedPlayerPhysicsBundle::default(),
             ));
 
             let input_map = get_player_input_map();

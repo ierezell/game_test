@@ -45,8 +45,29 @@ pub fn shared_player_movement(
     }
 
     update_player_velocity(velocity, rotation, move_input);
-    // OR
-    // apply_movement_force(external_force, rotation, move_input, velocity);
+}
+
+/// Enhanced player movement with stamina system integration
+pub fn shared_player_movement_with_stamina(
+    action_state: &ActionState<PlayerAction>,
+    rotation: &mut Rotation,
+    velocity: &mut LinearVelocity,
+    stamina_effects: Option<&crate::stamina::StaminaEffects>,
+) {
+    let move_input = get_movement_input(action_state);
+
+    if let Some(mouse_delta) = get_look_input(action_state) {
+        update_player_rotation(rotation, mouse_delta);
+    }
+
+    // Apply stamina effects to movement
+    let effective_speed = if let Some(effects) = stamina_effects {
+        MAX_SPEED * effects.movement_multiplier
+    } else {
+        MAX_SPEED
+    };
+
+    update_player_velocity_with_speed(velocity, rotation, move_input, effective_speed);
 }
 
 #[inline]
@@ -81,30 +102,19 @@ fn update_player_rotation(rotation: &mut Rotation, mouse_delta: Vec2) {
 }
 
 fn update_player_velocity(velocity: &mut LinearVelocity, rotation: &Rotation, move_input: Vec2) {
+    update_player_velocity_with_speed(velocity, rotation, move_input, MAX_SPEED);
+}
+
+fn update_player_velocity_with_speed(
+    velocity: &mut LinearVelocity,
+    rotation: &Rotation,
+    move_input: Vec2,
+    speed: f32,
+) {
     let yaw_rotation = rotation.0;
 
     let input_direction = Vec3::new(move_input.x, 0.0, -move_input.y);
     let world_direction = yaw_rotation * input_direction;
-    let desired_velocity = world_direction * MAX_SPEED;
+    let desired_velocity = world_direction * speed;
     velocity.0 = Vec3::new(desired_velocity.x, velocity.0.y, desired_velocity.z);
 }
-
-// fn apply_movement_force(
-//     external_force: &mut ExternalForce,
-//     rotation: &Rotation,
-//     move_input: Vec2,
-//     current_velocity: &LinearVelocity,
-// ) {
-//     let yaw_rotation = rotation.0;
-//     let input_direction = Vec3::new(move_input.x, 0.0, -move_input.y);
-//     let world_direction = yaw_rotation * input_direction;
-//     let desired_velocity = world_direction * MAX_SPEED;
-
-//     // Calculate force needed to reach desired velocity
-//     let current_horizontal = Vec3::new(current_velocity.0.x, 0.0, current_velocity.0.z);
-//     let velocity_difference = desired_velocity - current_horizontal;
-
-//     // Apply force (adjust multiplier as needed)
-//     let force_multiplier = 10.0; // Tune this value
-//     external_force.set_force(velocity_difference * force_multiplier);
-// }

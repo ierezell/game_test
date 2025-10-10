@@ -11,6 +11,8 @@ avian3d.workspace = true
 serde.workspace = true
 bevy.workspace = true
 bevy-inspector-egui.workspace = true
+pathfinding = "4.14.0"
+nalgebra = "0.34.1"
 
 [lints]
 workspace = true

@@ -2,7 +2,7 @@
 
 use bevy::prelude::App;
 use clap::{Parser, ValueEnum};
-use client::app::{add_audio_to_client_app, add_basics_to_client_app, add_network_to_client_app};
+use client::app::{add_basics_to_client_app, add_network_to_client_app};
 
 use server::app::{add_basics_to_server_app, add_network_to_server_app};
 
@@ -50,7 +50,7 @@ pub fn run() {
                 cli.client_id,
             );
             add_network_to_client_app(&mut client_app, cli.client_id);
-            add_audio_to_client_app(&mut client_app);
+
             client_app.run();
         }
         Mode::Server => {

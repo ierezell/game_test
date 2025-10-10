@@ -1,0 +1,217 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "yolo-env"
+version = "0.1.0"
+description = "Python bindings for Yolo multiplayer survival horror game RL environment"
+authors = [{ name = "Yolo Game Team" }]
+keywords = ["reinforcement-learning", "gymnasium", "game", "bevy", "rust"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Games/Entertainment",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.12"
+dependencies = ["gymnasium>=1.0.0", "numpy>=1.21.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0", "black>=22.0.0", "ruff>=0.1.0"]
+training = ["stable-baselines3>=1.8.0", "torch>=1.12.0"]
+examples = ["matplotlib>=3.5.0", "jupyter>=1.0.0"]
+
+[project.urls]
+Homepage = "https://github.com/your-org/yolo"
+Repository = "https://github.com/your-org/yolo.git"
+Documentation = "https://yolo-docs.readthedocs.io/"
+"Bug Tracker" = "https://github.com/your-org/yolo/issues"
+
+[tool.maturin]
+# Configuration according to https://www.maturin.rs/
+module-name = "yolo_env"
+python-source = "."
+# Don't specify features here - let maturin handle PyO3 automatically
+
+
+[tool.black]
+line-length = 120
+target-version = ['py312']
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.pyright]
+pythonVersion = "3.12"
+
+include = ["src", "tests", "examples"]
+exclude = [
+    "**/.pytest_cache",
+    "**/build",
+    "**/dist",
+    "**/.vscode",
+    "**/__pycache__",
+    "**/.venv",
+    "**/target",
+]
+
+analyzeUnannotatedFunctions = true
+deprecateTypingAliases = true
+enableTypeIgnoreComments = true
+enableReachabilityAnalysis = true
+enableExperimentalFeatures = true
+disableBytesTypePromotions = true
+strictDictionaryInference = true
+strictListInference = true
+strictParameterNoneValue = false
+strictSetInference = true
+
+typeCheckingMode = "strict"
+useLibraryCodeForTypes = true
+
+venv = ".venv"
+venvPath = "."
+verboseOutput = false
+
+# Error reporting configuration
+reportGeneralTypeIssues = "error"
+reportMissingImports = "error"
+reportMissingTypeStubs = "warning"
+reportImportCycles = "error"
+reportUnusedImport = "error"
+reportUnusedClass = "error"
+reportUnusedFunction = "error"
+reportUnusedVariable = "error"
+reportDuplicateImport = "error"
+reportOptionalSubscript = "error"
+reportOptionalMemberAccess = "error"
+reportOptionalCall = "error"
+reportOptionalIterable = "error"
+reportOptionalContextManager = "error"
+reportOptionalOperand = "error"
+reportTypedDictNotRequiredAccess = "error"
+reportPrivateUsage = "error"
+reportTypeCommentUsage = "error"
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
+reportInconsistentConstructor = "error"
+reportOverlappingOverload = "error"
+reportMissingSuperCall = "error"
+reportPropertyTypeMismatch = "error"
+reportFunctionMemberAccess = "error"
+reportArgumentType = "error"
+reportAssignmentType = "error"
+reportAttributeAccessIssue = "error"
+reportCallIssue = "error"
+reportIndexIssue = "error"
+reportOperatorIssue = "error"
+reportReturnType = "error"
+reportUnknownParameterType = "error"
+reportUnknownArgumentType = "error"
+reportUnknownMemberType = "information"
+reportUnknownVariableType = "information"
+
+[tool.ruff]
+# Enable comprehensive rule set
+lint.select = [
+    "F",   # Pyflakes
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "YTT", # flake8-2020
+    "ANN", # flake8-annotations
+    "S",   # flake8-bandit
+    "BLE", # flake8-blind-except
+    "FBT", # flake8-boolean-trap
+    "B",   # flake8-bugbear
+    "A",   # flake8-builtins
+    "COM", # flake8-commas
+    "C4",  # flake8-comprehensions
+    "DTZ", # flake8-datetimez
+    "T10", # flake8-debugger
+    "EM",  # flake8-errmsg
+    "ISC", # flake8-implicit-str-concat
+    "ICN", # flake8-import-conventions
+    "PIE", # flake8-pie
+    "T20", # flake8-print
+    "PT",  # flake8-pytest-style
+    "Q",   # flake8-quotes
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    "ARG", # flake8-unused-arguments
+    "PTH", # flake8-use-pathlib
+    "ERA", # eradicate
+    "PGH", # pygrep-hooks
+    "PLC", # Pylint Convention
+    "PLE", # Pylint Error
+    "PLR", # Pylint Refactor
+    "PLW", # Pylint Warning
+    "TRY", # tryceratops
+    "RUF", # Ruff-specific rules
+]
+
+lint.ignore = [
+    "ANN101",  # Missing type annotation for self
+    "ANN102",  # Missing type annotation for cls
+    "COM812",  # Trailing comma missing
+    "S311",    # Standard pseudo-random generators are not suitable for security/cryptographic purposes
+    "PLR0913", # Too many arguments to function call
+    "T20",     # Print statements (useful for debugging during development)
+]
+
+# Allow autofix for all enabled rules (when `--fix`) is provided
+lint.fixable = ["ALL"]
+lint.unfixable = ["B", "ERA001"]
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".ruff_cache",
+    ".venv",
+    "build",
+    "dist",
+    "target",
+    "__pycache__",
+]
+
+# Same as Black
+line-length = 120
+
+# Assume Python 3.12+
+target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",
+    "FBT001",
+] # Allow assert statements and boolean positional args in tests
+"examples/**/*.py" = [
+    "T20",
+    "S101",
+] # Allow print statements and asserts in examples
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["--strict-markers", "--strict-config", "-ra"]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

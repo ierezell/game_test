@@ -86,39 +86,25 @@ pub fn color_from_id(id: u64) -> Color {
 }
 
 pub fn add_floor_physics(
-    trigger: On<Add, FloorMarker>,
+    _trigger: On<Add, FloorMarker>,
     floor_query: Query<Entity>,
     mut commands: Commands,
 ) {
-    let Ok(entity) = floor_query.get(trigger.entity) else {
-        debug!("Failed to get floor entity for visual addition.");
-        return;
-    };
-    commands
-        .entity(entity)
-        .insert((FloorPhysicsBundle::default(),));
-    debug!("Added floor physics at position");
+    for entity in floor_query.iter() {
+        commands
+            .entity(entity)
+            .insert(FloorPhysicsBundle::default());
+        debug!("Added floor physics to entity {:?}", entity);
+    }
 }
 
 pub fn add_wall_physics(
-    trigger: On<Add, WallMarker>,
+    _trigger: On<Add, WallMarker>,
     wall_query: Query<(Entity, &Name), Without<Collider>>,
     mut commands: Commands,
 ) {
-    let Ok((entity, name)) = wall_query.get(trigger.entity) else {
-        debug!("Failed to get wall entity for visual addition.");
-        return;
-    };
-    let (width, height, depth) =
-        if name.as_str().contains("North") || name.as_str().contains("South") {
-            (ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS)
-        } else {
-            (WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE)
-        };
-
-    commands.entity(entity).insert(WallPhysicsBundle {
-        collider: Collider::cuboid(width, height, depth),
-        rigid_body: RigidBody::Static,
-    });
-    debug!("Added wall physics for {}", name.as_str());
+    for (entity, name) in wall_query.iter() {
+        commands.entity(entity).insert(WallPhysicsBundle::default());
+        debug!("Added wall physics to entity {:?} ({})", entity, name);
+    }
 }

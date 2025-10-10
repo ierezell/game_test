@@ -1,12 +1,10 @@
-
-use crate::camera::CameraPlugin;
 use crate::game_state::GameLifecyclePlugin;
 use crate::input::ClientInputPlugin;
 use crate::menu::MenuPlugin;
 use crate::network::NetworkPlugin;
 use crate::render::RenderPlugin;
 
-use bevy::prelude::{App, DefaultPlugins, PluginGroup, Resource, debug, WindowPosition};
+use bevy::prelude::{App, DefaultPlugins, PluginGroup, Resource, WindowPosition, debug};
 use bevy::prelude::{AssetPlugin, default};
 use bevy::window::{Window, WindowPlugin};
 use lightyear::prelude::client::ClientPlugins;
@@ -33,8 +31,8 @@ pub fn add_basics_to_client_app(
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: format!("Yolo Game - Client {}", client_id),
-                    resolution: (1280, 720).into(), // Better resolution for first-person camera
+                    title: format!("Game Test - Client {}", client_id),
+                    resolution: (1280, 720).into(),
                     position: WindowPosition::At((offset_x, offset_y).into()),
                     ..default()
                 }),
@@ -49,7 +47,6 @@ pub fn add_basics_to_client_app(
         SharedPlugin,
         GameLifecyclePlugin,
         ClientInputPlugin,
-        CameraPlugin,
     ));
 
     app.insert_resource(crate::network::AutoConnect(autoconnect));
@@ -62,16 +59,10 @@ pub fn add_network_to_client_app(app: &mut App, client_id: u64) -> &mut App {
     app.add_plugins(ClientPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
-    
+
     app.insert_resource(LocalPlayerId(client_id));
     debug!("🔧 Client configured with Netcode PeerId: {}", client_id);
 
     app.add_plugins(NetworkPlugin);
     app
 }
-
-pub fn add_audio_to_client_app(app: &mut App) -> &mut App {
-
-    app
-}
-

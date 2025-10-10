@@ -10,14 +10,21 @@ use lightyear::connection::server::Started;
 use lightyear::prelude::server::{ClientOf, Server};
 use lightyear::prelude::{
     Confirmed, ControlledBy, InterpolationTarget, LocalTimeline, NetworkTarget, NetworkTimeline,
-    PredictionTarget, Predicted, RemoteId, Replicate,
+    Predicted, PredictionTarget, RemoteId, Replicate,
 };
-use shared::input::{PLAYER_CAPSULE_HEIGHT, PlayerAction, shared_player_movement};
+use shared::entity_implementations::EnhancedPlayerPhysicsBundle;
+use shared::entity_implementations::{EnemyEntity, EnemyType};
+use shared::entity_traits::PhysicsProvider;
+use shared::health::{Health, Respawnable};
+use shared::input::{PLAYER_CAPSULE_HEIGHT, PlayerAction, shared_player_movement_with_stamina};
+use shared::navigation_pathfinding::{NavigationMeshMarker, add_navigation_agent_with_speed};
 use shared::protocol::{PlayerColor, PlayerId};
 use shared::scene::{
-    FLOOR_THICKNESS, ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS, FloorMarker, PlayerPhysicsBundle,
-    WallMarker, add_floor_physics, add_wall_physics, color_from_id,
+    FLOOR_THICKNESS, FloorMarker, ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS, WallMarker,
+    add_floor_physics, add_wall_physics, color_from_id,
 };
+use shared::stamina::{StaminaEffects, add_stamina_to_player};
+use shared::weapons::add_weapon_holder;
 
 pub struct ServerGameplayPlugin;
 
@@ -29,6 +36,8 @@ impl Plugin for ServerGameplayPlugin {
         app.add_systems(FixedUpdate, debug_player_position);
         app.add_observer(add_floor_physics);
         app.add_observer(add_wall_physics);
+        app.add_observer(spawn_enemies_on_server_start);
+        app.add_observer(setup_navigation_on_server_start);
     }
 }
 
@@ -83,6 +92,9 @@ fn handle_connected(
             Position(Vec3::new(x, y, z)),
             Rotation::default(),
             PlayerColor(color),
+            // Health system
+            Health::with_regeneration(100.0, 10.0, 5.0), // 100 HP, 10 HP/s regen, 5s delay
+            Respawnable::new(5.0),                       // 5 second respawn time
             // Lightyear config
             ControlledBy {
                 owner: trigger.entity,
@@ -92,9 +104,15 @@ fn handle_connected(
             PredictionTarget::to_clients(NetworkTarget::Single(peer_id)),
             InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(peer_id)),
             // Should not be replicated
-            PlayerPhysicsBundle::default(),
+            EnhancedPlayerPhysicsBundle::default(),
         ))
         .id();
+
+    // Add weapon holder to player
+    add_weapon_holder(&mut commands, player);
+
+    // Add stamina system to player
+    add_stamina_to_player(&mut commands, player);
 
     info!("Created player entity {player:?} for client {client_id:?}");
     info!(
@@ -110,6 +128,7 @@ pub fn server_player_movement(
             &mut Rotation,
             &mut LinearVelocity,
             &ActionState<PlayerAction>,
+            Option<&StaminaEffects>,
         ),
         // Based on lightyear examples - avoid applying movement to predicted/confirmed entities
         // to prevent conflicts in host-server mode
@@ -120,7 +139,9 @@ pub fn server_player_movement(
         ),
     >,
 ) {
-    for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
+    for (entity, mut rotation, mut velocity, action_state, stamina_effects) in
+        player_query.iter_mut()
+    {
         let axis_pair = action_state.axis_pair(&PlayerAction::Move);
         if axis_pair != Vec2::ZERO || !action_state.get_pressed().is_empty() {
             debug!(
@@ -131,7 +152,12 @@ pub fn server_player_movement(
             );
         }
 
-        shared_player_movement(action_state, &mut rotation, &mut velocity);
+        shared_player_movement_with_stamina(
+            action_state,
+            &mut rotation,
+            &mut velocity,
+            stamina_effects,
+        );
     }
 }
 
@@ -192,4 +218,103 @@ fn setup_scene_on_server_start(_trigger: On<Add, Started>, mut commands: Command
     }
 
     info!("Scene setup complete");
+}
+
+fn spawn_enemies_on_server_start(_trigger: On<Add, Started>, mut commands: Commands) {
+    info!("Spawning enemies on server start");
+
+    // Define enemy spawn positions around the room
+    let enemy_positions = [
+        (Vec3::new(8.0, 1.0, 8.0), EnemyType::Basic),
+        (Vec3::new(-8.0, 1.0, 8.0), EnemyType::Fast),
+        (Vec3::new(8.0, 1.0, -8.0), EnemyType::Heavy),
+        (Vec3::new(-8.0, 1.0, -8.0), EnemyType::Basic),
+        (Vec3::new(0.0, 1.0, 12.0), EnemyType::Fast),
+    ];
+
+    for (position, enemy_type) in &enemy_positions {
+        let enemy_entity = EnemyEntity::new(enemy_type.clone());
+
+        // Define patrol points for each enemy
+        let patrol_points = match enemy_type {
+            EnemyType::Basic => vec![
+                *position,
+                *position + Vec3::new(4.0, 0.0, 0.0),
+                *position + Vec3::new(4.0, 0.0, 4.0),
+                *position + Vec3::new(0.0, 0.0, 4.0),
+            ],
+            EnemyType::Fast => vec![
+                *position,
+                *position + Vec3::new(6.0, 0.0, 2.0),
+                *position + Vec3::new(2.0, 0.0, 6.0),
+            ],
+            EnemyType::Heavy => vec![
+                *position,
+                *position + Vec3::new(2.0, 0.0, 0.0),
+                *position + Vec3::new(0.0, 0.0, 2.0),
+            ],
+        };
+
+        // Create the physics bundle with default values
+        let mut physics_bundle = enemy_entity.get_physics_bundle();
+
+        // Update the position in the physics bundle
+        physics_bundle.enemy_bundle.position = Position(*position);
+
+        // Update behaviors with specific values
+        physics_bundle.enemy_bundle.patrol.patrol_points = patrol_points;
+        physics_bundle.enemy_bundle.patrol.patrol_speed = match enemy_type {
+            EnemyType::Basic => 2.0,
+            EnemyType::Fast => 3.5,
+            EnemyType::Heavy => 1.5,
+        };
+
+        physics_bundle.enemy_bundle.chase.chase_speed = match enemy_type {
+            EnemyType::Basic => 4.0,
+            EnemyType::Fast => 6.0,
+            EnemyType::Heavy => 3.0,
+        };
+
+        physics_bundle.enemy_bundle.attack.attack_damage = match enemy_type {
+            EnemyType::Basic => 25.0,
+            EnemyType::Fast => 15.0,
+            EnemyType::Heavy => 40.0,
+        };
+
+        let entity_id = commands
+            .spawn((
+                Name::new(format!("{:?}_Enemy", enemy_type)),
+                physics_bundle,
+                // Health system - enemies don't regenerate health
+                Health::no_regeneration(match enemy_type {
+                    EnemyType::Basic => 80.0,
+                    EnemyType::Fast => 50.0,
+                    EnemyType::Heavy => 150.0,
+                }),
+                Replicate::to_clients(NetworkTarget::All),
+                InterpolationTarget::to_clients(NetworkTarget::All),
+            ))
+            .id();
+
+        // Add navigation agent with appropriate speed for enemy type
+        let navigation_speed = match enemy_type {
+            EnemyType::Basic => 3.0,
+            EnemyType::Fast => 5.0,
+            EnemyType::Heavy => 2.0,
+        };
+        add_navigation_agent_with_speed(&mut commands, entity_id, navigation_speed);
+    }
+
+    info!("Spawned {} enemies", 5);
+}
+
+fn setup_navigation_on_server_start(_trigger: On<Add, Started>, mut commands: Commands) {
+    info!("Setting up navigation system on server start");
+
+    // Spawn the navigation mesh marker to trigger mesh building
+    let mesh_entity = commands
+        .spawn((Name::new("NavigationMesh"), NavigationMeshMarker))
+        .id();
+
+    info!("Navigation mesh marker spawned: {:?}", mesh_entity);
 }

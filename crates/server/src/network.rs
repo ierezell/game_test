@@ -1,7 +1,7 @@
-use bevy::prelude::{Add, App, Commands, Name, On, Plugin, Res, Startup, info};
+use bevy::prelude::{info, Add, App, Commands, Name, On, Plugin, Res, Startup};
 use lightyear::prelude::{
-    LinkOf, LocalAddr, ReplicationSender, SendUpdatesMode,
     server::{NetcodeConfig, Start},
+    LinkOf, LocalAddr, ReplicationSender, SendUpdatesMode,
 };
 use lightyear::{netcode::NetcodeServer, prelude::server::ServerUdpIo};
 use shared::NetTransport;

@@ -9,6 +9,8 @@ server = { path = "../server" }
 client = { path = "../client" }
 lightyear.workspace = true
 bevy.workspace = true
+avian3d.workspace = true
+leafwing-input-manager.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1", features = ["rt", "fs"] } # need async to load certs

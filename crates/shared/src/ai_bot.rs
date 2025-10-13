@@ -7,7 +7,7 @@ use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::ActionState;
 use lightyear::prelude::*;
-use rand::{Rng, thread_rng};
+use rand::{Rng, rng};
 use std::time::Duration;
 
 pub struct BotPlugin;
@@ -324,10 +324,10 @@ fn execute_classic_bot_actions(
         match &bot.behavior_state {
             BotBehaviorState::Idle => {
                 // Random idle movement occasionally
-                if thread_rng().r#gen::<f32>() < 0.1 {
+                if rng().random::<f32>() < 0.1 {
                     let random_movement = Vec2::new(
-                        thread_rng().gen_range(-0.3..0.3),
-                        thread_rng().gen_range(-0.3..0.3),
+                        rng().random_range(-0.3..0.3),
+                        rng().random_range(-0.3..0.3),
                     );
                     action_state.set_axis_pair(&PlayerAction::Move, random_movement);
                 }
@@ -359,7 +359,7 @@ fn execute_classic_bot_actions(
                         // Optimal range, strafe
                         let strafe = Vec2::new(-direction.z, direction.x); // Perpendicular vector
                         strafe
-                            * if thread_rng().r#gen::<bool>() {
+                            * if rng().random::<bool>() {
                                 1.0
                             } else {
                                 -1.0
@@ -377,7 +377,7 @@ fn execute_classic_bot_actions(
 
                     // Shoot with some accuracy and reaction time
                     if distance < 15.0 && bot.action_timer.just_finished() {
-                        if thread_rng().r#gen::<f32>() < bot.accuracy {
+                        if rng().random::<f32>() < bot.accuracy {
                             action_state.press(&PlayerAction::Shoot);
                         }
                     }

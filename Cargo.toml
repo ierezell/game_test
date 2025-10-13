@@ -13,18 +13,12 @@ lints = {}
 
 
 [workspace.dependencies]
-# avian3d = { version = "0.3.1", default-features = true, features = [
-#     "serialize",
-# ] }
-avian3d = { git = "https://github.com/Jondolf/avian", branch = "main", default-features = true, features = [
-    "serialize",
-] }
+avian3d = { version = "0.4", default-features = true, features = ["serialize"] }
 
 bevy = { version = "0.17.2" }
 bevy-inspector-egui = "0.34.0"
-bevy_egui = { version = "0.37.0" }
+bevy_egui = { version = "0.38.0" }
 serde = "1.0.228"
-# lightyear = { version = "0.24.2", default-features = true, features = [
 lightyear = { git = "https://github.com/cBournhonesque/lightyear", branch = "main", default-features = true, features = [
     "netcode",
     "leafwing",

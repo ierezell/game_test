@@ -38,27 +38,10 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<PlayerColor>().add_prediction();
         app.register_component::<Name>().add_prediction();
 
-        app.register_component::<Rotation>()
-            .add_prediction()
-            .add_linear_interpolation();
-
-        app.register_component::<Position>()
-            .add_prediction()
-            .add_should_rollback(|old: &Position, new: &Position| (old.0.y - new.0.y).abs() > 2.0)
-            .add_linear_interpolation()
-            .add_linear_correction_fn();
-
-        app.register_component::<LinearVelocity>()
-            .add_prediction()
-            .add_should_rollback(|old: &LinearVelocity, new: &LinearVelocity| {
-                (old.0.y - new.0.y).abs() > 0.5
-            });
+        app.register_component::<Rotation>().add_prediction();
+        app.register_component::<Position>().add_prediction();
+        app.register_component::<LinearVelocity>().add_prediction();
 
         debug!("✅ Protocol plugin initialized with components, messages, inputs, and events");
     }
 }
-
-// .add_delta_compression()
-// .add_linear_interpolation_fn()
-// .add_interpolation(InterpolationMode::Full);
-// .add_interpolation_fn(|a, b, t| LinearVelocity(a.0.lerp(b.0, t)))

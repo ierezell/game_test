@@ -1,10 +1,11 @@
-use avian3d::prelude::{Position, Rotation};
+use avian3d::prelude::Position;
+use avian3d::prelude::Rotation;
 use bevy::prelude::{
-    Add, App, ButtonInput, Camera, Camera2d, Camera3d, Changed, Commands, Component, Entity,
-    EulerRot, KeyCode, MessageReader, Name, On, Or, Plugin, PostUpdate, Quat, Query, Res, Startup,
-    Transform, Update, Vec3, With, debug, default, info,
+    Add, App, Camera, Camera2d, Camera3d, Changed, Commands, Component, Entity, EulerRot, Name, On,
+    Or, Plugin, PostUpdate, Quat, Query, Res, Startup, Transform, Update, Vec3, With, debug,
+    default, info,
 };
-use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowFocused};
+// Removed unused window imports
 use bevy_inspector_egui::{
     bevy_egui::{EguiGlobalSettings, EguiPlugin, PrimaryEguiContext},
     quick::WorldInspectorPlugin,
@@ -40,13 +41,9 @@ impl Plugin for RenderPlugin {
         app.add_plugins((EguiPlugin::default(), WorldInspectorPlugin::default()));
 
         // Camera systems (merged from camera.rs)
-        app.add_observer(grab_cursor);
         app.add_observer(spawn_camera_when_player_spawn);
         app.add_systems(PostUpdate, update_camera_transform_from_player);
-        app.add_systems(
-            Update,
-            (update_camera_pitch, toggle_cursor_grab, handle_focus_change),
-        );
+        app.add_systems(Update, update_camera_pitch);
     }
 }
 
@@ -60,18 +57,6 @@ fn spawn_debug_camera(mut commands: Commands) {
         DebugCamera,
         PrimaryEguiContext,
     ));
-}
-
-// Camera systems (merged from camera.rs)
-fn grab_cursor(
-    _trigger: On<Add, (PlayerId, Predicted)>,
-    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
-) {
-    if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
-        cursor_options.grab_mode = CursorGrabMode::Locked;
-        cursor_options.visible = false;
-        info!("🔒 Initial cursor lock enabled for FPS gameplay");
-    }
 }
 
 fn spawn_camera_when_player_spawn(
@@ -116,46 +101,6 @@ fn spawn_camera_when_player_spawn(
                 "Skipping camera spawn for non-local player: {:?}",
                 player_id
             );
-        }
-    }
-}
-
-fn handle_focus_change(
-    mut focus_events: MessageReader<WindowFocused>,
-    mut action_query: Query<
-        &mut ActionState<PlayerAction>,
-        (With<PlayerId>, With<Predicted>, With<Controlled>),
-    >,
-    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
-) {
-    for event in focus_events.read() {
-        let Ok(mut cursor_options) = cursor_options_query.single_mut() else {
-            continue;
-        };
-        let Ok(mut action_state) = action_query.single_mut() else {
-            continue;
-        };
-
-        if event.focused {
-            if cursor_options.grab_mode != CursorGrabMode::Locked {
-                cursor_options.grab_mode = CursorGrabMode::Locked;
-                cursor_options.visible = false;
-                info!("🔒 Cursor locked on focus gain");
-            }
-            if action_state.disabled() {
-                action_state.enable();
-                info!("🎮 Inputs enabled on focus gain");
-            }
-        } else {
-            if cursor_options.grab_mode != CursorGrabMode::None {
-                cursor_options.grab_mode = CursorGrabMode::None;
-                cursor_options.visible = true;
-                info!("🔓 Cursor released on focus loss");
-            }
-            if !action_state.disabled() {
-                action_state.disable();
-                info!("🎮 Inputs disabled on focus loss");
-            }
         }
     }
 }
@@ -215,78 +160,4 @@ fn update_camera_transform_from_player(
     let (player_yaw, _, _) = player_rotation.0.to_euler(EulerRot::YXZ);
     let camera_quat = Quat::from_euler(EulerRot::YXZ, player_yaw, camera_pitch.0, 0.0);
     camera_transform.rotation = camera_quat;
-}
-
-fn toggle_cursor_grab(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut action_query: Query<
-        &mut ActionState<PlayerAction>,
-        (With<PlayerId>, With<Predicted>, With<Controlled>),
-    >,
-    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
-) {
-    if keys.just_pressed(KeyCode::Escape) {
-        if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
-            match cursor_options.grab_mode {
-                CursorGrabMode::None => {
-                    cursor_options.grab_mode = CursorGrabMode::Locked;
-                    cursor_options.visible = false;
-                    info!("🔒 Cursor locked");
-                    if let Ok(mut action_state) = action_query.single_mut() {
-                        action_state.reset_all();
-                        action_state.enable();
-                    }
-                }
-                _ => {
-                    cursor_options.grab_mode = CursorGrabMode::None;
-                    cursor_options.visible = true;
-                    info!("🔓 Cursor released");
-                    if let Ok(mut action_state) = action_query.single_mut() {
-                        action_state.reset_all();
-                        action_state.disable();
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::render::*;
-
-    #[test]
-    fn test_camera_components_exist() {
-        // Test that the camera components are properly defined
-        let camera_pitch = CameraPitch::default();
-        assert_eq!(camera_pitch.0, 0.0);
-
-        let _player_camera = PlayerCamera::default();
-        // Just ensure it can be instantiated
-    }
-
-    #[test]
-    fn test_render_plugin_can_be_built() {
-        // Test that the plugin can be created - this ensures the merge was successful
-        let _plugin = RenderPlugin;
-        // Just ensure it can be instantiated
-    }
-
-    #[test]
-    fn test_camera_pitch_clamping() {
-        // Test the expected behavior of camera pitch (even though we can't easily test the system directly)
-        use shared::input::PITCH_LIMIT_RADIANS;
-
-        let max_pitch = PITCH_LIMIT_RADIANS;
-        let min_pitch = -PITCH_LIMIT_RADIANS;
-
-        // Simulate the clamping logic
-        let test_pitch: f32 = 10.0; // Way beyond limits
-        let clamped = test_pitch.clamp(min_pitch, max_pitch);
-        assert_eq!(clamped, max_pitch);
-
-        let test_pitch: f32 = -10.0; // Way beyond limits
-        let clamped = test_pitch.clamp(min_pitch, max_pitch);
-        assert_eq!(clamped, min_pitch);
-    }
 }

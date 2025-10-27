@@ -1,3 +1,4 @@
+use crate::entity::ClientRenderPlugin;
 use crate::game_state::GameLifecyclePlugin;
 use crate::input::ClientInputPlugin;
 use crate::menu::MenuPlugin;
@@ -27,7 +28,7 @@ pub fn add_basics_to_client_app(
     let offset_x = (100.0 * (client_id as f32)) as i32;
     let offset_y = (100.0 * (client_id as f32)) as i32;
 
-    app.add_plugins((
+    app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
@@ -42,12 +43,13 @@ pub fn add_basics_to_client_app(
                 file_path: asset_path,
                 ..Default::default()
             }),
-        RenderPlugin,
-        MenuPlugin,
-        SharedPlugin,
-        GameLifecyclePlugin,
-        ClientInputPlugin,
-    ));
+    )
+    .add_plugins(RenderPlugin)
+    .add_plugins(MenuPlugin)
+    .add_plugins(SharedPlugin)
+    .add_plugins(GameLifecyclePlugin)
+    .add_plugins(ClientInputPlugin)
+    .add_plugins(ClientRenderPlugin);
 
     app.insert_resource(crate::network::AutoConnect(autoconnect));
 
@@ -55,7 +57,7 @@ pub fn add_basics_to_client_app(
 }
 
 pub fn add_network_to_client_app(app: &mut App, client_id: u64) -> &mut App {
-    // Lightyear's ClientPlugins
+    // Configure Lightyear's ClientPlugins with fixed timestep
     app.add_plugins(ClientPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });

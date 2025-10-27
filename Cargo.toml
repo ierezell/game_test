@@ -1,3 +1,4 @@
+
 [workspace]
 members = [
     "crates/client",
@@ -8,24 +9,17 @@ members = [
     "crates/reinforcement_learning",
 ]
 resolver = "2"
-default-members = ["crates/launcher"]
-lints = {}
 
 
 [workspace.dependencies]
-# avian3d = { version = "0.3.1", default-features = true, features = [
-#     "serialize",
-# ] }
-avian3d = { git = "https://github.com/Jondolf/avian", branch = "main", default-features = true, features = [
+avian3d = { version = "0.4.0", default-features = true, features = [
     "serialize",
 ] }
-
-bevy = { version = "0.17.2" }
-bevy-inspector-egui = "0.34.0"
-bevy_egui = { version = "0.37.0" }
-serde = "1.0.228"
-# lightyear = { version = "0.24.2", default-features = true, features = [
-lightyear = { git = "https://github.com/cBournhonesque/lightyear", branch = "main", default-features = true, features = [
+bevy = { version = "0.17.2", default-features = true }
+bevy-inspector-egui = { version = "0.35.0", default-features = true }
+bevy_egui = { version = "0.38.0", default-features = true }
+serde = { version = "1.0.228", default-features = true, features = ["derive"] }
+lightyear = { version = "0.25.3", default-features = true, features = [
     "netcode",
     "leafwing",
     "avian3d",
@@ -34,8 +28,12 @@ lightyear = { git = "https://github.com/cBournhonesque/lightyear", branch = "mai
     "prediction",
     "interpolation",
 ] }
-
-leafwing-input-manager = { version = "0.18.0" }
+leafwing-input-manager = { version = "0.18.0", default-features = true }
+vleue_navigator = { version = "0.14.0", default-features = true, features = [
+    "avian3d",
+] }
+ndarray = "0.16.1"
+tokenizers = "0.21.4"
 
 [profile.dev]
 opt-level = 1

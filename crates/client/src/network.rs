@@ -1,21 +1,24 @@
+use crate::app::LocalPlayerId;
 use bevy::log::debug;
 use bevy::prelude::{
     Add, App, Commands, CommandsStatesExt, Entity, Name, On, OnEnter, Plugin, Query, Remove, Res,
     ResMut, Resource, Startup, State, Update, With, error,
 };
+use shared::game_state::GameState;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use lightyear::prelude::client::{NetcodeClient, NetcodeConfig};
 
+use lightyear::connection::client::ClientState;
 use lightyear::prelude::{
-    Authentication, Client, Connect, Connected, InterpolationTarget, Link, LocalAddr, PeerAddr,
-    PredictionManager, ReplicationReceiver, UdpIo, NetworkTarget,
+    Authentication, Client, Connect, Connected, LocalAddr, PeerAddr, PredictionManager, UdpIo,
 };
 
 use shared::{SERVER_ADDR, SHARED_SETTINGS};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+// Removed unused net imports
 
-use crate::app::LocalPlayerId;
-use crate::game_state::GameState;
+// Removed unused LocalPlayerId import
+// Removed unused GameState import
 pub struct NetworkPlugin;
 
 #[derive(Resource, Default)]
@@ -41,7 +44,7 @@ impl Plugin for NetworkPlugin {
             app.insert_resource(AutoConnect::default());
         }
 
-        app.add_systems(OnEnter(GameState::ConnectingRemote), start_connection);
+        app.add_systems(OnEnter(GameState::Connecting), start_connection);
         app.add_systems(OnEnter(GameState::MainMenu), cleanup_client_connection);
 
         app.add_systems(Startup, conditional_auto_connect);
@@ -69,7 +72,9 @@ fn start_connection(
     if !existing_clients.is_empty() {
         debug!("🔄 Client already exists, skipping connection creation");
         for client_entity in existing_clients.iter() {
-            commands.trigger(Connect { entity: client_entity });
+            commands.trigger(Connect {
+                entity: client_entity,
+            });
             debug!(
                 "🚀 Re-triggering connection on existing client: {:?}",
                 client_entity
@@ -103,35 +108,36 @@ fn start_connection(
         token_expire_secs: 30,
     };
 
-    let netcode_client = match NetcodeClient::new(auth, netcode_config) {
-        Ok(client) => {
+    match NetcodeClient::new(auth, netcode_config) {
+        Ok(netcode_client) => {
             debug!("✅ Netcode client created successfully");
-            client
+            let client_entity = commands
+                .spawn((
+                    Client {
+                        state: ClientState::default(),
+                    },
+                    netcode_client,
+                    LocalAddr(client_addr),
+                    UdpIo::default(),
+                    PredictionManager::default(),
+                    lightyear::prelude::ReplicationReceiver::default(),
+                ))
+                .insert(Name::from(format!("Client {}", client_id.0)))
+                .insert(PeerAddr(SERVER_ADDR))
+                .id();
+
+            commands.trigger(Connect {
+                entity: client_entity,
+            });
+            debug!(
+                "🚀 Client connection initiated - entity: {:?}",
+                client_entity
+            );
         }
         Err(e) => {
-            error!("❌ Failed to create netcode client: {:?}", e);
-            return;
+            error!("❌ Failed to create Netcode client: {:?}", e);
         }
-    };
-
-    let client = commands
-        .spawn((
-            Client::default(),
-            LocalAddr(client_addr),
-            PeerAddr(SERVER_ADDR),
-            Link::new(None),
-            ReplicationReceiver::default(),
-            // 🔧 FIX: Manually add PredictionManager like examples show
-            PredictionManager::default(),
-            InterpolationTarget::to_clients(NetworkTarget::default()),
-            netcode_client,
-            UdpIo::default(),
-            Name::new(format!("Client {}", client_id.0)),
-        ))
-        .id();
-
-    commands.trigger(Connect { entity: client });
-    debug!("🚀 Client connection initiated - entity: {:?}", client);
+    }
 }
 
 fn log_connection_events(
@@ -143,7 +149,7 @@ fn log_connection_events(
     let is_connected = !connected_query.is_empty();
     let client_exists = !client_query.is_empty();
 
-    if *current_game_state.get() == GameState::ConnectingRemote {
+    if *current_game_state.get() == GameState::Connecting {
         if is_connected && !connection_state.was_connected {
             for (entity, _) in connected_query.iter() {
                 debug!("✅ Client successfully connected - entity: {:?}", entity);
@@ -176,7 +182,7 @@ fn monitor_connection_status(
     let current_state_value = current_state.get();
 
     match current_state_value {
-        GameState::ConnectingRemote => {
+        GameState::Connecting => {
             // Don't monitor disconnection while initially connecting
             // Let the connection attempt complete first
         }
@@ -203,10 +209,9 @@ fn handle_client_connected(
 ) {
     debug!(
         "🎉 Client {:?} successfully connected to server! in state {:?}",
-        trigger.entity,
-        current_state
+        trigger.entity, current_state
     );
-    if *current_state.get() == GameState::ConnectingRemote {
+    if *current_state.get() == GameState::Connecting {
         debug!("📥 Transitioning to Loading state");
         commands.set_state(GameState::Loading);
     }
@@ -220,8 +225,7 @@ fn handle_client_disconnected(
     let current_state_value = current_state.get();
     debug!(
         "💔 Client {:?} disconnected from server while in state: {:?}",
-        trigger.entity,
-        current_state_value
+        trigger.entity, current_state_value
     );
 
     if *current_state_value != GameState::MainMenu {
@@ -237,6 +241,6 @@ fn conditional_auto_connect(
 ) {
     if auto_connect.0 && *current_state.get() == GameState::MainMenu {
         debug!("🤖 Auto-connecting (enabled via CLI)...");
-        commands.set_state(GameState::ConnectingRemote);
+        commands.set_state(GameState::Connecting);
     }
 }

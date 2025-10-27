@@ -1,13 +1,10 @@
-use avian3d::prelude::{LinearVelocity, Position, Rotation};
+use avian3d::prelude::{LinearVelocity, Position};
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::ActionState;
 use nalgebra::{DMatrix, DVector};
-use rand::{Rng, thread_rng};
-use shared::ai_bot::{AIBot, BotObservation, BotType};
-use shared::health::Health;
+use rand::{Rng, rng};
 use shared::input::PlayerAction;
-use shared::protocol::PlayerId;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 pub struct RLPlugin;
 
@@ -32,19 +29,19 @@ pub struct SimpleNetwork {
 impl SimpleNetwork {
     /// Create a new simple network
     pub fn new(input_size: usize, hidden_size: usize, output_size: usize) -> Self {
-        let mut rng = thread_rng();
+        let mut rng = rng();
 
         // Xavier initialization
         let w1_scale = (2.0 / (input_size + hidden_size) as f32).sqrt();
         let w2_scale = (2.0 / (hidden_size + output_size) as f32).sqrt();
 
         let weights1 = DMatrix::from_fn(hidden_size, input_size, |_, _| {
-            rng.gen_range(-w1_scale..w1_scale)
+            rng.random_range(-w1_scale..w1_scale)
         });
         let bias1 = DVector::zeros(hidden_size);
 
         let weights2 = DMatrix::from_fn(output_size, hidden_size, |_, _| {
-            rng.gen_range(-w2_scale..w2_scale)
+            rng.random_range(-w2_scale..w2_scale)
         });
         let bias2 = DVector::zeros(output_size);
 
@@ -88,19 +85,22 @@ pub struct RLTrainingState {
     pub q_network: Option<SimpleNetwork>,
     pub target_network: Option<SimpleNetwork>,
     pub experience_buffer: VecDeque<Experience>,
-    pub training_enabled: bool,
     pub epsilon: f32,
-    pub epsilon_decay: f32,
-    pub epsilon_min: f32,
-    pub learning_rate: f32,
-    pub discount_factor: f32,
-    pub batch_size: usize,
-    pub buffer_size: usize,
-    pub target_update_frequency: usize,
     pub training_step: usize,
+    pub last_observation: Option<RLObservation>,
+    pub last_action: Option<PlayerActionSet>,
+    pub buffer_size: usize,
+    pub batch_size: usize,
     pub episode_count: usize,
-    pub last_observations: HashMap<u32, BotObservation>,
-    pub last_actions: HashMap<u32, PlayerActionSet>,
+}
+
+/// Minimal RL observation for a single bot
+#[derive(Clone, Debug)]
+pub struct RLObservation {
+    pub position: Vec3,
+    pub velocity: Vec3,
+    pub health: f32,
+    pub max_health: f32,
 }
 
 /// Player action representation for RL
@@ -173,19 +173,13 @@ impl Default for RLTrainingState {
             q_network: None,
             target_network: None,
             experience_buffer: VecDeque::new(),
-            training_enabled: true,
             epsilon: 1.0,
-            epsilon_decay: 0.995,
-            epsilon_min: 0.01,
-            learning_rate: 0.001,
-            discount_factor: 0.99,
-            batch_size: 32,
-            buffer_size: 10000,
-            target_update_frequency: 100,
             training_step: 0,
+            last_observation: None,
+            last_action: None,
+            buffer_size: 10000,
+            batch_size: 32,
             episode_count: 0,
-            last_observations: HashMap::new(),
-            last_actions: HashMap::new(),
         }
     }
 }
@@ -193,7 +187,7 @@ impl Default for RLTrainingState {
 impl RLTrainingState {
     /// Initialize the RL networks
     pub fn initialize(&mut self) {
-        let input_size = 12; // Position(3) + Rotation(4) + Velocity(3) + Health(2)
+        let input_size = 8; // Position(3) + Velocity(3) + Health(2)
         let hidden_size = 64;
         let output_size = 6; // Move(2) + Look(2) + Jump(1) + Shoot(1)
 
@@ -203,36 +197,24 @@ impl RLTrainingState {
         info!("RL Agent initialized with simple neural network");
     }
 
-    /// Convert bot observation to state vector
-    pub fn observation_to_state(&self, obs: &BotObservation) -> Vec<f32> {
-        let mut state = Vec::with_capacity(12);
-
+    /// Convert observation to state vector
+    pub fn observation_to_state(&self, obs: &RLObservation) -> Vec<f32> {
+        let mut state = Vec::with_capacity(8);
         // Position normalized to [-1, 1] range (assuming game world is ~20x20)
         state.extend_from_slice(&[
             obs.position.x / 10.0,
             obs.position.y / 10.0,
             obs.position.z / 10.0,
         ]);
-
-        // Rotation as quaternion (already normalized)
-        state.extend_from_slice(&[
-            obs.rotation.x,
-            obs.rotation.y,
-            obs.rotation.z,
-            obs.rotation.w,
-        ]);
-
         // Velocity normalized
         state.extend_from_slice(&[
             obs.velocity.x / 10.0,
             obs.velocity.y / 10.0,
             obs.velocity.z / 10.0,
         ]);
-
         // Health normalized
         state.push(obs.health / obs.max_health);
         state.push(obs.max_health / 100.0);
-
         state
     }
 
@@ -245,8 +227,8 @@ impl RLTrainingState {
     /// Calculate reward based on game state and actions
     pub fn calculate_reward(
         &self,
-        current_obs: &BotObservation,
-        previous_obs: Option<&BotObservation>,
+        current_obs: &RLObservation,
+        previous_obs: Option<&RLObservation>,
         actions: &PlayerActionSet,
     ) -> f32 {
         let mut reward = 0.0;
@@ -302,14 +284,14 @@ impl RLTrainingState {
 
     /// Get action from Q-network with epsilon-greedy exploration
     pub fn get_action(&self, state: &[f32]) -> PlayerActionSet {
-        if thread_rng().r#gen::<f32>() < self.epsilon {
+        let mut rng = rng();
+        if rng.random::<f32>() < self.epsilon {
             // Random exploration
-            let mut rng = thread_rng();
             PlayerActionSet {
-                movement: Vec2::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)),
-                look: Vec2::new(rng.gen_range(-1.0..1.0), rng.gen_range(-1.0..1.0)),
-                jump: rng.r#gen::<f32>() < 0.1,
-                shoot: rng.r#gen::<f32>() < 0.2,
+                movement: Vec2::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)),
+                look: Vec2::new(rng.random_range(-1.0..1.0), rng.random_range(-1.0..1.0)),
+                jump: rng.random::<f32>() < 0.1,
+                shoot: rng.random::<f32>() < 0.2,
             }
         } else {
             // Use Q-network to predict action
@@ -340,44 +322,11 @@ impl RLTrainingState {
         // For now, just update the step counter
         self.training_step += 1;
     }
-
-    /// Update target network (copy from main network)
-    pub fn update_target_network(&mut self) {
-        if let Some(q_network) = &self.q_network {
-            self.target_network = Some(q_network.clone());
-        }
-    }
-
-    /// Update exploration rate
-    pub fn update_epsilon(&mut self) {
-        self.epsilon = (self.epsilon * self.epsilon_decay).max(self.epsilon_min);
-    }
-
-    /// Set training enabled/disabled
-    pub fn set_training_enabled(&mut self, enabled: bool) {
-        self.training_enabled = enabled;
-        info!(
-            "RL Training {}",
-            if enabled { "enabled" } else { "disabled" }
-        );
-    }
-
-    /// Reset training state
-    pub fn reset_training(&mut self) {
-        self.experience_buffer.clear();
-        self.last_observations.clear();
-        self.last_actions.clear();
-        self.training_step = 0;
-        self.episode_count = 0;
-        self.epsilon = 1.0;
-        self.initialize();
-        info!("RL Training state reset");
-    }
 }
 
-/// System to collect observations and train RL agents
+/// System to collect observations and train RL agents (minimal, single bot)
 fn collect_rl_observations(
-    bot_query: Query<(&AIBot, &Position, &Rotation, &LinearVelocity, &Health), With<PlayerId>>,
+    bot_query: Query<(&Position, &LinearVelocity)>,
     mut rl_state: ResMut<RLTrainingState>,
 ) {
     // Initialize RL agent if not done
@@ -385,101 +334,61 @@ fn collect_rl_observations(
         rl_state.initialize();
     }
 
-    for (bot, position, rotation, velocity, health) in bot_query.iter() {
-        // Only process external agent bots for RL training
-        if bot.bot_type != BotType::ExternalAgent {
-            continue;
-        }
-
-        let observation = BotObservation {
+    // Assume only one bot/player for RL
+    if let Some((position, velocity)) = bot_query.iter().next() {
+        // For now, hardcode health
+        let observation = RLObservation {
             position: position.0,
-            rotation: rotation.0,
             velocity: velocity.0,
-            health: health.current,
-            max_health: health.max,
-            current_actions: vec![],
+            health: 100.0,
+            max_health: 100.0,
         };
 
         // Calculate reward and store experience if we have previous data
-        if let (Some(prev_obs), Some(prev_action)) = (
-            rl_state.last_observations.get(&bot.bot_id),
-            rl_state.last_actions.get(&bot.bot_id),
-        ) {
+        if let (Some(prev_obs), Some(prev_action)) =
+            (&rl_state.last_observation, &rl_state.last_action)
+        {
             let reward = rl_state.calculate_reward(&observation, Some(prev_obs), prev_action);
-
             let experience = Experience {
                 state: rl_state.observation_to_state(prev_obs),
                 action: prev_action.clone(),
                 reward,
                 next_state: rl_state.observation_to_state(&observation),
-                done: health.current <= 0.0,
+                done: observation.health <= 0.0,
             };
-
             rl_state.add_experience(experience);
-
-            if health.current <= 0.0 {
+            if observation.health <= 0.0 {
                 rl_state.episode_count += 1;
                 debug!(
-                    "Episode {} ended for bot {} with reward {:.2}",
-                    rl_state.episode_count, bot.bot_id, reward
+                    "Episode {} ended with reward {:.2}",
+                    rl_state.episode_count, reward
                 );
             }
         }
-
-        rl_state.last_observations.insert(bot.bot_id, observation);
+        rl_state.last_observation = Some(observation);
     }
 }
 
 /// System to train the RL agent
 fn train_rl_agent(mut rl_state: ResMut<RLTrainingState>) {
-    if !rl_state.training_enabled {
-        return;
-    }
-
-    // Perform training step
     rl_state.train_step();
-
-    // Update target network periodically
-    if rl_state.training_step % rl_state.target_update_frequency == 0 {
-        rl_state.update_target_network();
-    }
-
-    // Update exploration rate
-    rl_state.update_epsilon();
-
-    // Log training progress
-    if rl_state.training_step % 100 == 0 && rl_state.training_step > 0 {
-        info!(
-            "RL Training Step {}: Epsilon: {:.3}, Buffer: {}, Episodes: {}",
-            rl_state.training_step,
-            rl_state.epsilon,
-            rl_state.experience_buffer.len(),
-            rl_state.episode_count
-        );
-    }
 }
 
-/// System to apply RL agent actions to external agent bots
+/// System to apply RL agent actions to the single bot (minimal)
 fn apply_rl_actions(
-    mut bot_query: Query<(&AIBot, &mut ActionState<PlayerAction>), With<PlayerId>>,
+    mut bot_query: Query<&mut LinearVelocity>,
     mut rl_state: ResMut<RLTrainingState>,
 ) {
-    for (bot, mut action_state) in bot_query.iter_mut() {
-        // Only control external agent bots
-        if bot.bot_type != BotType::ExternalAgent {
-            continue;
-        }
-
-        // Get current state and predict action
-        if let Some(current_obs) = rl_state.last_observations.get(&bot.bot_id) {
+    if let Some(mut velocity) = bot_query.iter_mut().next() {
+        if let Some(current_obs) = &rl_state.last_observation {
             let state = rl_state.observation_to_state(current_obs);
             let action = rl_state.get_action(&state);
-
-            // Apply actions directly to the ActionState - this is the key interface!
-            action.apply_to_action_state(&mut action_state);
-
+            // Apply movement action directly to velocity
+            let input_direction = Vec3::new(action.movement.x, 0.0, -action.movement.y);
+            let desired_velocity = input_direction * 5.0;
+            velocity.0 = Vec3::new(desired_velocity.x, velocity.0.y, desired_velocity.z);
             // Store action for next experience
-            rl_state.last_actions.insert(bot.bot_id, action);
+            rl_state.last_action = Some(action);
         }
     }
 }

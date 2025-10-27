@@ -1,7 +1,7 @@
-use bevy::prelude::{info, Add, App, Commands, Name, On, Plugin, Res, Startup};
+use bevy::prelude::{Add, App, Commands, Name, On, Plugin, Res, Startup, info};
 use lightyear::prelude::{
-    server::{NetcodeConfig, Start},
     LinkOf, LocalAddr, ReplicationSender, SendUpdatesMode,
+    server::{NetcodeConfig, Start},
 };
 use lightyear::{netcode::NetcodeServer, prelude::server::ServerUdpIo};
 use shared::NetTransport;
@@ -46,7 +46,11 @@ fn startup_server(mut commands: Commands, transport: Res<NetTransport>) {
                 "Server started on {} with protocol_id: {:x}",
                 SERVER_BIND_ADDR, SHARED_SETTINGS.protocol_id
             );
-        } // TODO: Add other transports when implemented
+        }
+        NetTransport::Tcp => {
+            info!("TCP transport is not yet implemented.");
+            // TODO: Implement TCP server logic
+        }
     }
 }
 

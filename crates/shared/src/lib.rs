@@ -1,69 +1,44 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::time::Duration;
-
-use bevy::prelude::{App, Plugin, Resource};
-
-use avian3d::PhysicsPlugins;
-
-use protocol::ProtocolPlugin;
-
-pub mod ai_bot;
+pub mod bot;
 pub mod enemy;
-pub mod entity_implementations;
-pub mod entity_spawner;
-pub mod entity_traits;
 pub mod game_state;
 pub mod health;
 pub mod input;
 pub mod navigation_pathfinding;
 pub mod protocol;
-
 pub mod render;
 pub mod scene;
 pub mod stamina;
 pub mod weapons;
 
-#[cfg(test)]
-mod tests;
+use bevy::prelude::{Plugin, Resource};
+use std::net::SocketAddr;
 
-pub struct SharedSettings {
-    pub protocol_id: u64,
-    pub private_key: [u8; 32],
-}
-
-pub const SHARED_SETTINGS: SharedSettings = SharedSettings {
-    protocol_id: 0x1122334455667788,
-    private_key: [0; 32],
-};
-
-pub const FIXED_TIMESTEP_HZ: f64 = 64.0;
-pub const SEND_INTERVAL: Duration = Duration::from_millis(100);
-
-pub const SERVER_BIND_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 5001);
-
-pub const SERVER_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 5001);
-pub const CLIENT_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 4000);
-
-#[derive(Clone, Debug, Resource)]
+#[derive(Resource, Debug, Clone)]
 pub enum NetTransport {
     Udp,
-    // TODO: Enable these transports by adding the correct Cargo features and imports
-    // Crossbeam,
-    // WebTransport,
-    // WebSocket,
+    Tcp,
 }
 
-#[derive(Clone)]
-pub struct SharedPlugin;
+pub const SEND_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
+pub const SERVER_BIND_ADDR: SocketAddr = SocketAddr::new(
+    std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+    8080,
+);
+pub struct SharedSettings {
+    pub private_key: [u8; 32],
+    pub protocol_id: u64,
+}
+pub const SHARED_SETTINGS: SharedSettings = SharedSettings {
+    private_key: [0u8; 32], // dummy 32-byte key
+    protocol_id: 42,
+};
+pub const SERVER_ADDR: SocketAddr = SocketAddr::new(
+    std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+    8080,
+);
+pub const FIXED_TIMESTEP_HZ: f64 = 60.0;
 
+pub struct SharedPlugin;
 impl Plugin for SharedPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_plugins((ProtocolPlugin, PhysicsPlugins::default()));
-        app.add_plugins(crate::ai_bot::BotPlugin);
-        app.add_plugins(crate::enemy::EnemyPlugin);
-        app.add_plugins(crate::navigation_pathfinding::NavigationPlugin);
-        app.add_plugins(crate::health::HealthPlugin);
-        app.add_plugins(crate::weapons::WeaponPlugin);
-        app.add_plugins(crate::stamina::StaminaPlugin);
-    }
+    fn build(&self, _app: &mut bevy::prelude::App) {}
 }

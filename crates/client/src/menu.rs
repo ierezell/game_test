@@ -1,11 +1,10 @@
-use crate::game_state::GameState;
+use bevy::prelude::{
+    Click, CommandsStatesExt, Entity, IntoScheduleConfigs, On, OnEnter, Pointer, TextFont, debug,
+    info,
+};
+use shared::game_state::GameState;
 
-use bevy::log::debug;
-use bevy::log::info;
-use bevy::prelude::IntoScheduleConfigs;
-
-use bevy::prelude::OnEnter;
-use bevy::prelude::{Click, CommandsStatesExt, Entity, Pointer, TextFont, On};
+// Removed unused bevy log and prelude imports
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
@@ -21,7 +20,7 @@ impl Plugin for MenuPlugin {
         app.add_systems(OnEnter(GameState::MainMenu), spawn_main_menu_ui);
         app.add_systems(OnEnter(GameState::MainMenu), spawn_menu_camera);
         app.add_systems(
-            OnEnter(GameState::ConnectingRemote),
+            OnEnter(GameState::Connecting),
             (despawn_main_menu_buttons, on_client_begin_connecting).chain(),
         );
         app.add_systems(OnEnter(GameState::Loading), on_client_begin_loading);
@@ -100,7 +99,7 @@ fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<Ma
                 .insert(ConnectButton)
                 .observe(|_click: On<Pointer<Click>>, mut commands: Commands| {
                     debug!("Connect button clicked, transitioning to ConnectingRemote");
-                    commands.set_state(GameState::ConnectingRemote);
+                    commands.set_state(GameState::Connecting);
                 });
         });
 }

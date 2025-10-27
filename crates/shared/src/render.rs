@@ -1,17 +1,40 @@
-use super::entity_implementations::*;
-use super::entity_spawner::*;
 use crate::enemy::Enemy;
-use crate::scene::{FloorMarker, WallMarker};
-
+use crate::scene::{FloorMarker, ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS, WallMarker};
 use avian3d::prelude::Position;
+
+use crate::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
+use crate::protocol::{PlayerColor, PlayerId};
 use bevy::{
     color::palettes::css::WHITE,
     light::{AmbientLight, DirectionalLight},
     prelude::{
-        Add, Assets, Commands, Entity, Mesh, Mesh3d, Name, On, Query, ResMut, StandardMaterial,
-        Transform, Vec3, Without, debug, default,
+        Add, Assets, Capsule3d, Commands, Cuboid, Dir3, Entity, Mesh, Mesh3d, MeshMaterial3d, Name,
+        On, Plane3d, Query, ResMut, StandardMaterial, Transform, Vec2, Vec3, Without, debug,
+        default,
     },
 };
+
+pub fn add_player_visuals(
+    trigger: On<Add, PlayerId>,
+    player_query: Query<(Entity, &Position, &PlayerColor), Without<Mesh3d>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut commands: Commands,
+) {
+    let Ok((entity, position, color)) = player_query.get(trigger.entity) else {
+        debug!("Failed to get player entity for visual addition.");
+        return;
+    };
+
+    commands.entity(entity).insert((
+        Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: color.0,
+            ..default()
+        })),
+    ));
+    debug!("Added player visuals at position: {:?}", position.0);
+}
 
 /// Observer function for adding floor visuals using entity system
 pub fn add_floor_visuals(
@@ -21,19 +44,17 @@ pub fn add_floor_visuals(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let Ok((entity, _position)) = floor_query.get(trigger.entity) else {
+    let Ok((_entity, _position)) = floor_query.get(trigger.entity) else {
         debug!("Failed to get floor entity for visual addition.");
         return;
     };
-
-    let floor_entity = FloorEntity::default();
-    add_entity_visuals(
-        &floor_entity,
-        &mut commands,
-        entity,
-        &mut meshes,
-        &mut materials,
-    );
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d {
+            normal: Dir3::Y,
+            half_size: Vec2::splat(50.0),
+        })),
+        MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
+    ));
 }
 
 /// Observer function for adding wall visuals using entity system
@@ -44,30 +65,25 @@ pub fn add_wall_visuals(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let Ok((entity, _position, name)) = wall_query.get(trigger.entity) else {
+    let Ok((_entity, _position, _name)) = wall_query.get(trigger.entity) else {
         debug!("Failed to get wall entity for visual addition.");
         return;
     };
 
-    // Determine wall type from name
-    let wall_type = if name.as_str().contains("North") {
-        WallType::North
-    } else if name.as_str().contains("South") {
-        WallType::South
-    } else if name.as_str().contains("East") {
-        WallType::East
-    } else {
-        WallType::West
-    };
+    for (entity, _position, name) in wall_query.iter() {
+        // Determine wall type from name and create appropriate physics bundle
+        let size = if name.as_str().contains("North") || name.as_str().contains("South") {
+            Vec3::new(ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS)
+        } else {
+            Vec3::new(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE)
+        };
 
-    let wall_entity = WallEntity::new(wall_type);
-    add_entity_visuals(
-        &wall_entity,
-        &mut commands,
-        entity,
-        &mut meshes,
-        &mut materials,
-    );
+        commands.entity(entity).insert((
+            Mesh3d(meshes.add(Cuboid { half_size: size })),
+            MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
+        ));
+        debug!("Added wall physics to entity {:?} ({})", entity, name);
+    }
 }
 
 /// Observer function for adding enemy visuals using entity system
@@ -78,28 +94,15 @@ pub fn add_enemy_visuals(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let Ok((entity, _position, name, enemy_data)) = enemy_query.get(trigger.entity) else {
+    let Ok((_entity, _position, name, _enemy_data)) = enemy_query.get(trigger.entity) else {
         debug!("Failed to get enemy entity for visual addition.");
         return;
     };
 
-    // Determine enemy type from health/stats or name
-    let enemy_type = if enemy_data.max_health > 120.0 {
-        EnemyType::Heavy
-    } else if enemy_data.move_speed > 4.0 {
-        EnemyType::Fast
-    } else {
-        EnemyType::Basic
-    };
-
-    let enemy_entity = EnemyEntity::new(enemy_type);
-    add_entity_visuals(
-        &enemy_entity,
-        &mut commands,
-        entity,
-        &mut meshes,
-        &mut materials,
-    );
+    commands.spawn((
+        Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
+        MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
+    ));
 
     debug!("Added visuals for enemy: {}", name.as_str());
 }

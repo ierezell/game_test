@@ -1,5 +1,8 @@
 use avian3d::physics_transform::Position;
-use bevy::prelude::*;
+use bevy::prelude::{
+    App, Commands, Component, Entity, Message, MessageReader, MessageWriter, Name, Plugin, Query,
+    Res, Time, Update, Vec2, Vec3, With, debug, info,
+};
 use serde::{Deserialize, Serialize};
 
 pub struct HealthPlugin;
@@ -11,7 +14,7 @@ impl Plugin for HealthPlugin {
             .add_message::<DeathEvent>()
             .add_message::<RespawnEvent>()
             .add_systems(
-                FixedUpdate,
+                Update,
                 (
                     process_damage_events,
                     process_heal_events,
@@ -431,13 +434,6 @@ pub fn add_health_with_regen(
         regen_rate,
         regen_delay,
     ));
-}
-
-/// Helper function to make an entity respawnable
-pub fn make_respawnable(commands: &mut Commands, entity: Entity, respawn_time: f32) {
-    commands
-        .entity(entity)
-        .insert(Respawnable::new(respawn_time));
 }
 
 /// Helper function to apply damage to an entity

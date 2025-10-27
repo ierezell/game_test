@@ -1,21 +1,13 @@
+use avian3d::prelude::Position;
 use bevy::log::debug;
 use bevy::prelude::{
     App, AppExtStates, Commands, CommandsStatesExt, Entity, OnExit, Or, Plugin, Query, Res, State,
-    States, Update, With,
+    Update, With,
 };
-use avian3d::prelude::Position;
 use lightyear::prelude::{Confirmed, Controlled, Predicted, Replicated};
+use shared::game_state::GameState;
 use shared::protocol::PlayerId;
 use shared::scene::{FloorMarker, WallMarker};
-
-#[derive(States, Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub enum GameState {
-    #[default]
-    MainMenu,
-    ConnectingRemote, // Connection request sent to the server,
-    Loading,          // Connected and waiting for scene and player to be replicated
-    Playing,          // Scene and player are loaded, ready to play
-}
 
 pub struct GameLifecyclePlugin;
 

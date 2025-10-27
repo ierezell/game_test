@@ -32,5 +32,6 @@
         "**/target/**": true,
         "**/build": true,
         "node_modules": true
-    }
+    },
+    "rust-analyzer.cargo.autoreload": true,
 }

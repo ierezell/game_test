@@ -5,31 +5,22 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
-candle-core = { git = "https://github.com/huggingface/candle.git", features = [
-    "cuda",
-] }
-candle-nn = { git = "https://github.com/huggingface/candle.git", features = [
-    "cuda",
-] }
-candle-transformers = { git = "https://github.com/huggingface/candle.git", features = [
-    "cuda",
-] }
-candle-examples = { git = "https://github.com/huggingface/candle.git" }
-candle-onnx = { git = "https://github.com/huggingface/candle.git" }
+candle-core = { version = "0.9.1", features = ["cuda"] }
+candle-nn = { version = "0.9.1", features = ["cuda"] }
+candle-transformers = { version = "0.9.1", features = ["cuda"] }
+candle-examples = { version = "0.9.1", features = ["cuda"] }
+candle-onnx = "0.9.1"
 hf-hub = "0.4.3"
-tokenizers = "0.21.4"
 serde = { workspace = true }
 serde_json = "1.0"
 ort = { version = "1.16.3", features = ["cuda", "tensorrt"] }
-ndarray = "0.15"
 num_cpus = "1.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+ndarray = "0.15.6"
+tokenizers = "0.21.4"
 
 
 [[bin]]
 name = "llm-test"
 path = "src/main.rs"
-
-[lints]
-workspace = true

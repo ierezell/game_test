@@ -26,15 +26,14 @@ pub const PLAYER_CAPSULE_RADIUS: f32 = 0.5;
 pub const PLAYER_CAPSULE_HEIGHT: f32 = 1.5;
 pub const MAX_SPEED: f32 = 5.0;
 pub const JUMP_HEIGHT: f32 = 1.5;
-pub const MOUSE_SENSITIVITY: f32 = 0.005;
 const LOOK_DEADZONE_SQUARED: f32 = 0.000001; // 0.001^2
+pub const MOUSE_SENSITIVITY: f32 = 0.0025;
 const MOVEMENT_DEADZONE_SQUARED: f32 = 0.000001;
 pub const PITCH_LIMIT_RADIANS: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
 pub const ROTATION_SMOOTHING_RATE: f32 = 25.0; // Higher = more responsive
 
 pub fn shared_player_movement(
     action_state: &ActionState<PlayerAction>,
-
     rotation: &mut Rotation,
     velocity: &mut LinearVelocity,
 ) {
@@ -47,12 +46,10 @@ pub fn shared_player_movement(
     update_player_velocity(velocity, rotation, move_input);
 }
 
-/// Enhanced player movement with stamina system integration
 pub fn shared_player_movement_with_stamina(
     action_state: &ActionState<PlayerAction>,
     rotation: &mut Rotation,
     velocity: &mut LinearVelocity,
-    stamina_effects: Option<&crate::stamina::StaminaEffects>,
 ) {
     let move_input = get_movement_input(action_state);
 
@@ -60,14 +57,7 @@ pub fn shared_player_movement_with_stamina(
         update_player_rotation(rotation, mouse_delta);
     }
 
-    // Apply stamina effects to movement
-    let effective_speed = if let Some(effects) = stamina_effects {
-        MAX_SPEED * effects.movement_multiplier
-    } else {
-        MAX_SPEED
-    };
-
-    update_player_velocity_with_speed(velocity, rotation, move_input, effective_speed);
+    update_player_velocity(velocity, rotation, move_input);
 }
 
 #[inline]
@@ -102,19 +92,9 @@ fn update_player_rotation(rotation: &mut Rotation, mouse_delta: Vec2) {
 }
 
 fn update_player_velocity(velocity: &mut LinearVelocity, rotation: &Rotation, move_input: Vec2) {
-    update_player_velocity_with_speed(velocity, rotation, move_input, MAX_SPEED);
-}
-
-fn update_player_velocity_with_speed(
-    velocity: &mut LinearVelocity,
-    rotation: &Rotation,
-    move_input: Vec2,
-    speed: f32,
-) {
     let yaw_rotation = rotation.0;
-
     let input_direction = Vec3::new(move_input.x, 0.0, -move_input.y);
     let world_direction = yaw_rotation * input_direction;
-    let desired_velocity = world_direction * speed;
+    let desired_velocity = world_direction * MAX_SPEED;
     velocity.0 = Vec3::new(desired_velocity.x, velocity.0.y, desired_velocity.z);
 }

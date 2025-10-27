@@ -7,4 +7,5 @@ pub enum GameState {
     Loading,
     Spawning,
     Playing,
+    Connecting,
 }

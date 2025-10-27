@@ -13,11 +13,14 @@ use candle_transformers::models::{
     quantized_phi::ModelWeights as QuantizedPhi,
     quantized_phi3::ModelWeights as QuantizedPhi3,
     quantized_qwen2::ModelWeights as QuantizedQwen2,
-    quantized_qwen3::ModelWeights as QuantizedQwen3,
     qwen2::{Config as Qwen2Config, Model as Qwen2},
 };
+use std::io::Write;
+
 use candle_transformers::quantized_var_builder::VarBuilder as QVarBuilder;
 use hf_hub::{Repo, RepoType, api::sync::Api};
+use ndarray::{Array, CowArray, IxDyn};
+use ort::{Environment, SessionBuilder};
 use serde_json::Value;
 use std::path::Path;
 use tokenizers::Tokenizer;
@@ -30,7 +33,7 @@ pub enum ModelArchitecture {
     Phi,
     Phi3,
     Qwen2,
-    Qwen3,
+
     Unknown(String),
 }
 
@@ -43,7 +46,7 @@ impl ModelArchitecture {
                     s if s.contains("mistral") => return Self::Mistral,
                     s if s.contains("phi") && s.contains("3") => return Self::Phi3,
                     s if s.contains("phi") => return Self::Phi,
-                    s if s.contains("qwen3") => return Self::Qwen3,
+
                     s if s.contains("qwen") => return Self::Qwen2,
                     _ => return Self::Unknown(arch_str.to_string()),
                 }
@@ -57,7 +60,7 @@ impl ModelArchitecture {
                 "mistral" => return Self::Mistral,
                 "phi" => return Self::Phi,
                 "phi3" => return Self::Phi3,
-                "qwen3" => return Self::Qwen3,
+
                 "qwen2" => return Self::Qwen2,
                 _ => return Self::Unknown(model_type.to_string()),
             }
@@ -74,8 +77,6 @@ impl ModelArchitecture {
                 return Self::Phi3;
             } else if name_lower.contains("phi") {
                 return Self::Phi;
-            } else if name_lower.contains("qwen3") {
-                return Self::Qwen3;
             } else if name_lower.contains("qwen") {
                 return Self::Qwen2;
             }
@@ -121,7 +122,7 @@ pub enum UnifiedModel {
     QuantizedMistral(QuantizedMistral),
     QuantizedLlama(QuantizedLlama),
     QuantizedQwen2(QuantizedQwen2),
-    QuantizedQwen3(QuantizedQwen3),
+
     Onnx(OnnxModel),
 }
 
@@ -139,7 +140,6 @@ impl UnifiedModel {
             Self::QuantizedMistral(m) => m.forward(xs, pos),
             Self::QuantizedLlama(m) => m.forward(xs, pos),
             Self::QuantizedQwen2(m) => m.forward(xs, pos),
-            Self::QuantizedQwen3(m) => m.forward(xs, pos),
 
             Self::Onnx(m) => m.forward(xs, pos),
         }
@@ -157,7 +157,7 @@ impl UnifiedModel {
             Self::QuantizedMistral(m) => m.clear_kv_cache(),
             Self::QuantizedLlama(_) => {}
             Self::QuantizedQwen2(_) => {}
-            Self::QuantizedQwen3(_) => {}
+
             Self::Onnx(_) => {}
         }
     }
@@ -170,8 +170,6 @@ pub struct OnnxModel {
 
 impl OnnxModel {
     pub fn load(model_path: &Path, device: &Device) -> Result<Self> {
-        use ort::{Environment, SessionBuilder};
-
         // Initialize ORT environment
         let env = std::sync::Arc::new(
             Environment::builder()
@@ -201,7 +199,6 @@ impl OnnxModel {
 
         // ONNX models typically expect int64 input for token IDs
         let input_data: Vec<i64> = if shape.rank() == 2 {
-            // Batch dimension present, flatten and convert to i64
             xs_cpu
                 .flatten_all()?
                 .to_vec1::<u32>()?
@@ -209,7 +206,6 @@ impl OnnxModel {
                 .map(|x| x as i64)
                 .collect()
         } else {
-            // Single dimension, convert to i64
             xs_cpu
                 .to_vec1::<u32>()?
                 .into_iter()
@@ -217,9 +213,6 @@ impl OnnxModel {
                 .collect()
         };
 
-        use ndarray::{Array, CowArray, IxDyn};
-
-        // Create proper input shape for ONNX
         let input_shape = if shape.rank() == 2 {
             vec![shape.dims()[0], shape.dims()[1]]
         } else {
@@ -229,7 +222,6 @@ impl OnnxModel {
         let array = Array::from_shape_vec(IxDyn(&input_shape), input_data)
             .map_err(|e| candle_core::Error::Msg(format!("Failed to create ndarray: {}", e)))?;
         let cow_array = CowArray::from(array);
-
         let input_tensor = ort::Value::from_array(self.session.allocator(), &cow_array)
             .map_err(|e| candle_core::Error::Msg(format!("ONNX input error: {}", e)))?;
 
@@ -248,7 +240,6 @@ impl OnnxModel {
                 .to_slice()
                 .ok_or_else(|| candle_core::Error::Msg("Failed to get output slice".to_string()))?;
 
-            // Create output tensor with proper shape
             let output_tensor = Tensor::from_slice(output_slice, shape, &self.device)?;
             Ok(output_tensor)
         } else {
@@ -325,8 +316,6 @@ impl AutoModel {
         } else if let Ok(tokenizer_path) = repo.get("tokenizer.model") {
             Tokenizer::from_file(tokenizer_path).map_err(E::msg)?
         } else {
-            // Create a basic tokenizer if no tokenizer file found
-            // This is a fallback for GGUF models that might not have separate tokenizer files
             return Err(anyhow!(
                 "No tokenizer file found (tokenizer.json or tokenizer.model)"
             ));
@@ -505,47 +494,6 @@ impl AutoModel {
                 let model = Qwen2::new(&config, vb)?;
                 Ok(UnifiedModel::Qwen2(model))
             }
-            ModelArchitecture::Qwen3 => {
-                // Qwen3 config needs to be adapted for Qwen2 model loading
-                let config_value: Value = serde_json::from_str(&config_data)?;
-
-                // Create a Qwen2Config with Qwen3's actual parameters
-                // Qwen3 has head_dim: 128, so we need to adjust the hidden_size calculation
-                let head_dim = config_value["head_dim"].as_u64().unwrap_or(128) as usize;
-                let num_attention_heads =
-                    config_value["num_attention_heads"].as_u64().unwrap_or(16) as usize;
-                let adjusted_hidden_size = head_dim * num_attention_heads; // 128 * 16 = 2048
-
-                let qwen2_config = Qwen2Config {
-                    vocab_size: config_value["vocab_size"].as_u64().unwrap_or(151936) as usize,
-                    hidden_size: adjusted_hidden_size, // Use calculated size to match tensor dimensions
-                    intermediate_size: config_value["intermediate_size"].as_u64().unwrap_or(3072)
-                        as usize,
-                    num_hidden_layers: config_value["num_hidden_layers"].as_u64().unwrap_or(28)
-                        as usize,
-                    num_attention_heads: num_attention_heads,
-                    num_key_value_heads: config_value["num_key_value_heads"].as_u64().unwrap_or(8)
-                        as usize,
-                    max_position_embeddings: config_value["max_position_embeddings"]
-                        .as_u64()
-                        .unwrap_or(40960) as usize,
-                    sliding_window: 4096, // Default sliding window
-                    max_window_layers: config_value["max_window_layers"].as_u64().unwrap_or(28)
-                        as usize,
-                    use_sliding_window: config_value["use_sliding_window"]
-                        .as_bool()
-                        .unwrap_or(false),
-                    rope_theta: config_value["rope_theta"].as_f64().unwrap_or(1000000.0),
-                    rms_norm_eps: config_value["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f64,
-                    hidden_act: candle_nn::Activation::Silu, // Default activation
-                    tie_word_embeddings: config_value["tie_word_embeddings"]
-                        .as_bool()
-                        .unwrap_or(true),
-                };
-
-                let model = Qwen2::new(&qwen2_config, vb)?;
-                Ok(UnifiedModel::Qwen2(model))
-            }
             ModelArchitecture::Unknown(name) => Err(anyhow!(
                 "Unsupported architecture for SafeTensors: {}",
                 name
@@ -596,11 +544,6 @@ impl AutoModel {
             ModelArchitecture::Qwen2 => {
                 let weights = QuantizedQwen2::from_gguf(model, &mut file, device)?;
                 Ok(UnifiedModel::QuantizedQwen2(weights))
-            }
-            ModelArchitecture::Qwen3 => {
-                // Use QuantizedQwen3 for GGUF format
-                let weights = QuantizedQwen3::from_gguf(model, &mut file, device)?;
-                Ok(UnifiedModel::QuantizedQwen3(weights))
             }
             ModelArchitecture::Unknown(name) => {
                 Err(anyhow!("Unsupported architecture for GGUF: {}", name))
@@ -675,8 +618,6 @@ impl AutoModel {
 
     /// Main generation loop with GPU optimizations
     fn run(&mut self, prompt: &str, sample_len: usize) -> Result<()> {
-        use std::io::Write;
-
         self.model.clear_kv_cache();
         self.tokenizer.clear();
 

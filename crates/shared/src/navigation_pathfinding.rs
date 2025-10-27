@@ -332,3 +332,118 @@ pub fn create_dynamic_obstacle(nav_grid: &mut ResMut<NavigationGrid>, position: 
 pub fn remove_dynamic_obstacle(nav_grid: &mut ResMut<NavigationGrid>, position: Vec3) {
     nav_grid.remove_obstacle(position);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_navigation_grid_creation() {
+        let grid = NavigationGrid::default();
+
+        assert_eq!(grid.size, UVec2::new(64, 64));
+        assert_eq!(grid.cell_size, 0.5);
+        assert!(!grid.is_built);
+        assert!(grid.obstacles.is_empty());
+    }
+
+    #[test]
+    fn test_world_to_grid_conversion() {
+        let grid = NavigationGrid::default();
+
+        // Test center position
+        let center_world = Vec3::ZERO;
+        let center_grid = grid.world_to_grid(center_world);
+        assert_eq!(center_grid, IVec2::new(32, 32)); // Center of 64x64 grid
+
+        // Test positive position
+        let pos_world = Vec3::new(5.0, 0.0, 5.0);
+        let pos_grid = grid.world_to_grid(pos_world);
+        assert_eq!(pos_grid, IVec2::new(42, 42)); // 32 + (5.0 / 0.5) = 42
+
+        // Test negative position
+        let neg_world = Vec3::new(-5.0, 0.0, -5.0);
+        let neg_grid = grid.world_to_grid(neg_world);
+        assert_eq!(neg_grid, IVec2::new(22, 22)); // 32 - (5.0 / 0.5) = 22
+    }
+
+    #[test]
+    fn test_grid_to_world_conversion() {
+        let grid = NavigationGrid::default();
+
+        // Test center position
+        let center_grid = IVec2::new(32, 32);
+        let center_world = grid.grid_to_world(center_grid);
+        assert!((center_world.x - 0.0).abs() < 0.001);
+        assert!((center_world.z - 0.0).abs() < 0.001);
+
+        // Test positive position
+        let pos_grid = IVec2::new(42, 42);
+        let pos_world = grid.grid_to_world(pos_grid);
+        assert!((pos_world.x - 5.0).abs() < 0.001);
+        assert!((pos_world.z - 5.0).abs() < 0.001);
+
+        // Test negative position
+        let neg_grid = IVec2::new(22, 22);
+        let neg_world = grid.grid_to_world(neg_grid);
+        assert!((neg_world.x - (-5.0)).abs() < 0.001);
+        assert!((neg_world.z - (-5.0)).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_navigation_grid_walkability() {
+        let mut grid = NavigationGrid::default();
+
+        // Initially all positions should be walkable
+        assert!(grid.is_walkable(IVec2::new(10, 10)));
+        assert!(grid.is_walkable(IVec2::new(50, 50)));
+
+        // Add some obstacles
+        grid.obstacles.insert(IVec2::new(10, 10), true);
+        grid.obstacles.insert(IVec2::new(50, 50), true);
+
+        // Now those positions should not be walkable
+        assert!(!grid.is_walkable(IVec2::new(10, 10)));
+        assert!(!grid.is_walkable(IVec2::new(50, 50)));
+
+        // But nearby positions should still be walkable
+        assert!(grid.is_walkable(IVec2::new(11, 10)));
+        assert!(grid.is_walkable(IVec2::new(10, 11)));
+
+        // Out of bounds should not be walkable
+        assert!(!grid.is_walkable(IVec2::new(-1, 0)));
+        assert!(!grid.is_walkable(IVec2::new(0, -1)));
+        assert!(!grid.is_walkable(IVec2::new(64, 0)));
+        assert!(!grid.is_walkable(IVec2::new(0, 64)));
+    }
+
+    #[test]
+    fn test_navigation_agent_creation() {
+        let agent = NavigationAgent::default();
+
+        assert!(agent.current_path.is_empty());
+        assert_eq!(agent.path_index, 0);
+        assert!(agent.target_position.is_none());
+        assert_eq!(agent.movement_speed, 3.0);
+        assert!(!agent.pathfinding_timer.is_finished());
+    }
+
+    #[test]
+    fn test_navigation_agent_custom_speed() {
+        let agent = NavigationAgent {
+            movement_speed: 5.0,
+            ..default()
+        };
+
+        assert_eq!(agent.movement_speed, 5.0);
+    }
+
+    #[test]
+    fn test_navigation_mesh_marker_component() {
+        // Test that the marker component can be created
+        let _marker = NavigationMeshMarker;
+
+        // This is mainly to ensure the component compiles and can be used
+        // The actual functionality is tested through integration
+    }
+}

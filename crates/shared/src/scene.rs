@@ -7,6 +7,7 @@ use bevy::prelude::{
     Add, Bundle, Color, Commands, Component, Entity, Name, On, Query, Without, debug,
 };
 use serde::{Deserialize, Serialize};
+
 pub const ROOM_SIZE: f32 = 20.0;
 pub const WALL_HEIGHT: f32 = 3.0;
 pub const WALL_THICKNESS: f32 = 0.5;
@@ -14,12 +15,6 @@ pub const FLOOR_THICKNESS: f32 = 1.0;
 
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct FloorMarker;
-
-#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct WallMarker;
-
-#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct CeilingMarker;
 
 #[derive(Bundle)]
 pub struct FloorPhysicsBundle {
@@ -31,12 +26,31 @@ pub struct FloorPhysicsBundle {
 impl Default for FloorPhysicsBundle {
     fn default() -> Self {
         Self {
-            collider: Collider::cuboid(ROOM_SIZE, FLOOR_THICKNESS, ROOM_SIZE),
+            // Use proper half-extents for cuboid collider
+            collider: Collider::cuboid(ROOM_SIZE, FLOOR_THICKNESS / 2.0, ROOM_SIZE),
             rigid_body: RigidBody::Static,
             restitution: Restitution::ZERO,
         }
     }
 }
+
+impl FloorPhysicsBundle {
+    pub fn observer(
+        _trigger: On<Add, FloorMarker>,
+        floor_query: Query<Entity>,
+        mut commands: Commands,
+    ) {
+        for entity in floor_query.iter() {
+            commands
+                .entity(entity)
+                .insert(FloorPhysicsBundle::default());
+            debug!("Added floor physics to entity {:?}", entity);
+        }
+    }
+}
+
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct WallMarker;
 
 #[derive(Bundle)]
 pub struct WallPhysicsBundle {
@@ -46,9 +60,36 @@ pub struct WallPhysicsBundle {
 
 impl Default for WallPhysicsBundle {
     fn default() -> Self {
+        // Default to north/south wall dimensions
+        Self::new(ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS)
+    }
+}
+
+impl WallPhysicsBundle {
+    /// Create a wall physics bundle with the correct dimensions for the wall type
+    pub fn new(width: f32, height: f32, depth: f32) -> Self {
         Self {
-            collider: Collider::cuboid(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE),
+            collider: Collider::cuboid(width / 2.0, height / 2.0, depth / 2.0),
             rigid_body: RigidBody::Static,
+        }
+    }
+    // TODO: Add it but as a trait and then as a derive
+    pub fn observer(
+        _trigger: On<Add, WallMarker>,
+        wall_query: Query<(Entity, &Name), Without<Collider>>,
+        mut commands: Commands,
+    ) {
+        for (entity, name) in wall_query.iter() {
+            // Determine wall type from name and create appropriate physics bundle
+            let physics_bundle =
+                if name.as_str().contains("North") || name.as_str().contains("South") {
+                    WallPhysicsBundle::new(ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS)
+                } else {
+                    WallPhysicsBundle::new(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE)
+                };
+
+            commands.entity(entity).insert(physics_bundle);
+            debug!("Added wall physics to entity {:?} ({})", entity, name);
         }
     }
 }
@@ -80,31 +121,9 @@ impl Default for PlayerPhysicsBundle {
     }
 }
 
+/// Generate a unique color from an ID using the golden ratio for good distribution
+/// This creates visually distinct colors for different entities
 pub fn color_from_id(id: u64) -> Color {
-    let hue = (id as f32 * 137.508) % 360.0;
+    let hue = (id as f32 * 137.508) % 360.0; // Golden ratio * 360
     Color::hsl(hue, 0.8, 0.6)
-}
-
-pub fn add_floor_physics(
-    _trigger: On<Add, FloorMarker>,
-    floor_query: Query<Entity>,
-    mut commands: Commands,
-) {
-    for entity in floor_query.iter() {
-        commands
-            .entity(entity)
-            .insert(FloorPhysicsBundle::default());
-        debug!("Added floor physics to entity {:?}", entity);
-    }
-}
-
-pub fn add_wall_physics(
-    _trigger: On<Add, WallMarker>,
-    wall_query: Query<(Entity, &Name), Without<Collider>>,
-    mut commands: Commands,
-) {
-    for (entity, name) in wall_query.iter() {
-        commands.entity(entity).insert(WallPhysicsBundle::default());
-        debug!("Added wall physics to entity {:?} ({})", entity, name);
-    }
 }

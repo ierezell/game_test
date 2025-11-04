@@ -4,6 +4,9 @@ use bevy::prelude::States;
 pub enum GameState {
     #[default]
     MainMenu,
+    HostingLobby,
+    JoiningGame,
+    InLobby,
     Loading,
     Spawning,
     Playing,

@@ -1,4 +1,4 @@
-use crate::app::LocalPlayerId;
+use crate::LocalPlayerId;
 use bevy::log::debug;
 use bevy::prelude::{
     Add, App, Commands, CommandsStatesExt, Entity, Name, On, OnEnter, Plugin, Query, Remove, Res,
@@ -15,10 +15,7 @@ use lightyear::prelude::{
 };
 
 use shared::{SERVER_ADDR, SHARED_SETTINGS};
-// Removed unused net imports
 
-// Removed unused LocalPlayerId import
-// Removed unused GameState import
 pub struct NetworkPlugin;
 
 #[derive(Resource, Default)]
@@ -104,7 +101,7 @@ fn start_connection(
     let netcode_config = NetcodeConfig {
         num_disconnect_packets: 10,
         keepalive_packet_send_rate: 1.0 / 10.0,
-        client_timeout_secs: 3,
+        client_timeout_secs: 10,
         token_expire_secs: 30,
     };
 
@@ -212,8 +209,8 @@ fn handle_client_connected(
         trigger.entity, current_state
     );
     if *current_state.get() == GameState::Connecting {
-        debug!("📥 Transitioning to Loading state");
-        commands.set_state(GameState::Loading);
+        debug!("📥 Transitioning to InLobby state");
+        commands.set_state(GameState::InLobby);
     }
 }
 
@@ -242,5 +239,22 @@ fn conditional_auto_connect(
     if auto_connect.0 && *current_state.get() == GameState::MainMenu {
         debug!("🤖 Auto-connecting (enabled via CLI)...");
         commands.set_state(GameState::Connecting);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::prelude::*;
+
+    #[test]
+    fn test_network_plugin_creates_resources() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(NetworkPlugin);
+
+        // Check that default resources are created
+        assert!(app.world().contains_resource::<ConnectionState>());
+        assert!(app.world().contains_resource::<AutoConnect>());
     }
 }

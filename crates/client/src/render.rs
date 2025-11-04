@@ -14,9 +14,9 @@ use leafwing_input_manager::prelude::ActionState;
 use lightyear::prelude::{Controlled, Predicted};
 
 use shared::input::{MOUSE_SENSITIVITY, PITCH_LIMIT_RADIANS, PLAYER_CAPSULE_HEIGHT, PlayerAction};
+use shared::level::create_static::setup_static_level_default;
 use shared::protocol::PlayerId;
-use shared::render::{add_enemy_visuals, add_floor_visuals, add_wall_visuals, setup_lighting};
-
+use shared::render::add_enemy_visuals;
 pub struct RenderPlugin;
 
 #[derive(Component, Default)]
@@ -30,24 +30,20 @@ struct DebugCamera;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (setup_lighting, spawn_debug_camera));
-        app.add_observer(add_floor_visuals);
-        app.add_observer(add_wall_visuals);
+        app.add_systems(Startup, (setup_static_level_default, spawn_menu_and_debug_camera));
         app.add_observer(add_enemy_visuals);
         app.insert_resource(EguiGlobalSettings {
             auto_create_primary_context: false,
             ..Default::default()
         });
         app.add_plugins((EguiPlugin::default(), WorldInspectorPlugin::default()));
-
-        // Camera systems (merged from camera.rs)
         app.add_observer(spawn_camera_when_player_spawn);
         app.add_systems(PostUpdate, update_camera_transform_from_player);
         app.add_systems(Update, update_camera_pitch);
     }
 }
 
-fn spawn_debug_camera(mut commands: Commands) {
+fn spawn_menu_and_debug_camera(mut commands: Commands) {
     commands.spawn((
         Camera {
             order: 100,
@@ -71,7 +67,7 @@ fn spawn_camera_when_player_spawn(
     >,
     camera_query: Query<Entity, With<PlayerCamera>>,
     mut commands: Commands,
-    local_player_id: Res<crate::app::LocalPlayerId>,
+    local_player_id: Res<crate::LocalPlayerId>,
 ) {
     if !camera_query.is_empty() {
         return;

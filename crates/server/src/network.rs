@@ -24,7 +24,7 @@ fn startup_server(mut commands: Commands, transport: Res<NetTransport>) {
             let netcode_config = NetcodeConfig {
                 num_disconnect_packets: 10,
                 keep_alive_send_rate: 1.0 / 10.0,
-                client_timeout_secs: 3,
+                client_timeout_secs: 10,
                 protocol_id: SHARED_SETTINGS.protocol_id,
                 private_key: SHARED_SETTINGS.private_key,
             };
@@ -49,7 +49,7 @@ fn startup_server(mut commands: Commands, transport: Res<NetTransport>) {
         }
         NetTransport::Tcp => {
             info!("TCP transport is not yet implemented.");
-            // TODO: Implement TCP server logic
+            // TCP support can be added for different network configurations
         }
     }
 }

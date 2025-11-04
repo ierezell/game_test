@@ -6,54 +6,51 @@ use bevy::prelude::{
 };
 use lightyear::prelude::{Confirmed, Controlled, Predicted, Replicated};
 use shared::game_state::GameState;
+use shared::level::create_static::LevelDoneMarker;
 use shared::protocol::PlayerId;
-use shared::scene::{FloorMarker, WallMarker};
 
 pub struct GameLifecyclePlugin;
 
 impl Plugin for GameLifecyclePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnExit(GameState::Playing), cleanup_on_exit_to_menu);
-        app.add_systems(Update, check_assets_loaded);
+
+        app.add_systems(Update, check_level_loaded);
         app.init_state::<GameState>();
     }
 }
 
-fn check_assets_loaded(
+fn check_level_loaded(
     mut commands: Commands,
     current_state: Res<State<GameState>>,
-    floor_query: Query<Entity, With<FloorMarker>>,
-    wall_query: Query<Entity, With<WallMarker>>,
+    level_query: Query<Entity, With<LevelDoneMarker>>,
     controlled_player_query: Query<Entity, (With<PlayerId>, With<Controlled>, With<Predicted>)>,
     all_player_query: Query<Entity, With<PlayerId>>,
     predicted_query: Query<Entity, (With<PlayerId>, With<Predicted>)>,
     controlled_query: Query<Entity, (With<PlayerId>, With<Controlled>)>,
 ) {
     if *current_state.get() == GameState::Loading {
-        let has_floor = !floor_query.is_empty();
-        let has_walls = wall_query.iter().count() >= 4;
+        let has_level = !level_query.is_empty();
         let has_controlled_player = !controlled_player_query.is_empty();
         let has_controlled_player_any = !controlled_query.is_empty();
 
         debug!(
-            "🔍 Loading check - Floor: {}, Walls: {}, All Players: {}, Predicted Players: {}, Controlled Players: {}, Controlled+Predicted: {}",
-            has_floor,
-            wall_query.iter().count(),
+            "🔍 Loading check - Level: {}, All Players: {}, Predicted Players: {}, Controlled Players: {}, Controlled+Predicted: {}",
+            has_level,
             all_player_query.iter().count(),
             predicted_query.iter().count(),
             controlled_query.iter().count(),
             controlled_player_query.iter().count()
         );
 
-        if has_floor && has_walls && (has_controlled_player || has_controlled_player_any) {
+        // Simplified condition - just need any controlled player (level check bypassed)
+        if has_controlled_player || has_controlled_player_any {
             debug!(
-                "🎮 Scene and player loaded! Floor: {}, Walls: {}, Controlled Player: {} - Transitioning to Playing",
-                has_floor,
-                wall_query.iter().count(),
+                "🎮 Player loaded! Controlled Player: {} - Transitioning to Playing (bypassing level check temporarily)",
                 if has_controlled_player {
-                    controlled_player_query.iter().count()
+                    "Predicted+Controlled"
                 } else {
-                    controlled_query.iter().count()
+                    "Controlled"
                 }
             );
             commands.set_state(GameState::Playing);

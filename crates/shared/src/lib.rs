@@ -1,14 +1,10 @@
-pub mod bot;
-pub mod enemy;
+pub mod entities;
 pub mod game_state;
-pub mod health;
 pub mod input;
+pub mod level;
 pub mod navigation_pathfinding;
 pub mod protocol;
 pub mod render;
-pub mod scene;
-pub mod stamina;
-pub mod weapons;
 
 use bevy::prelude::{Plugin, Resource};
 use std::net::SocketAddr;
@@ -40,5 +36,7 @@ pub const FIXED_TIMESTEP_HZ: f64 = 60.0;
 
 pub struct SharedPlugin;
 impl Plugin for SharedPlugin {
-    fn build(&self, _app: &mut bevy::prelude::App) {}
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.add_plugins(protocol::ProtocolPlugin);
+    }
 }

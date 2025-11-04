@@ -1,10 +1,8 @@
 use bevy::prelude::{
-    Click, CommandsStatesExt, Entity, IntoScheduleConfigs, On, OnEnter, Pointer, TextFont, debug,
-    info,
+    Click, CommandsStatesExt, Entity, On, OnEnter, Pointer, TextFont, debug, info,
 };
 use shared::game_state::GameState;
 
-// Removed unused bevy log and prelude imports
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
@@ -13,19 +11,22 @@ use bevy::{
     },
 };
 
-pub struct MenuPlugin;
+pub struct LocalMenuPlugin;
 
-impl Plugin for MenuPlugin {
+impl Plugin for LocalMenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::MainMenu), spawn_main_menu_ui);
-        app.add_systems(OnEnter(GameState::MainMenu), spawn_menu_camera);
         app.add_systems(
-            OnEnter(GameState::Connecting),
-            (despawn_main_menu_buttons, on_client_begin_connecting).chain(),
+            OnEnter(GameState::MainMenu),
+            (spawn_main_menu_ui, spawn_menu_camera),
         );
+        app.add_systems(OnEnter(GameState::Connecting), despawn_main_menu_buttons);
+        app.add_systems(OnEnter(GameState::HostingLobby), despawn_main_menu_buttons);
+        app.add_systems(OnEnter(GameState::JoiningGame), despawn_main_menu_buttons);
         app.add_systems(OnEnter(GameState::Loading), on_client_begin_loading);
-        app.add_systems(OnEnter(GameState::Playing), despawn_main_menu_ui);
-        app.add_systems(OnEnter(GameState::Playing), despawn_menu_camera);
+        app.add_systems(
+            OnEnter(GameState::Playing),
+            (despawn_main_menu_ui, despawn_menu_camera),
+        );
     }
 }
 
@@ -40,7 +41,6 @@ fn despawn_menu_camera(mut commands: Commands, q_menu_camera: Query<Entity, With
 }
 
 fn spawn_menu_camera(mut commands: Commands) {
-    // Bevy 0.16: Use Camera2d component directly for UI rendering
     commands.spawn((Camera2d, MenuCamera, Name::new("MenuCamera")));
     debug!("Spawned fallback 2D camera for menu (z=10.0)");
 }
@@ -52,7 +52,10 @@ pub struct MainMenu;
 pub struct MainMenuStatusText;
 
 #[derive(Component)]
-pub struct ConnectButton;
+pub struct HostButton;
+
+#[derive(Component)]
+pub struct JoinButton;
 
 fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<MainMenu>>) {
     for entity in &q_main_menu {
@@ -76,13 +79,13 @@ fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<Ma
         .with_children(|child_builder| {
             child_builder
                 .spawn((
-                    Text::new("My Game"),
+                    Text::new("Yolo Game"),
                     TextFont {
                         font_size: 30.,
                         ..default()
                     },
                     Node {
-                        padding: UiRect::bottom(Val::Px(200.)),
+                        padding: UiRect::bottom(Val::Px(50.)),
                         ..default()
                     },
                 ))
@@ -90,28 +93,46 @@ fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<Ma
 
             child_builder
                 .spawn((
-                    Text::new("Connect"),
+                    Text::new("Host Game"),
                     Node {
                         padding: UiRect::bottom(Val::Px(20.)),
                         ..default()
                     },
                 ))
-                .insert(ConnectButton)
+                .insert(HostButton)
                 .observe(|_click: On<Pointer<Click>>, mut commands: Commands| {
-                    debug!("Connect button clicked, transitioning to ConnectingRemote");
-                    commands.set_state(GameState::Connecting);
+                    debug!("Host button clicked, transitioning to HostingLobby");
+                    commands.set_state(GameState::HostingLobby);
+                });
+
+            child_builder
+                .spawn((
+                    Text::new("Join Game"),
+                    Node {
+                        padding: UiRect::bottom(Val::Px(20.)),
+                        ..default()
+                    },
+                ))
+                .insert(JoinButton)
+                .observe(|_click: On<Pointer<Click>>, mut commands: Commands| {
+                    debug!("Join button clicked, transitioning to JoiningGame");
+                    commands.set_state(GameState::JoiningGame);
                 });
         });
 }
 
 fn despawn_main_menu_buttons(
     mut commands: Commands,
-    q_connect_buttons: Query<Entity, With<ConnectButton>>,
+    q_host_buttons: Query<Entity, With<HostButton>>,
+    q_join_buttons: Query<Entity, With<JoinButton>>,
 ) {
-    for entity in &q_connect_buttons {
+    for entity in &q_host_buttons {
         commands.entity(entity).despawn();
     }
-    debug!("Despawned main menu connect buttons");
+    for entity in &q_join_buttons {
+        commands.entity(entity).despawn();
+    }
+    debug!("Despawned main menu buttons");
 }
 
 fn on_client_begin_loading(mut q_status_text: Query<&mut Text, With<MainMenuStatusText>>) {
@@ -121,16 +142,18 @@ fn on_client_begin_loading(mut q_status_text: Query<&mut Text, With<MainMenuStat
     debug!("Main menu status: Loading game...");
 }
 
-fn on_client_begin_connecting(mut q_status_text: Query<&mut Text, With<MainMenuStatusText>>) {
-    for mut text in q_status_text.iter_mut() {
-        text.0 = String::from("Connecting");
-    }
-    debug!("Main menu status: Connecting");
-}
-
-fn despawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<MainMenu>>) {
+fn despawn_main_menu_ui(
+    mut commands: Commands,
+    q_main_menu: Query<Entity, With<MainMenu>>,
+    mut q_status_text: Query<&mut Text, With<MainMenuStatusText>>,
+) {
     for entity in &q_main_menu {
         commands.entity(entity).despawn();
     }
+
+    for mut text in q_status_text.iter_mut() {
+        text.0 = String::from("Connecting");
+    }
     debug!("Despawned main menu UI");
+    debug!("Main menu status: Connecting");
 }

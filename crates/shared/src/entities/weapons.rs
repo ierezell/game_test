@@ -2,9 +2,10 @@ use crate::input::PlayerAction;
 use avian3d::prelude::{Collider, LinearVelocity, Position, RigidBody, Rotation};
 use bevy::prelude::{Commands, Component, Entity, Name, Query, Res, Time, Timer, TimerMode, Vec3};
 use leafwing_input_manager::prelude::ActionState;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 /// Minimal weapon component for a single hardcoded gun (Pistol)
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimpleGun {
     pub cooldown: Timer,
 }
@@ -18,7 +19,7 @@ impl Default for SimpleGun {
 }
 
 /// Minimal projectile component
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimpleProjectile {
     pub damage: f32,
     pub shooter: Entity,

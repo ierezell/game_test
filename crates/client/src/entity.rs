@@ -2,16 +2,15 @@ use crate::input::get_player_input_map;
 use avian3d::prelude::{LinearVelocity, Position};
 use bevy::prelude::{
     Add, App, Assets, Capsule3d, Commands, FixedUpdate, Mesh, Mesh3d, MeshMaterial3d, Name, On,
-    OnEnter, Plugin, Query, Res, ResMut, Single, StandardMaterial, With, debug, info,
+    Plugin, Query, Res, ResMut, Single, StandardMaterial, With, debug, info,
 };
 
 use crate::LocalPlayerId;
 use lightyear::prelude::{
     Controlled, Interpolated, LocalTimeline, NetworkTimeline, Predicted, PredictionManager,
 };
-use shared::game_state::GameState;
 use shared::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
-use shared::protocol::{GameSeed, PlayerColor, PlayerId};
+use shared::protocol::{PlayerColor, PlayerId};
 
 pub struct ClientRenderPlugin;
 
@@ -20,21 +19,7 @@ impl Plugin for ClientRenderPlugin {
         app.add_observer(handle_player_spawn);
         app.add_observer(handle_other_players_spawn);
         app.add_systems(FixedUpdate, debug_player_position);
-        app.add_systems(OnEnter(GameState::Spawning), spawn_client_world);
     }
-}
-
-/// System that spawns client-side world when entering the Spawning state
-fn spawn_client_world(game_seed: Option<Res<GameSeed>>, commands: Commands) {
-    info!("Client spawning world");
-
-    let seed = game_seed.map(|s| s.seed).unwrap_or(42);
-    info!("Using seed {} for client world generation", seed);
-
-    // Create the static level using the same seed as server
-    shared::level::create_static::setup_static_level(commands, Some(seed));
-
-    info!("Client world spawned, transitioning to Playing state");
 }
 
 fn debug_player_position(
@@ -67,14 +52,29 @@ fn handle_player_spawn(
     local_player_id: Res<LocalPlayerId>,
 ) {
     let entity = trigger.entity;
+    info!(
+        "🎯 CLIENT: handle_player_spawn triggered for entity {:?}",
+        entity
+    );
+
     let Ok((name, color, player_id)) = player_query.get(entity) else {
-        debug!("Failed to get player data for entity {:?}", entity);
+        info!(
+            "❌ CLIENT: Failed to get player data for entity {:?}",
+            entity
+        );
         return;
     };
 
-    if player_id.0.to_bits() == local_player_id.0 {
+    let local_peer_id = lightyear::prelude::PeerId::Netcode(local_player_id.0);
+    info!(
+        "🔍 CLIENT: Entity spawn check: player_id={:?}, local_peer_id={:?}, local_player_id={}",
+        player_id.0, local_peer_id, local_player_id.0
+    );
+    info!("🔍 CLIENT: Entity name: {:?}, color: {:?}", name, color);
+
+    if player_id.0 == local_peer_id {
         info!(
-            "🚀 Attaching mesh, physics, and input map to PREDICTED player: {:?} ({:?})",
+            "✅ CLIENT: This is our local player! Attaching mesh, physics, and input map to entity {:?} ({:?})",
             entity, name
         );
         commands
@@ -88,6 +88,15 @@ fn handle_player_spawn(
 
         let input_map = get_player_input_map();
         commands.entity(entity).insert(input_map);
+        info!(
+            "✅ CLIENT: Local player setup complete for entity {:?}",
+            entity
+        );
+    } else {
+        info!(
+            "ℹ️ CLIENT: This is a remote player (id: {:?}), skipping local player setup",
+            player_id.0
+        );
     }
 }
 
@@ -99,9 +108,14 @@ fn handle_other_players_spawn(
     player_query: Query<(&Name, &PlayerColor), With<Interpolated>>,
 ) {
     let entity = trigger.entity;
+    info!(
+        "🌐 CLIENT: handle_other_players_spawn triggered for entity {:?}",
+        entity
+    );
+
     let Ok((name, color)) = player_query.get(entity) else {
-        debug!(
-            "Failed to get interpolated player data for entity {:?}",
+        info!(
+            "❌ CLIENT: Failed to get interpolated player data for entity {:?}",
             entity
         );
         return;
@@ -112,7 +126,7 @@ fn handle_other_players_spawn(
         MeshMaterial3d(materials.add(color.0)),
     ));
     info!(
-        "🚀 INTERPOLATED SPAWN! Entity: {:?} Player: {:?}",
+        "✅ CLIENT: INTERPOLATED player setup complete! Entity: {:?} Player: {:?}",
         entity, name
     );
 }

@@ -21,7 +21,7 @@ impl Plugin for StaminaPlugin {
 }
 
 /// Stamina component that tracks energy for actions
-#[derive(Component, Clone, Debug, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Stamina {
     pub current: f32,
     pub max: f32,
@@ -152,7 +152,7 @@ impl Stamina {
 }
 
 /// Component to track stamina-related effects and modifiers
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct StaminaEffects {
     pub is_sprinting: bool,
     pub movement_multiplier: f32,
@@ -162,7 +162,7 @@ pub struct StaminaEffects {
     pub exhaustion_level: ExhaustionLevel,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ExhaustionLevel {
     Fresh,     // 75-100% stamina
     Tired,     // 50-75% stamina

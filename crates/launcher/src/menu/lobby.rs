@@ -104,7 +104,10 @@ fn on_host_game(mut commands: Commands, local_player_id: Res<LocalPlayerId>) {
     });
 
     info!("Waiting for server to start...");
-    std::thread::sleep(std::time::Duration::from_millis(2000));
+    std::thread::sleep(std::time::Duration::from_millis(3000));
+
+    // Now enable auto-connect since server should be ready
+    commands.insert_resource(client::network::AutoConnect(true));
     commands.set_state(GameState::Connecting);
 
     info!("Hosting setup complete, connecting client...");

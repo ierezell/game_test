@@ -30,7 +30,10 @@ struct DebugCamera;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (setup_static_level_default, spawn_menu_and_debug_camera));
+        app.add_systems(
+            Startup,
+            (setup_static_level_default, spawn_menu_and_debug_camera),
+        );
         app.add_observer(add_enemy_visuals);
         app.insert_resource(EguiGlobalSettings {
             auto_create_primary_context: false,
@@ -76,7 +79,10 @@ fn spawn_camera_when_player_spawn(
     let entity = trigger.entity;
     if let Ok((player_id, position)) = player_query.get(entity) {
         // Only spawn camera if this is the local player, is this a hack ??
-        if player_id.0.to_bits() == local_player_id.0 {
+        let local_peer_id = lightyear::prelude::PeerId::Netcode(local_player_id.0);
+        info!("🔍 Camera spawn check: player_id={:?}, local_peer_id={:?}, local_player_id={}", 
+              player_id.0, local_peer_id, local_player_id.0);
+        if player_id.0 == local_peer_id {
             let camera_height = position.0.y + PLAYER_CAPSULE_HEIGHT + 0.6; // Player center + eye height offset
             let camera_position = position.0 + Vec3::new(0.0, camera_height, 0.0); // Eye height offset
 
@@ -89,7 +95,7 @@ fn spawn_camera_when_player_spawn(
                 },
                 Camera3d::default(),
                 Transform::from_translation(camera_position),
-                Name::new(format!("Client_{}_Camera", player_id.0.to_bits())),
+                Name::new(format!("Client_{}_Camera", local_player_id.0)),
             ));
             info!("🎥 ADDED Camera to LOCAL predicted player: {:?}", entity);
         } else {

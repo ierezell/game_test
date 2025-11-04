@@ -1,7 +1,7 @@
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::prelude::{
-    Add, App, AppExtStates, Commands, CommandsStatesExt, Entity, FixedUpdate, Name, On, OnEnter, Plugin, Query,
-    Res, ResMut, Resource, Single, Update, Vec2, Vec3, With, Without, debug, info,
+    Add, App, AppExtStates, Commands, CommandsStatesExt, Entity, FixedUpdate, Name, On, OnEnter,
+    Plugin, Query, Res, ResMut, Resource, Single, Update, Vec2, Vec3, With, Without, debug, info,
 };
 use leafwing_input_manager::prelude::ActionState;
 use lightyear::connection::client::Connected;
@@ -31,7 +31,7 @@ pub struct ServerGameplayPlugin;
 impl Plugin for ServerGameplayPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<GameState>();
-        
+
         app.insert_resource(LobbyState {
             players: Vec::new(),
             host_id: PeerId::Netcode(0),
@@ -93,19 +93,20 @@ fn start_game_with_seed(mut commands: Commands) {
 
 /// System that runs when the server enters Spawning state
 /// Creates the actual game world
-fn spawn_game_world(game_seed: Option<Res<GameSeed>>, commands: Commands) {
+fn spawn_game_world(game_seed: Option<Res<GameSeed>>, mut commands: Commands) {
     info!("Server spawning game world");
 
     let seed = game_seed.map(|s| s.seed).unwrap_or(42);
     info!("Using seed {} for world generation", seed);
 
     // Create the static level using the seed
-    shared::level::create_static::setup_static_level(commands, Some(seed));
+    shared::level::create_static::setup_static_level(commands.reborrow(), Some(seed));
 
     // Player entities are spawned automatically by handle_connected observer
     // Dynamic enemies and other entities can be added here in the future
 
     info!("Server game world spawned, transitioning to Playing state");
+    commands.set_state(shared::game_state::GameState::Playing);
 }
 
 fn debug_player_position(
@@ -130,14 +131,25 @@ fn handle_connected(
     mut lobby_state: ResMut<LobbyState>,
 ) {
     let Ok(client_id) = query.get(trigger.entity) else {
+        info!(
+            "❌ Failed to get RemoteId for connected entity {:?}",
+            trigger.entity
+        );
         return;
     };
     let peer_id = client_id.0;
-    info!("Client connected with client-id {client_id:?}. Adding to lobby.");
+    info!(
+        "✅ Client connected with client-id {client_id:?} (peer_id: {}). Adding to lobby.",
+        peer_id
+    );
 
     // Add player to lobby state
     lobby_state.players.push(peer_id);
-    info!("🎪 Added player {} to lobby. Lobby now has {} players", peer_id, lobby_state.players.len());
+    info!(
+        "🎪 Added player {} to lobby. Lobby now has {} players",
+        peer_id,
+        lobby_state.players.len()
+    );
 
     let color = color_from_id(client_id.to_bits());
     let angle: f32 = client_id.to_bits() as f32 * 6.28 / 4.0; // Distribute around circle
@@ -148,11 +160,6 @@ fn handle_connected(
     info!(
         "🎯 Setting up prediction target for client_id: {:?} (peer_id: {})",
         client_id, peer_id
-    );
-    info!(
-        "🔍 Client entity: {:?}, RemoteId bits: {}",
-        trigger.entity,
-        client_id.to_bits()
     );
 
     let player = commands
@@ -175,8 +182,17 @@ fn handle_connected(
         .insert(InterpolationTarget::to_clients(
             NetworkTarget::AllExceptSingle(peer_id),
         ))
-        .insert(shared::entities::player::PlayerPhysicsBundle::default())
         .id();
+
+    info!(
+        "🌐 Player entity {:?} created for client {:?}",
+        player, client_id
+    );
+
+    // Add physics bundle separately (not replicated - physics components are local only)
+    commands
+        .entity(player)
+        .insert(shared::entities::player::PlayerPhysicsBundle::default());
 
     // Add weapon holder to player
     add_weapon_holder(&mut commands, player);
@@ -184,10 +200,9 @@ fn handle_connected(
     // Add stamina system to player
     add_stamina_to_player(&mut commands, player);
 
-    info!("Created player entity {player:?} for client {client_id:?}");
     info!(
-        "🔍 ControlledBy owner set to client entity: {:?}",
-        trigger.entity
+        "✅ Player entity {:?} fully configured for client {:?}",
+        player, client_id
     );
 }
 

@@ -13,6 +13,11 @@ use lightyear::prelude::input::leafwing;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
+// Import the entity components we need to register
+use crate::entities::health::{Health, Respawnable};
+use crate::entities::stamina::{Stamina, StaminaEffects};
+use crate::entities::weapons::{SimpleGun, SimpleProjectile};
+
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PlayerId(pub PeerId);
 
@@ -58,9 +63,19 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<Name>().add_prediction();
         app.register_component::<LevelDoneMarker>().add_prediction();
 
+        // Physics components (only replicate transform and velocity)
         app.register_component::<Rotation>().add_prediction();
         app.register_component::<Position>().add_prediction();
         app.register_component::<LinearVelocity>().add_prediction();
+
+        // Entity components
+        app.register_component::<Health>().add_prediction();
+        app.register_component::<Respawnable>().add_prediction();
+        app.register_component::<Stamina>().add_prediction();
+        app.register_component::<StaminaEffects>().add_prediction();
+        app.register_component::<SimpleGun>().add_prediction();
+        app.register_component::<SimpleProjectile>()
+            .add_prediction();
 
         // Register messages
         app.register_message::<GameSeed>();

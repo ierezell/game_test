@@ -29,7 +29,7 @@ impl Plugin for HealthPlugin {
 }
 
 /// Component representing an entity's health
-#[derive(Component, Clone, Debug, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Health {
     pub current: f32,
     pub max: f32,
@@ -141,7 +141,7 @@ impl Health {
 }
 
 /// Component for entities that can respawn
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Respawnable {
     pub respawn_time: f32,              // Time in seconds before respawn
     pub death_time: f32,                // When the entity died

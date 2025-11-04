@@ -39,7 +39,7 @@ struct Cli {
     headless: bool,
 
     #[arg(long, default_value_t = false)]
-    autoconnect: bool,
+    auto_connect: bool,
 
     #[arg(long, default_value_t = false)]
     #[arg(help = "Automatically host a game on startup")]
@@ -98,9 +98,17 @@ pub fn run() {
             client_app.add_plugins(GameLifecyclePlugin);
             client_app.add_plugins(LocalMenuPlugin);
             client_app.add_plugins(LobbyPlugin);
+            client_app.add_plugins(shared::SharedPlugin);
+            client_app.add_plugins(client::render::RenderPlugin);
+            client_app.add_plugins(client::input::ClientInputPlugin);
+            client_app.add_plugins(client::entity::ClientRenderPlugin);
 
-            if cli.autoconnect {
-                client_app.insert_resource(client::network::AutoConnect(true));
+            if cli.auto_connect {
+                // For auto-host scenarios, auto-connect will be handled by the lobby system
+                // after the server is ready. For non-host scenarios, set it immediately.
+                if !cli.auto_host {
+                    client_app.insert_resource(client::network::AutoConnect(true));
+                }
             }
 
             if cli.auto_host {

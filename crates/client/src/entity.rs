@@ -2,18 +2,16 @@ use crate::input::get_player_input_map;
 use avian3d::prelude::{LinearVelocity, Position};
 use bevy::prelude::{
     Add, App, Assets, Capsule3d, Commands, FixedUpdate, Mesh, Mesh3d, MeshMaterial3d, Name, On,
-    Plugin, Query, Res, ResMut, Single, StandardMaterial, With, debug, info,
+    OnEnter, Plugin, Query, Res, ResMut, Single, StandardMaterial, With, debug, info,
 };
-// Removed unused window imports
-// Removed unused input manager imports
 
-use crate::app::LocalPlayerId;
+use crate::LocalPlayerId;
 use lightyear::prelude::{
     Controlled, Interpolated, LocalTimeline, NetworkTimeline, Predicted, PredictionManager,
 };
+use shared::game_state::GameState;
 use shared::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
-use shared::protocol::{PlayerColor, PlayerId};
-use shared::scene::{FloorPhysicsBundle, WallPhysicsBundle};
+use shared::protocol::{GameSeed, PlayerColor, PlayerId};
 
 pub struct ClientRenderPlugin;
 
@@ -22,9 +20,21 @@ impl Plugin for ClientRenderPlugin {
         app.add_observer(handle_player_spawn);
         app.add_observer(handle_other_players_spawn);
         app.add_systems(FixedUpdate, debug_player_position);
-        app.add_observer(WallPhysicsBundle::observer);
-        app.add_observer(FloorPhysicsBundle::observer);
+        app.add_systems(OnEnter(GameState::Spawning), spawn_client_world);
     }
+}
+
+/// System that spawns client-side world when entering the Spawning state
+fn spawn_client_world(game_seed: Option<Res<GameSeed>>, commands: Commands) {
+    info!("Client spawning world");
+
+    let seed = game_seed.map(|s| s.seed).unwrap_or(42);
+    info!("Using seed {} for client world generation", seed);
+
+    // Create the static level using the same seed as server
+    shared::level::create_static::setup_static_level(commands, Some(seed));
+
+    info!("Client world spawned, transitioning to Playing state");
 }
 
 fn debug_player_position(
@@ -74,7 +84,7 @@ fn handle_player_spawn(
                 PLAYER_CAPSULE_HEIGHT,
             ))))
             .insert(MeshMaterial3d(materials.add(color.0)))
-            .insert(shared::scene::PlayerPhysicsBundle::default());
+            .insert(shared::entities::player::PlayerPhysicsBundle::default());
 
         let input_map = get_player_input_map();
         commands.entity(entity).insert(input_map);

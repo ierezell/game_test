@@ -1,0 +1,145 @@
+%%{init: {
+  'theme': 'dark',
+  'themeVariables': {
+    'primaryColor': '#4a90e2',
+    'primaryTextColor': '#ffffff',
+    'primaryBorderColor': '#ffffff',
+    'lineColor': '#ffffff',
+    'secondaryColor': '#2d3748',
+    'tertiaryColor': '#1a202c',
+    'background': '#1a202c',
+    'mainBkg': '#2d3748',
+    'secondBkg': '#4a5568',
+    'tertiaryBkg': '#718096'
+  }
+}}%%
+flowchart TB
+    Start([🎮 Game Launch]) --> Launcher{{"🚀 Launcher<br/>Parse CLI Args"}}
+    Launcher --> |"--server"| ServerMode["🖥️ Server Mode"]
+    Launcher --> |"--client --client_id X"| ClientMode["💻 Client Mode"]  
+    Launcher --> |"--solo"| SoloMode["🎯 Solo Mode<br/>Combined Client+Server"]
+    
+    %% Server initialization flow
+    ServerMode --> ServerApp["📦 Create Server App"]
+    ServerApp --> ServerPlugins["🔧 Add Server Plugins<br/>• NetworkPlugin<br/>• GameplayPlugin<br/>• SharedPlugin"]
+    ServerPlugins --> ServerNetwork["🌐 Initialize Networking<br/>• Lightyear Server<br/>• UDP Transport"]
+    ServerNetwork --> ServerReady["🎯 Server Ready<br/>Listening on Port"]
+    
+    %% Client initialization flow
+    ClientMode --> ClientApp["📱 Create Client App"]
+    ClientApp --> ClientPlugins["🔧 Add Client Plugins<br/>• RenderPlugin<br/>• InputPlugin<br/>• MenuPlugin<br/>• GameLifecyclePlugin<br/>• SharedPlugin"]
+    ClientPlugins --> ClientNetwork["🌐 Initialize Client Networking<br/>• Lightyear Client<br/>• Connection Config"]
+    ClientNetwork --> MainMenu["📋 Main Menu State"]
+    
+    %% Solo mode combines both
+    SoloMode --> SoloApp["🎮 Create Combined App"]
+    SoloApp --> SoloClientPlugins["📱 Add Client&Server Plugins"]
+    SoloClientPlugins --> SoloNetwork["🌐 Initialize Both Networks"]
+    SoloNetwork --> SoloAutoConnect["🤖 Auto-Connect Enabled"]
+    SoloAutoConnect --> MainMenu
+
+    %% Game State Flow
+    MainMenu --> |"Connect Button<br/>or Auto-Connect"| Connecting["🔌 Connecting State"]
+    Connecting --> |"Connection Success"| Loading["⏳ Loading State"]
+    Connecting --> |"Connection Failed"| ConnectionRetry["🔄 Retry Connection"]
+    ConnectionRetry --> Connecting
+    Loading --> |"Level + Player Ready"| Spawning["🏗️ Spawning State"]
+    Spawning --> Playing["🎮 Playing State"]
+    Playing --> |"Disconnect/Exit"| MainMenu
+
+    %% Server-side entity management
+    ServerReady --> ServerWaitClients["👥 Wait for Clients"]
+    ServerWaitClients --> |"Client Connects"| ServerSpawnPlayer["👤 Spawn Player Entity<br/>• Assign PlayerId<br/>• Create Physics Body"]
+    ServerSpawnPlayer --> ServerSpawnLevel["🏢 Spawn Level Entities<br/>• Scene Objects<br/>• Navigation Mesh"]
+    ServerSpawnLevel --> ServerSpawnBots["🤖 Spawn AI Bots<br/>• Behavior State Machines<br/>• Pathfinding Agents"]
+    ServerSpawnBots --> ServerSpawnEnemies["👹 Spawn Enemies<br/>• AI Controllers<br/>• Health Systems"]
+    ServerSpawnEnemies --> ServerReplication["🔄 Start Entity Replication"]
+
+    %% Shared systems (subgraph)
+    subgraph SharedSystems ["🌐 Shared Systems (Client + Server)"]
+        Protocol["📋 Protocol Definition<br/>• Component Registration<br/>• Input Actions<br/>• Replication Rules"]
+        GameStateSystem["🎮 Game State Management<br/>• MainMenu → Connecting → Loading → Spawning → Playing"]
+        InputSystem["⌨️ Input Systems<br/>• Player Movement<br/>• Look Controls<br/>• Jump & Shoot"]
+        StaminaSystem["💨 Stamina System<br/>• Exhaustion Levels<br/>• Movement Speed Penalties"]
+        HealthSystem["❤️ Health System<br/>• Damage Calculation<br/>• Respawn Logic"]
+        NavigationSystem["🗺️ Navigation System<br/>• Pathfinding<br/>• AI Movement"]
+    end
+
+    %% AI and Machine Learning
+    subgraph AIMLSystems ["🧠 AI & Machine Learning"]
+        BotAI["🤖 Bot AI<br/>• Idle/Searching/Engaging<br/>• Target Selection<br/>• Combat Behavior"]
+        EnemyAI["👹 Enemy AI<br/>• Patrol Patterns<br/>• Chase Logic<br/>• Attack Behaviors"]
+        RLTraining["🎓 Reinforcement Learning<br/>• Q-Network Training<br/>• Action Prediction<br/>• Exploration vs Exploitation"]
+        LLMIntegration["💬 LLM Integration<br/>• Dynamic Behavior<br/>• Adaptive Strategies"]
+    end
+
+    %% Game loop details
+    Playing --> GameLoop["🔄 Game Loop"]
+    GameLoop --> InputUpdate["⌨️ Process Input<br/>• Movement & Look<br/>• Actions (Jump/Shoot)"]
+    InputUpdate --> StaminaUpdate["� Update Stamina<br/>• Drain on Sprint<br/>• Regeneration"]
+    StaminaUpdate --> AIUpdate["🤖 Update AI<br/>• Bot Decisions<br/>• Enemy Behaviors"]
+    AIUpdate --> PhysicsUpdate["⚙️ Physics Update<br/>• Avian3D Integration<br/>• Collision Detection"]
+    PhysicsUpdate --> NetworkSync["📡 Network Sync<br/>• Entity Replication<br/>• Input Prediction"]
+    NetworkSync --> RenderFrame["🎨 Render Frame<br/>• 3D Scene<br/>• UI Elements"]
+    RenderFrame --> GameLoop
+      
+    %% Networking layer (subgraph)
+    subgraph NetworkingLayer ["📡 Networking (Lightyear 0.25.3)"]
+        NetReplication["🔄 Entity Replication<br/>• Position/Rotation<br/>• Player States<br/>• Health/Stamina<br/>• Scene Objects"]
+        InputSync["⌨️ Input Synchronization<br/>• Client Prediction<br/>• Server Reconciliation<br/>• Lag Compensation"]
+        Events["📢 Network Events<br/>• Player Join/Leave<br/>• Combat Actions<br/>• State Changes"]
+        ClientAuth["🔐 Client Authority<br/>• Input Validation<br/>• Anti-Cheat Measures"]
+    end
+
+    %% Connect shared systems to flows
+    SharedSystems -.-> ServerPlugins
+    SharedSystems -.-> ClientPlugins
+    SharedSystems -.-> SoloClientPlugins
+    
+    %% Connect AI systems
+    AIMLSystems -.-> ServerSpawnBots
+    AIMLSystems -.-> ServerSpawnEnemies
+    AIMLSystems -.-> AIUpdate
+    
+    %% Connect networking to game loop
+    NetworkingLayer -.-> NetworkSync
+    NetworkingLayer -.-> ServerReplication
+    
+    %% Styling with improved color scheme
+    classDef serverStyle fill:#ff6b6b,stroke:#ffffff,stroke-width:2px,color:#ffffff
+    classDef clientStyle fill:#4ecdc4,stroke:#ffffff,stroke-width:2px,color:#ffffff
+    classDef soloStyle fill:#ffe66d,stroke:#ffffff,stroke-width:2px,color:#000000
+    classDef sharedStyle fill:#95e1d3,stroke:#ffffff,stroke-width:2px,color:#000000
+    classDef gameStateStyle fill:#a8e6cf,stroke:#ffffff,stroke-width:2px,color:#000000
+    classDef gameLoopStyle fill:#ffd93d,stroke:#ffffff,stroke-width:2px,color:#000000
+    classDef aiStyle fill:#dda0dd,stroke:#ffffff,stroke-width:2px,color:#000000
+    classDef networkStyle fill:#87ceeb,stroke:#ffffff,stroke-width:2px,color:#000000
+    classDef errorStyle fill:#ff8b94,stroke:#ffffff,stroke-width:2px,color:#ffffff
+    
+    %% Apply server styles
+    class ServerMode,ServerApp,ServerPlugins,ServerNetwork,ServerReady,ServerWaitClients,ServerSpawnPlayer,ServerSpawnLevel,ServerSpawnBots,ServerSpawnEnemies,ServerReplication serverStyle
+    
+    %% Apply client styles
+    class ClientMode,ClientApp,ClientPlugins,ClientNetwork,MainMenu,Connecting,Loading,Spawning,Playing clientStyle
+    
+    %% Apply solo styles  
+    class SoloMode,SoloApp,SoloClientPlugins,SoloServerPlugins,SoloNetwork,SoloAutoConnect soloStyle
+    
+    %% Apply shared system styles
+    class SharedSystems,Protocol,GameStateSystem,InputSystem,StaminaSystem,HealthSystem,NavigationSystem sharedStyle
+    
+    %% Apply game state styles
+    class MainMenu,Connecting,Loading,Spawning,Playing gameStateStyle
+    
+    %% Apply game loop styles
+    class GameLoop,InputUpdate,StaminaUpdate,AIUpdate,PhysicsUpdate,NetworkSync,RenderFrame gameLoopStyle
+    
+    %% Apply AI/ML styles
+    class AIMLSystems,BotAI,EnemyAI,RLTraining,LLMIntegration aiStyle
+    
+    %% Apply networking styles
+    class NetworkingLayer,NetReplication,InputSync,Events,ClientAuth networkStyle
+    
+    %% Apply error/retry styles
+// [MermaidChart: 0f825056-d19f-4496-b51f-60a5c46eb118]
+    class ConnectionRetry errorStyle

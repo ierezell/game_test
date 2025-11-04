@@ -1,10 +1,10 @@
 use crate::input::PlayerAction;
-use crate::scene::{FloorMarker, WallMarker};
+use crate::level::create_static::LevelDoneMarker;
 
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     log::debug,
-    prelude::{App, Color, Component, Name, Plugin, default},
+    prelude::{App, Color, Component, Message, Name, Plugin, Resource, default},
 };
 
 use lightyear::input::config::InputConfig;
@@ -18,6 +18,27 @@ pub struct PlayerId(pub PeerId);
 
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PlayerColor(pub Color);
+
+#[derive(Message, Resource, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct GameSeed {
+    pub seed: u64,
+}
+
+#[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StartGame;
+
+#[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PlayerJoinedLobby {
+    pub player_id: PeerId,
+    pub player_name: String,
+}
+
+#[derive(Resource, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct LobbyState {
+    pub players: Vec<PeerId>,
+    pub host_id: PeerId,
+    pub game_started: bool,
+}
 
 #[derive(Clone)]
 pub struct ProtocolPlugin;
@@ -33,14 +54,18 @@ impl Plugin for ProtocolPlugin {
         });
 
         app.register_component::<PlayerId>().add_prediction();
-        app.register_component::<FloorMarker>().add_prediction();
-        app.register_component::<WallMarker>().add_prediction();
         app.register_component::<PlayerColor>().add_prediction();
         app.register_component::<Name>().add_prediction();
+        app.register_component::<LevelDoneMarker>().add_prediction();
 
         app.register_component::<Rotation>().add_prediction();
         app.register_component::<Position>().add_prediction();
         app.register_component::<LinearVelocity>().add_prediction();
+
+        // Register messages
+        app.register_message::<GameSeed>();
+        app.register_message::<StartGame>();
+        app.register_message::<PlayerJoinedLobby>();
 
         debug!("✅ Protocol plugin initialized with components, messages, inputs, and events");
     }

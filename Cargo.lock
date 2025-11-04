@@ -637,9 +637,9 @@ dependencies = [
 
 [[package]]
 name = "avian3d"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56ce9b78f7af428b9c74f95f5e1bca4ffeae0e0e70e7a3b256bd606b77d6031e"
+checksum = "e09c07567e520b22bd6890a055877cd584fc3fd4317e4a0ba599f4833a4b61bc"
 dependencies = [
  "approx",
  "avian_derive",
@@ -10263,6 +10263,7 @@ dependencies = [
  "pathfinding",
  "rand 0.9.2",
  "serde",
+ "vleue_navigator",
 ]
 
 [[package]]
@@ -11800,6 +11801,7 @@ version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa94a11d3f8f5dfe570934de134933fa4b585b1b45f997f8e1ac691c883b21bc"
 dependencies = [
+ "avian3d",
  "bevy",
  "itertools 0.14.0",
  "log",

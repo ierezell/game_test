@@ -1,11 +1,11 @@
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::prelude::{
-    Add, App, Commands, Entity, FixedUpdate, Name, On, Plugin, Query, Single, Vec2, Vec3, With,
-    Without, debug, info,
+    Add, App, AppExtStates, Commands, CommandsStatesExt, Entity, FixedUpdate, Name, On, OnEnter, Plugin, Query,
+    Res, ResMut, Resource, Single, Update, Vec2, Vec3, With, Without, debug, info,
 };
 use leafwing_input_manager::prelude::ActionState;
 use lightyear::connection::client::Connected;
-use lightyear::connection::server::Started;
+use lightyear::prelude::PeerId;
 
 use lightyear::prelude::server::{ClientOf, Server};
 use lightyear::prelude::{
@@ -13,27 +13,99 @@ use lightyear::prelude::{
     Predicted, PredictionTarget, RemoteId, Replicate,
 };
 
-use shared::health::{Health, Respawnable};
+use shared::entities::health::{Health, Respawnable};
+use shared::entities::player::color_from_id;
+use shared::entities::stamina::{StaminaEffects, add_stamina_to_player};
+use shared::entities::weapons::add_weapon_holder;
+use shared::game_state::GameState;
 use shared::input::{PLAYER_CAPSULE_HEIGHT, PlayerAction, shared_player_movement_with_stamina};
-use shared::navigation_pathfinding::{NavigationMeshMarker, add_navigation_agent_with_speed};
-use shared::protocol::{PlayerColor, PlayerId};
-use shared::scene::{
-    FLOOR_THICKNESS, FloorMarker, ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS, WallMarker, color_from_id,
-};
-use shared::stamina::{StaminaEffects, add_stamina_to_player};
-use shared::weapons::add_weapon_holder;
+use shared::protocol::{GameSeed, LobbyState, PlayerColor, PlayerId};
+
+#[derive(Resource)]
+pub struct GameSeedResource {
+    pub seed: u64,
+}
 
 pub struct ServerGameplayPlugin;
 
 impl Plugin for ServerGameplayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(setup_scene_on_server_start);
+        app.init_state::<GameState>();
+        
+        app.insert_resource(LobbyState {
+            players: Vec::new(),
+            host_id: PeerId::Netcode(0),
+            game_started: false,
+        });
+
         app.add_observer(handle_connected);
         app.add_systems(FixedUpdate, server_player_movement);
         app.add_systems(FixedUpdate, debug_player_position);
-        app.add_systems(bevy::prelude::Startup, spawn_enemies_on_server_start);
-        app.add_systems(bevy::prelude::Startup, setup_navigation_on_server_start);
+
+        // Lobby management systems
+        app.add_systems(Update, handle_game_progression);
+
+        app.add_systems(OnEnter(GameState::Loading), start_game_with_seed);
+        app.add_systems(OnEnter(GameState::Spawning), spawn_game_world);
+
+        // Navigation systems
+        app.add_systems(
+            Update,
+            (
+                shared::navigation_pathfinding::update_target_seekers,
+                shared::navigation_pathfinding::simple_pathfinding,
+                shared::navigation_pathfinding::move_navigation_agents,
+                shared::entities::enemy::enemy_navigation_behavior,
+                shared::entities::enemy::enemy_attack_behavior,
+            ),
+        );
     }
+}
+
+/// Handle game progression - simplified for now
+/// When lobby has players, auto-progress after a delay
+fn handle_game_progression(mut lobby_state: ResMut<LobbyState>, mut commands: Commands) {
+    // Auto-start game when host is present (simplified logic)
+    if !lobby_state.players.is_empty() && !lobby_state.game_started {
+        info!("Starting game with {} players", lobby_state.players.len());
+
+        // Mark game as started to prevent re-triggering
+        lobby_state.game_started = true;
+
+        // Generate game seed using a simple method
+        let seed = 42; // Simple seed for now
+        let seed_message = GameSeed { seed };
+
+        commands.insert_resource(seed_message);
+        commands.set_state(GameState::Loading);
+    }
+}
+
+/// System that runs when the server enters Loading state
+/// Generates and distributes the game seed to all clients
+fn start_game_with_seed(mut commands: Commands) {
+    info!("Server entered Loading state - preparing game world");
+
+    // Transition to spawning after a brief delay
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    commands.set_state(GameState::Spawning);
+}
+
+/// System that runs when the server enters Spawning state
+/// Creates the actual game world
+fn spawn_game_world(game_seed: Option<Res<GameSeed>>, commands: Commands) {
+    info!("Server spawning game world");
+
+    let seed = game_seed.map(|s| s.seed).unwrap_or(42);
+    info!("Using seed {} for world generation", seed);
+
+    // Create the static level using the seed
+    shared::level::create_static::setup_static_level(commands, Some(seed));
+
+    // Player entities are spawned automatically by handle_connected observer
+    // Dynamic enemies and other entities can be added here in the future
+
+    info!("Server game world spawned, transitioning to Playing state");
 }
 
 fn debug_player_position(
@@ -55,12 +127,17 @@ fn handle_connected(
     trigger: On<Add, Connected>,
     query: Query<&RemoteId, With<ClientOf>>,
     mut commands: Commands,
+    mut lobby_state: ResMut<LobbyState>,
 ) {
     let Ok(client_id) = query.get(trigger.entity) else {
         return;
     };
     let peer_id = client_id.0;
-    info!("Client connected with client-id {client_id:?}. Spawning player entity.");
+    info!("Client connected with client-id {client_id:?}. Adding to lobby.");
+
+    // Add player to lobby state
+    lobby_state.players.push(peer_id);
+    info!("🎪 Added player {} to lobby. Lobby now has {} players", peer_id, lobby_state.players.len());
 
     let color = color_from_id(client_id.to_bits());
     let angle: f32 = client_id.to_bits() as f32 * 6.28 / 4.0; // Distribute around circle
@@ -98,7 +175,7 @@ fn handle_connected(
         .insert(InterpolationTarget::to_clients(
             NetworkTarget::AllExceptSingle(peer_id),
         ))
-        .insert(shared::scene::PlayerPhysicsBundle::default())
+        .insert(shared::entities::player::PlayerPhysicsBundle::default())
         .id();
 
     // Add weapon holder to player
@@ -147,95 +224,4 @@ pub fn server_player_movement(
 
         shared_player_movement_with_stamina(action_state, &mut rotation, &mut velocity);
     }
-}
-
-fn setup_scene_on_server_start(_trigger: On<Add, Started>, mut commands: Commands) {
-    info!("Setting up scene on server (after server started)");
-
-    commands.spawn((
-        Name::new("Floor"),
-        FloorMarker,
-        Position(Vec3::new(0.0, -FLOOR_THICKNESS / 2.0, 0.0)),
-        Rotation::default(),
-        Replicate::to_clients(NetworkTarget::All),
-    ));
-
-    let wall_positions = [
-        (
-            Vec3::new(
-                ROOM_SIZE / 2.0 + WALL_THICKNESS / 2.0,
-                WALL_HEIGHT / 2.0,
-                0.0,
-            ),
-            "Wall East",
-        ),
-        (
-            Vec3::new(
-                -ROOM_SIZE / 2.0 - WALL_THICKNESS / 2.0,
-                WALL_HEIGHT / 2.0,
-                0.0,
-            ),
-            "Wall West",
-        ),
-        (
-            Vec3::new(
-                0.0,
-                WALL_HEIGHT / 2.0,
-                ROOM_SIZE / 2.0 + WALL_THICKNESS / 2.0,
-            ),
-            "Wall North",
-        ),
-        (
-            Vec3::new(
-                0.0,
-                WALL_HEIGHT / 2.0,
-                -ROOM_SIZE / 2.0 - WALL_THICKNESS / 2.0,
-            ),
-            "Wall South",
-        ),
-    ];
-
-    for (position, name) in wall_positions {
-        commands.spawn((
-            Name::new(name),
-            WallMarker,
-            Position(position),
-            Rotation::default(),
-            Replicate::to_clients(NetworkTarget::All),
-        ));
-    }
-
-    info!("Scene setup complete");
-}
-
-fn spawn_enemies_on_server_start(mut commands: Commands) {
-    info!("Spawning enemies on server start");
-    let enemy_positions = [Vec3::new(8.0, 1.0, 8.0)];
-
-    for position in &enemy_positions {
-        let entity_id = commands
-            .spawn((
-                Position(*position),
-                Name::new("Enemy"),
-                Health::no_regeneration(80.0),
-                Replicate::to_clients(NetworkTarget::All),
-                InterpolationTarget::to_clients(NetworkTarget::All),
-            ))
-            .id();
-
-        add_navigation_agent_with_speed(&mut commands, entity_id, 5.0);
-    }
-
-    info!("Spawned {} enemies", 5);
-}
-
-fn setup_navigation_on_server_start(mut commands: Commands) {
-    info!("Setting up navigation system on server start");
-
-    // Spawn the navigation mesh marker to trigger mesh building
-    let mesh_entity = commands
-        .spawn((Name::new("NavigationMesh"), NavigationMeshMarker))
-        .id();
-
-    info!("Navigation mesh marker spawned: {:?}", mesh_entity);
 }

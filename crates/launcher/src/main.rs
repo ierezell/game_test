@@ -4,6 +4,7 @@ mod wasm;
 #[cfg(not(target_family = "wasm"))]
 mod native;
 
+mod menu;
 fn main() {
     #[cfg(target_family = "wasm")]
     wasm::run();

@@ -51,11 +51,9 @@ fn handle_player_spawn(
     mut materials: ResMut<Assets<StandardMaterial>>,
     local_player_id: Res<LocalPlayerId>,
 ) {
+    // Should spawn when exiting lobby after world creation, then we add controls and rendering
     let entity = trigger.entity;
-    info!(
-        "🎯 CLIENT: handle_player_spawn triggered for entity {:?}",
-        entity
-    );
+    info!("🎯 CLIENT: Received player entity from server {:?}", entity);
 
     let Ok((name, color, player_id)) = player_query.get(entity) else {
         info!(
@@ -65,36 +63,35 @@ fn handle_player_spawn(
         return;
     };
 
-    let local_peer_id = lightyear::prelude::PeerId::Netcode(local_player_id.0);
     info!(
-        "🔍 CLIENT: Entity spawn check: player_id={:?}, local_peer_id={:?}, local_player_id={}",
-        player_id.0, local_peer_id, local_player_id.0
+        "🔍 CLIENT: Entity received: player_id={:?}, local_player_id={}",
+        player_id.0, local_player_id.0
     );
     info!("🔍 CLIENT: Entity name: {:?}, color: {:?}", name, color);
 
-    if player_id.0 == local_peer_id {
+    if player_id.0 == local_player_id.0 {
         info!(
-            "✅ CLIENT: This is our local player! Attaching mesh, physics, and input map to entity {:?} ({:?})",
+            "✅ CLIENT: This is our local player! Adding rendering and input to entity {:?} ({:?})",
             entity, name
         );
+        // Only add client-side rendering and input components - no physics for now
         commands
             .entity(entity)
             .insert(Mesh3d(meshes.add(Capsule3d::new(
                 PLAYER_CAPSULE_RADIUS,
                 PLAYER_CAPSULE_HEIGHT,
             ))))
-            .insert(MeshMaterial3d(materials.add(color.0)))
-            .insert(shared::entities::player::PlayerPhysicsBundle::default());
+            .insert(MeshMaterial3d(materials.add(color.0)));
 
         let input_map = get_player_input_map();
         commands.entity(entity).insert(input_map);
         info!(
-            "✅ CLIENT: Local player setup complete for entity {:?}",
+            "✅ CLIENT: Local player rendering and input setup complete for entity {:?}",
             entity
         );
     } else {
         info!(
-            "ℹ️ CLIENT: This is a remote player (id: {:?}), skipping local player setup",
+            "ℹ️ CLIENT: This is a remote player (id: {:?}), will be handled by interpolation observer",
             player_id.0
         );
     }
@@ -107,6 +104,7 @@ fn handle_other_players_spawn(
     mut materials: ResMut<Assets<StandardMaterial>>,
     player_query: Query<(&Name, &PlayerColor), With<Interpolated>>,
 ) {
+    // Should spawn when exiting lobby after world creation, then we add rendering
     let entity = trigger.entity;
     info!(
         "🌐 CLIENT: handle_other_players_spawn triggered for entity {:?}",

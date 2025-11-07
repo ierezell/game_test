@@ -46,19 +46,6 @@ pub fn shared_player_movement(
     update_player_velocity(velocity, rotation, move_input);
 }
 
-pub fn shared_player_movement_with_stamina(
-    action_state: &ActionState<PlayerAction>,
-    rotation: &mut Rotation,
-    velocity: &mut LinearVelocity,
-) {
-    let move_input = get_movement_input(action_state);
-
-    if let Some(mouse_delta) = get_look_input(action_state) {
-        update_player_rotation(rotation, mouse_delta);
-    }
-
-    update_player_velocity(velocity, rotation, move_input);
-}
 
 #[inline]
 fn get_movement_input(action_state: &ActionState<PlayerAction>) -> Vec2 {

@@ -71,7 +71,6 @@ pub fn update_simple_projectiles(
 }
 
 pub fn add_weapon_holder(commands: &mut Commands, player_entity: Entity) {
-    commands.entity(player_entity).with_children(|parent| {
-        parent.spawn((Name::new("SimpleGun"), SimpleGun::default()));
-    });
+    // Add the gun component directly to the player instead of creating child entities
+    commands.entity(player_entity).insert(SimpleGun::default());
 }

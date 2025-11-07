@@ -22,6 +22,8 @@ impl Plugin for LocalMenuPlugin {
         app.add_systems(OnEnter(GameState::Connecting), despawn_main_menu_buttons);
         app.add_systems(OnEnter(GameState::HostingLobby), despawn_main_menu_buttons);
         app.add_systems(OnEnter(GameState::JoiningGame), despawn_main_menu_buttons);
+        // Clean up menu camera when leaving main menu for lobby
+        app.add_systems(OnEnter(GameState::InLobby), despawn_menu_camera);
         app.add_systems(OnEnter(GameState::Loading), on_client_begin_loading);
         app.add_systems(
             OnEnter(GameState::Playing),

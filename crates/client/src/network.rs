@@ -87,7 +87,8 @@ fn start_connection(
 
     debug!("📋 Using client ID: {}", client_id.0);
 
-    let client_port = 4000 + client_id.0 as u16;
+    // Use a different port range to avoid conflicts with server
+    let client_port = 5000 + client_id.0 as u16;
     let client_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), client_port);
     debug!("🔌 Client binding to local address: {}", client_addr);
 
@@ -133,6 +134,8 @@ fn start_connection(
         }
         Err(e) => {
             error!("❌ Failed to create Netcode client: {:?}", e);
+            error!("This might be because the client port {} is already in use.", client_port);
+            error!("Server might not be ready yet or there's a network issue.");
         }
     }
 }

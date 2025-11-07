@@ -13,9 +13,7 @@ resolver = "2"
 
 [workspace.dependencies]
 rand = "0.9.2"
-avian3d = { version = "0.4.1", default-features = true, features = [
-    "serialize",
-] }
+avian3d = { version = "0.4", default-features = true, features = ["serialize"] }
 bevy = { version = "0.17.2", default-features = true }
 bevy-inspector-egui = { version = "0.35.0", default-features = true }
 bevy_egui = { version = "0.38.0", default-features = true }

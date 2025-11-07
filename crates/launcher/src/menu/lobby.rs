@@ -3,12 +3,12 @@ use bevy::color::palettes::tailwind::{GREEN_500, SLATE_700, SLATE_800};
 use bevy::prelude::{
     AlignItems, App, BackgroundColor, Commands, CommandsStatesExt, DetectChanges, Entity,
     FlexDirection, IntoScheduleConfigs, JustifyContent, Name, Node, OnEnter, OnExit, Plugin, Query,
-    Res, Resource, Text, TextFont, UiRect, Update, Val, With, debug, info,
+    Res, ResMut, Resource, Text, TextFont, UiRect, Update, Val, With, info,
 };
 use client::LocalPlayerId;
-use lightyear::prelude::PeerId;
+use lightyear::prelude::{MessageSender, UpdatesChannel};
 use shared::game_state::GameState;
-use shared::protocol::LobbyState;
+use shared::protocol::{LobbyState, StartGameEvent};
 
 use std::thread;
 
@@ -18,27 +18,44 @@ impl Plugin for LobbyPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(LobbyState {
             players: Vec::new(),
-            host_id: PeerId::Netcode(0),
-            game_started: false,
+            host_id: 0,
         });
+
+        app.init_resource::<AutoStartTimer>();
 
         app.add_systems(OnEnter(GameState::HostingLobby), on_host_game);
         app.add_systems(OnEnter(GameState::JoiningGame), on_join_game);
         app.add_systems(OnEnter(GameState::MainMenu), check_auto_host);
         app.add_systems(
             OnEnter(GameState::InLobby),
-            (spawn_lobby_ui, setup_lobby_camera, check_auto_start),
+            (spawn_lobby_ui, setup_lobby_camera, reset_auto_start_timer),
         );
         app.add_systems(OnExit(GameState::InLobby), despawn_lobby_ui);
         app.add_systems(
             Update,
-            update_lobby_ui.run_if(bevy::prelude::in_state(GameState::InLobby)),
+            (update_lobby_ui, check_auto_start_delayed)
+                .run_if(bevy::prelude::in_state(GameState::InLobby)),
         );
     }
 }
 
 #[derive(Resource)]
 pub struct IsHost(pub bool);
+
+#[derive(Resource)]
+pub struct AutoStartTimer {
+    pub timer: bevy::time::Timer,
+    pub triggered: bool,
+}
+
+impl Default for AutoStartTimer {
+    fn default() -> Self {
+        Self {
+            timer: bevy::time::Timer::from_seconds(3.0, bevy::time::TimerMode::Once),
+            triggered: false,
+        }
+    }
+}
 
 // UI Components
 #[derive(bevy::prelude::Component)]
@@ -56,18 +73,39 @@ pub struct PlayButton;
 #[derive(bevy::prelude::Component)]
 pub struct LobbyStatusText;
 
-/// Check if we should auto-start the game when entering lobby as host
-fn check_auto_start(
+/// Reset the auto-start timer when entering lobby
+fn reset_auto_start_timer(mut auto_start_timer: ResMut<AutoStartTimer>) {
+    auto_start_timer.timer.reset();
+    auto_start_timer.triggered = false;
+    info!("🔄 Auto-start timer reset - 3 second delay before sending StartGame");
+}
+
+/// Check if we should auto-start the game when entering lobby as host (with delay)
+fn check_auto_start_delayed(
     auto_start: Option<Res<AutoStart>>,
     is_host: Option<Res<IsHost>>,
-    mut commands: Commands,
+    mut auto_start_timer: ResMut<AutoStartTimer>,
+
+    time: Res<bevy::time::Time>,
+    mut message_sender: Query<&mut MessageSender<StartGameEvent>>,
 ) {
+    // Tick the timer
+    auto_start_timer.timer.tick(time.delta());
+
     if let (Some(auto_start_res), Some(is_host_res)) = (auto_start, is_host) {
-        if auto_start_res.0 && is_host_res.0 {
-            info!("Auto-start enabled and we are host, starting game automatically");
-            // Add a small delay to ensure lobby UI is fully set up
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            commands.set_state(GameState::Loading);
+        if auto_start_res.0
+            && is_host_res.0
+            && !auto_start_timer.triggered
+            && auto_start_timer.timer.is_finished()
+        {
+            info!("✅ Auto-start timer finished - sending StartGame to server!");
+            auto_start_timer.triggered = true;
+
+            // Send StartGameEvent to server
+            if let Ok(mut sender) = message_sender.single_mut() {
+                sender.send::<UpdatesChannel>(StartGameEvent);
+                info!("📡 HOST: Sent StartGameEvent to server");
+            }
         }
     }
 }
@@ -85,32 +123,37 @@ fn check_auto_host(auto_host: Option<Res<AutoHost>>, mut commands: Commands) {
 /// System that handles hosting a game
 /// Spawns a server in a separate thread and then connects the client to it
 fn on_host_game(mut commands: Commands, local_player_id: Res<LocalPlayerId>) {
-    info!("Starting to host a game...");
+    info!("🏠 Starting to host a game...");
 
-    thread::spawn(move || {
-        debug!("Starting server thread...");
+    // Spawn server in a separate thread
+    let server_handle = thread::spawn(move || {
+        info!("🖥️ Starting server thread...");
         let mut server_app = server::create_server_app(true);
-        info!("Server started and running...");
+        info!("✅ Server started and running...");
         server_app.run();
     });
+
+    // Give the server more time to start up properly to avoid port conflicts
+    info!("⏳ Waiting for server to initialize...");
+    thread::sleep(std::time::Duration::from_millis(3000)); // Increased wait time
 
     commands.insert_resource(IsHost(true));
 
     // Initialize lobby state with host as first player
     commands.insert_resource(LobbyState {
-        players: vec![PeerId::Netcode(local_player_id.0)],
-        host_id: PeerId::Netcode(local_player_id.0),
-        game_started: false,
+        players: vec![local_player_id.0],
+        host_id: local_player_id.0,
     });
 
-    info!("Waiting for server to start...");
-    std::thread::sleep(std::time::Duration::from_millis(3000));
-
-    // Now enable auto-connect since server should be ready
+    // Enable auto-connect now that server should be ready
     commands.insert_resource(client::network::AutoConnect(true));
     commands.set_state(GameState::Connecting);
 
-    info!("Hosting setup complete, connecting client...");
+    info!("🚀 Hosting setup complete, connecting client to local server...");
+
+    // Store the server handle so we can clean it up later if needed
+    // For now we'll let it run detached
+    std::mem::forget(server_handle);
 }
 
 /// System that handles joining a game
@@ -219,7 +262,7 @@ fn spawn_lobby_ui(
                         } else {
                             ""
                         };
-                        let is_you = if *player_id == PeerId::Netcode(local_player_id.0) {
+                        let is_you = if *player_id == local_player_id.0 {
                             " (You)"
                         } else {
                             ""
@@ -287,12 +330,18 @@ fn update_lobby_ui(
     local_player_id: Res<LocalPlayerId>,
     input: Res<bevy::input::ButtonInput<bevy::input::keyboard::KeyCode>>,
     is_host: Option<Res<IsHost>>,
+    mut message_sender: Query<&mut MessageSender<StartGameEvent>>,
 ) {
     // Handle host input to start game
     if let Some(is_host_res) = is_host {
         if is_host_res.0 && input.just_pressed(bevy::input::keyboard::KeyCode::Space) {
-            info!("Host pressed SPACE - starting game!");
-            commands.set_state(GameState::Loading);
+            info!("✅ Host pressed SPACE - sending StartGame to server!");
+
+            // Send StartGameEvent to server
+            if let Ok(mut sender) = message_sender.single_mut() {
+                sender.send::<UpdatesChannel>(StartGameEvent);
+                info!("📡 HOST: Sent StartGameEvent to server");
+            }
             return;
         }
     }
@@ -334,7 +383,7 @@ fn update_lobby_ui(
                     } else {
                         ""
                     };
-                    let is_you = if *player_id == PeerId::Netcode(local_player_id.0) {
+                    let is_you = if *player_id == local_player_id.0 {
                         " (You)"
                     } else {
                         ""

@@ -1,8 +1,12 @@
 use avian3d::prelude::{Position, Rotation};
-use bevy::prelude::{Commands, Component, Name, Vec3, info};
-use lightyear::prelude::{NetworkTarget, Replicate};
-use rand::rngs::StdRng;
+use bevy::prelude::Color;
+use bevy::prelude::{
+    AmbientLight, Assets, Commands, Component, Cuboid, Dir3, DirectionalLight, Mesh, Mesh3d,
+    MeshMaterial3d, Name, Plane3d, ResMut, StandardMaterial, Transform, Vec2, Vec3, default, info,
+};
+
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use serde::{Deserialize, Serialize};
 
 pub const FLOOR_THICKNESS: f32 = 1.0;
@@ -13,19 +17,44 @@ pub const ROOM_SIZE: f32 = 50.0;
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct LevelDoneMarker;
 
-pub fn setup_static_level(mut commands: Commands, seed: Option<u64>) {
+pub fn setup_static_level(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    seed: Option<u64>,
+) {
     let seed = seed.unwrap_or(42); // Default seed if none provided
     info!("Setting up static level with seed: {}", seed);
 
     // Use seed for procedural generation
     let mut _rng = StdRng::seed_from_u64(seed);
 
+    commands.insert_resource(AmbientLight {
+        color: Color::WHITE.into(),
+        brightness: 0.3,
+        affects_lightmapped_meshes: true,
+    });
+
+    commands.spawn((
+        DirectionalLight {
+            color: Color::WHITE.into(),
+            illuminance: 10000.0,
+            ..default()
+        },
+        Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Name::new("Sun"),
+    ));
+
     // Floor
     commands.spawn((
         Name::new("Floor"),
         Position(Vec3::new(0.0, -FLOOR_THICKNESS / 2.0, 0.0)),
+        Mesh3d(meshes.add(Plane3d {
+            normal: Dir3::Y,
+            half_size: Vec2::splat(50.0),
+        })),
+        MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
         Rotation::default(),
-        Replicate::to_clients(NetworkTarget::All),
     ));
 
     // Walls - could be procedurally varied based on seed
@@ -65,23 +94,29 @@ pub fn setup_static_level(mut commands: Commands, seed: Option<u64>) {
     ];
 
     for (position, name) in wall_positions {
+        let size = if name.contains("North") || name.contains("South") {
+            Vec3::new(ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS)
+        } else {
+            Vec3::new(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE)
+        };
         commands.spawn((
             Name::new(name),
             Position(position),
             Rotation::default(),
-            Replicate::to_clients(NetworkTarget::All),
+            Mesh3d(meshes.add(Cuboid { half_size: size })),
+            MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
         ));
     }
 
     info!("Scene setup complete with seed: {}", seed);
-    commands.spawn((
-        LevelDoneMarker, 
-        Name::new("Level"),
-        Replicate::to_clients(NetworkTarget::All),
-    ));
+    commands.spawn((LevelDoneMarker, Name::new("Level")));
 }
 
 // Convenience function that uses default parameters for existing code
-pub fn setup_static_level_default(commands: Commands) {
-    setup_static_level(commands, None);
+pub fn setup_static_level_default(
+    commands: Commands,
+    meshes: ResMut<Assets<Mesh>>,
+    materials: ResMut<Assets<StandardMaterial>>,
+) {
+    setup_static_level(commands, meshes, materials, None);
 }

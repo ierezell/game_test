@@ -93,14 +93,6 @@ pub fn spawn_classic_ai_bot(commands: &mut Commands, bot_id: u32, position: Vec3
         ))
         .id();
 
-    // Add weapon holder to bot
-
-    // Add weapon holder to bot
-    crate::entities::weapons::add_weapon_holder(&mut *commands, bot_entity);
-
-    // Add stamina system to bot
-    crate::entities::stamina::add_stamina_to_player(&mut *commands, bot_entity);
-
     info!(
         "Classic AI Bot {} spawned with entity ID: {:?}",
         bot_id, bot_entity

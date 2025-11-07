@@ -1,48 +1,61 @@
 use crate::input::PlayerAction;
-use crate::level::create_static::LevelDoneMarker;
 
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     log::debug,
-    prelude::{App, Color, Component, Message, Name, Plugin, Resource, default},
+    prelude::{App, Color, Component, Name, Plugin, Resource, default},
 };
+use leafwing_input_manager::action_state::ActionState;
 
 use lightyear::input::config::InputConfig;
-use lightyear::prelude::PeerId;
 use lightyear::prelude::input::leafwing;
 use lightyear::prelude::*;
 use serde::{Deserialize, Serialize};
 
-// Import the entity components we need to register
-use crate::entities::health::{Health, Respawnable};
-use crate::entities::stamina::{Stamina, StaminaEffects};
-use crate::entities::weapons::{SimpleGun, SimpleProjectile};
-
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerId(pub PeerId);
+pub struct PlayerId(pub u64);
 
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PlayerColor(pub Color);
 
-#[derive(Message, Resource, Serialize, Deserialize, Clone, Debug, PartialEq)]
+// Server-only resource (not replicated)
+#[derive(Resource, Clone, Debug, PartialEq)]
 pub struct GameSeed {
     pub seed: u64,
 }
 
-#[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct StartGame;
-
-#[derive(Message, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PlayerJoinedLobby {
-    pub player_id: PeerId,
-    pub player_name: String,
+// Server-only resource (not replicated)
+#[derive(Resource, Clone, Debug, PartialEq)]
+pub struct LobbyState {
+    pub players: Vec<u64>,
+    pub host_id: u64,
 }
 
-#[derive(Resource, Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct LobbyState {
-    pub players: Vec<PeerId>,
-    pub host_id: PeerId,
-    pub game_started: bool,
+// Marker component for the game state entity
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct GameStateMarker;
+
+// Replicated component that holds the seed - attached to GameStateMarker entity
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ReplicatedGameSeed {
+    pub seed: u64,
+}
+
+// Replicated component for lobby info - attached to GameStateMarker entity
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ReplicatedLobbyInfo {
+    pub player_count: u32,
+    pub host_id: u64, // Using u64 instead of PeerId for simpler serialization
+}
+
+// Lightyear event: Client tells server to start the game
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StartGameEvent;
+
+// Lightyear event: Client confirms static world is created
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct WorldCreatedEvent {
+    pub client_id: u64,
 }
 
 #[derive(Clone)]
@@ -59,28 +72,27 @@ impl Plugin for ProtocolPlugin {
         });
 
         app.register_component::<PlayerId>().add_prediction();
-        app.register_component::<PlayerColor>().add_prediction();
         app.register_component::<Name>().add_prediction();
-        app.register_component::<LevelDoneMarker>().add_prediction();
 
-        // Physics components (only replicate transform and velocity)
-        app.register_component::<Rotation>().add_prediction();
-        app.register_component::<Position>().add_prediction();
+        app.register_component::<Rotation>()
+            .add_prediction()
+            .add_linear_interpolation();
+
+        app.register_component::<Position>()
+            .add_prediction()
+            .add_linear_interpolation();
+
         app.register_component::<LinearVelocity>().add_prediction();
 
-        // Entity components
-        app.register_component::<Health>().add_prediction();
-        app.register_component::<Respawnable>().add_prediction();
-        app.register_component::<Stamina>().add_prediction();
-        app.register_component::<StaminaEffects>().add_prediction();
-        app.register_component::<SimpleGun>().add_prediction();
-        app.register_component::<SimpleProjectile>()
+        app.register_component::<ActionState<PlayerAction>>()
             .add_prediction();
 
-        // Register messages
-        app.register_message::<GameSeed>();
-        app.register_message::<StartGame>();
-        app.register_message::<PlayerJoinedLobby>();
+        app.register_component::<GameStateMarker>();
+        app.register_component::<ReplicatedGameSeed>();
+        app.register_component::<ReplicatedLobbyInfo>();
+
+        app.register_message::<StartGameEvent>();
+        app.register_message::<WorldCreatedEvent>();
 
         debug!("✅ Protocol plugin initialized with components, messages, inputs, and events");
     }

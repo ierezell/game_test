@@ -29,9 +29,10 @@ fn startup_server(mut commands: Commands, transport: Res<NetTransport>) {
                 private_key: SHARED_SETTINGS.private_key,
             };
 
+            let netcode_server = NetcodeServer::new(netcode_config);
             let server_entity = commands
                 .spawn((
-                    NetcodeServer::new(netcode_config),
+                    netcode_server,
                     LocalAddr(SERVER_BIND_ADDR),
                     ServerUdpIo::default(),
                     // DeltaManager::default(), // Enable delta compression

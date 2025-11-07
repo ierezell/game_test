@@ -1,6 +1,4 @@
-pub mod create_dynamic;
 pub mod create_static;
-pub mod render;
 
 #[cfg(test)]
 mod tests {
@@ -9,13 +7,36 @@ mod tests {
     use bevy::prelude::*;
     use create_static::{LevelDoneMarker, ROOM_SIZE, WALL_HEIGHT, setup_static_level};
 
+    // Test helper system that wraps setup_static_level for easier testing
+    fn test_setup_system(
+        commands: Commands,
+        meshes: ResMut<Assets<Mesh>>,
+        materials: ResMut<Assets<StandardMaterial>>,
+        seed: Option<Res<TestSeed>>,
+    ) {
+        let seed_value = seed.map(|s| s.0);
+        setup_static_level(commands, meshes, materials, seed_value);
+    }
+
+    #[derive(Resource)]
+    struct TestSeed(u64);
+
+    fn setup_level_for_test(app: &mut App, seed: Option<u64>) {
+        if let Some(s) = seed {
+            app.insert_resource(TestSeed(s));
+        }
+        app.add_systems(Startup, test_setup_system);
+        app.update();
+    }
     #[test]
     fn test_setup_static_level_creates_entities() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
+        app.init_resource::<Assets<Mesh>>();
+        app.init_resource::<Assets<StandardMaterial>>();
 
         // Call the system
-        setup_static_level(app.world_mut().commands(), Some(12345));
+        setup_level_for_test(&mut app, Some(12345));
         app.update();
 
         let mut query = app.world_mut().query::<&LevelDoneMarker>();
@@ -39,12 +60,16 @@ mod tests {
     fn test_setup_static_level_with_different_seeds() {
         let mut app1 = App::new();
         app1.add_plugins(MinimalPlugins);
-        setup_static_level(app1.world_mut().commands(), Some(111));
+        app1.init_resource::<Assets<Mesh>>();
+        app1.init_resource::<Assets<StandardMaterial>>();
+        setup_level_for_test(&mut app1, Some(111));
         app1.update();
 
         let mut app2 = App::new();
         app2.add_plugins(MinimalPlugins);
-        setup_static_level(app2.world_mut().commands(), Some(222));
+        app2.init_resource::<Assets<Mesh>>();
+        app2.init_resource::<Assets<StandardMaterial>>();
+        setup_level_for_test(&mut app2, Some(222));
         app2.update();
 
         // Both should create the same number of entities (deterministic for now)
@@ -64,8 +89,10 @@ mod tests {
     fn test_setup_static_level_with_none_seed() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
+        app.init_resource::<Assets<Mesh>>();
+        app.init_resource::<Assets<StandardMaterial>>();
 
-        setup_static_level(app.world_mut().commands(), None);
+        setup_level_for_test(&mut app, None);
         app.update();
 
         // Should still work with default seed
@@ -81,8 +108,10 @@ mod tests {
     fn test_wall_positions_are_correct() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
+        app.init_resource::<Assets<Mesh>>();
+        app.init_resource::<Assets<StandardMaterial>>();
 
-        setup_static_level(app.world_mut().commands(), Some(42));
+        setup_level_for_test(&mut app, Some(42));
         app.update();
 
         let mut wall_positions = Vec::new();

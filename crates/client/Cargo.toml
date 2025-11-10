@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 shared = { path = "../shared" }
+server = { path = "../server" }
 lightyear.workspace = true
 bevy-inspector-egui.workspace = true
 leafwing-input-manager.workspace = true

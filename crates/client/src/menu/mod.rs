@@ -1,7 +1,7 @@
 pub mod lobby;
 pub mod local;
 
-pub use lobby::LobbyPlugin;
+pub use lobby::ClientLobbyPlugin;
 pub use local::LocalMenuPlugin;
 
 use bevy::prelude::Resource;

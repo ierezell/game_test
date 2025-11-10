@@ -1,19 +1,13 @@
 pub mod entities;
-pub mod game_state;
 pub mod input;
 pub mod level;
 pub mod navigation_pathfinding;
 pub mod protocol;
 pub mod render;
 
-use bevy::prelude::{Plugin, Resource};
-use std::net::SocketAddr;
+use bevy::prelude::Plugin;
 
-#[derive(Resource, Debug, Clone)]
-pub enum NetTransport {
-    Udp,
-    Tcp,
-}
+use std::net::SocketAddr;
 
 pub const SEND_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
 pub const SERVER_BIND_ADDR: SocketAddr = SocketAddr::new(

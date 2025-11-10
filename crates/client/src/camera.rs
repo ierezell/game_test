@@ -5,7 +5,7 @@ use bevy::prelude::{
     Or, Plugin, PostUpdate, Quat, Query, Res, Startup, Transform, Update, Vec3, With, debug,
     default, info,
 };
-// Removed unused window imports
+
 use bevy_inspector_egui::{
     bevy_egui::{EguiGlobalSettings, EguiPlugin, PrimaryEguiContext},
     quick::WorldInspectorPlugin,
@@ -57,7 +57,7 @@ fn spawn_camera_when_player_spawn(
     // Once for (PlayerId, ShouldBePredicted) (When replicated from server)
     // Once when (Predicted) is added alone
     // Once when (PlayerId with Predicted) is added (The one we want)
-    trigger: On<Add, (Predicted, Controlled, PlayerId)>,
+    trigger: On<Add, Controlled>,
     player_query: Query<
         (&PlayerId, &Position),
         (With<Predicted>, With<Controlled>, With<PlayerId>),
@@ -77,7 +77,7 @@ fn spawn_camera_when_player_spawn(
             "🔍 Camera spawn check: player_id={:?},  local_player_id={}",
             player_id.0, local_player_id.0
         );
-        if player_id.0 == local_player_id.0 {
+        if player_id.0.to_bits() == local_player_id.0 {
             let camera_height = position.0.y + PLAYER_CAPSULE_HEIGHT + 0.6; // Player center + eye height offset
             let camera_position = position.0 + Vec3::new(0.0, camera_height, 0.0); // Eye height offset
 

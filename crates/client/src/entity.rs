@@ -2,22 +2,26 @@ use crate::input::get_player_input_map;
 use avian3d::prelude::{LinearVelocity, Position};
 use bevy::prelude::{
     Add, App, Assets, Capsule3d, Commands, FixedUpdate, Mesh, Mesh3d, MeshMaterial3d, Name, On,
-    Plugin, Query, Res, ResMut, Single, StandardMaterial, With, debug, info,
+    Plugin, Query, Res, ResMut, Single, StandardMaterial, Update, With, debug, info,
 };
+use shared::level::create_static::setup_static_level;
 
 use crate::LocalPlayerId;
 use lightyear::prelude::{
-    Controlled, Interpolated, LocalTimeline, NetworkTimeline, Predicted, PredictionManager,
+    Controlled, Interpolated, LocalTimeline, MessageReceiver, NetworkTimeline, Predicted,
+    PredictionManager,
 };
 use shared::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
-use shared::protocol::{PlayerColor, PlayerId};
 
-pub struct ClientRenderPlugin;
+use shared::protocol::{PlayerColor, PlayerId, StartLoadingGameEvent};
 
-impl Plugin for ClientRenderPlugin {
+pub struct ClientEntitiesPlugin;
+
+impl Plugin for ClientEntitiesPlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(handle_player_spawn);
         app.add_observer(handle_other_players_spawn);
+        app.add_systems(Update, handle_static_world);
         app.add_systems(FixedUpdate, debug_player_position);
     }
 }
@@ -69,7 +73,7 @@ fn handle_player_spawn(
     );
     info!("🔍 CLIENT: Entity name: {:?}, color: {:?}", name, color);
 
-    if player_id.0 == local_player_id.0 {
+    if player_id.0.to_bits() == local_player_id.0 {
         info!(
             "✅ CLIENT: This is our local player! Adding rendering and input to entity {:?} ({:?})",
             entity, name
@@ -127,4 +131,16 @@ fn handle_other_players_spawn(
         "✅ CLIENT: INTERPOLATED player setup complete! Entity: {:?} Player: {:?}",
         entity, name
     );
+}
+
+fn handle_static_world(
+    mut receiver: Single<&mut MessageReceiver<StartLoadingGameEvent>>,
+    mut commands: Commands,
+    meshes: ResMut<Assets<Mesh>>,
+    materials: Option<ResMut<Assets<StandardMaterial>>>,
+) {
+    if receiver.has_messages() {
+        setup_static_level(commands.reborrow(), meshes, materials, None);
+    }
+    receiver.receive().for_each(drop);
 }

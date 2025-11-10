@@ -2,14 +2,14 @@ use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     ecs::schedule::IntoScheduleConfigs,
     prelude::{
-        App, Commands, Entity, Name, Plugin, Query, Update, Vec2, With, Without, debug, info, warn,
+        App, Commands, Entity, FixedUpdate, Name, Plugin, Query, Vec2, With, debug, info, warn,
     },
     state::{condition::in_state, state::OnEnter},
 };
 use leafwing_input_manager::prelude::ActionState;
 use lightyear::prelude::{
-    Confirmed, ControlledBy, InterpolationTarget, NetworkTarget, PeerId, Predicted,
-    PredictionTarget, RemoteId, Replicate, server::ClientOf,
+    ControlledBy, InterpolationTarget, NetworkTarget, PeerId, PredictionTarget, RemoteId,
+    Replicate, server::ClientOf,
 };
 use shared::{
     entities::player::color_from_id,
@@ -23,7 +23,7 @@ pub struct ServerEntitiesPlugin;
 impl Plugin for ServerEntitiesPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
-            Update,
+            FixedUpdate,
             server_player_movement.run_if(in_state(ServerGameState::Playing)),
         );
         app.add_systems(OnEnter(ServerGameState::Playing), spawn_player_entities);
@@ -61,6 +61,7 @@ fn spawn_player_entities(
             let player = commands
                 .spawn((
                     Name::new(format!("Player_{}", player_id)),
+                    ActionState::<PlayerAction>::default(),
                     PlayerId(PeerId::Netcode(*player_id)),
                     PlayerColor(color),
                     Position::default(),
@@ -70,7 +71,7 @@ fn spawn_player_entities(
                         owner: client_entity,
                         lifetime: Default::default(),
                     },
-                    Replicate::to_clients(NetworkTarget::Single(remote_id.0)),
+                    Replicate::to_clients(NetworkTarget::All),
                     PredictionTarget::to_clients(NetworkTarget::Single(remote_id.0)),
                     InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(remote_id.0)),
                 ))
@@ -109,11 +110,7 @@ pub fn server_player_movement(
             &mut LinearVelocity,
             &ActionState<PlayerAction>,
         ),
-        (
-            With<PlayerId>,
-            Without<Predicted>,
-            Without<Confirmed<Position>>,
-        ),
+        With<PlayerId>,
     >,
 ) {
     for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {

@@ -1,9 +1,9 @@
 use avian3d::prelude::Position;
 use avian3d::prelude::Rotation;
 use bevy::prelude::{
-    Add, App, Camera, Camera2d, Camera3d, Changed, Commands, Component, Entity, EulerRot, Name, On,
-    Or, Plugin, PostUpdate, Quat, Query, Res, Startup, Transform, Update, Vec3, With, debug,
-    default, info,
+    Add, App, Camera, Camera2d, Camera3d, Changed, Commands, Component, Entity, EulerRot,
+    IntoScheduleConfigs, Name, On, Or, Plugin, PostUpdate, Quat, Query, Res, Startup, Transform,
+    Update, Vec3, With, debug, default, in_state, info,
 };
 
 use bevy_inspector_egui::{
@@ -15,6 +15,8 @@ use lightyear::prelude::{Controlled, Predicted};
 
 use shared::input::{MOUSE_SENSITIVITY, PITCH_LIMIT_RADIANS, PLAYER_CAPSULE_HEIGHT, PlayerAction};
 use shared::protocol::PlayerId;
+
+use crate::ClientGameState;
 pub struct RenderPlugin;
 
 #[derive(Component, Default)]
@@ -35,8 +37,14 @@ impl Plugin for RenderPlugin {
         });
         app.add_plugins((EguiPlugin::default(), WorldInspectorPlugin::default()));
         app.add_observer(spawn_camera_when_player_spawn);
-        app.add_systems(PostUpdate, update_camera_transform_from_player);
-        app.add_systems(Update, update_camera_pitch);
+        app.add_systems(
+            PostUpdate,
+            update_camera_transform_from_player.run_if(in_state(ClientGameState::Playing)),
+        );
+        app.add_systems(
+            Update,
+            update_camera_pitch.run_if(in_state(ClientGameState::Playing)),
+        );
     }
 }
 
@@ -53,10 +61,8 @@ fn spawn_menu_and_debug_camera(mut commands: Commands) {
 }
 
 fn spawn_camera_when_player_spawn(
-    // Trigger 3 times:
-    // Once for (PlayerId, ShouldBePredicted) (When replicated from server)
-    // Once when (Predicted) is added alone
-    // Once when (PlayerId with Predicted) is added (The one we want)
+    // This triggers when a Controlled component is added to any entity
+    // We need to check if this entity also has the required components for our local player
     trigger: On<Add, Controlled>,
     player_query: Query<
         (&PlayerId, &Position),
@@ -67,15 +73,17 @@ fn spawn_camera_when_player_spawn(
     local_player_id: Res<crate::LocalPlayerId>,
 ) {
     if !camera_query.is_empty() {
+        info!("🎥 Camera already exists, skipping spawn");
         return;
     }
 
     let entity = trigger.entity;
     if let Ok((player_id, position)) = player_query.get(entity) {
-        // Only spawn camera if this is the local player, is this a hack ??
         info!(
-            "🔍 Camera spawn check: player_id={:?},  local_player_id={}",
-            player_id.0, local_player_id.0
+            "🔍 Camera spawn check: player_id={:?} ({:?}), local_player_id={}",
+            player_id.0,
+            player_id.0.to_bits(),
+            local_player_id.0
         );
         if player_id.0.to_bits() == local_player_id.0 {
             let camera_height = position.0.y + PLAYER_CAPSULE_HEIGHT + 0.6; // Player center + eye height offset

@@ -2,7 +2,7 @@ use crate::{ClientGameState, LocalPlayerId};
 use bevy::log::debug;
 use bevy::prelude::{
     Add, App, Commands, CommandsStatesExt, Entity, Name, On, OnEnter, Plugin, Query, Remove, Res,
-    Resource, State, With, error, info,
+    State, With, error, info,
 };
 use lightyear::prelude::{
     Authentication, Client, Connect, Connected, Link, LocalAddr, PeerAddr, PredictionManager,
@@ -12,15 +12,6 @@ use lightyear::prelude::{
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use shared::{SERVER_ADDR, SHARED_SETTINGS};
-
-#[derive(Resource)]
-pub struct AutoJoin(pub bool);
-
-impl Default for AutoJoin {
-    fn default() -> Self {
-        Self(false)
-    }
-}
 
 pub struct ClientNetworkPlugin;
 impl Plugin for ClientNetworkPlugin {

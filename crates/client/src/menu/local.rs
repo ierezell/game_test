@@ -28,10 +28,11 @@ impl Plugin for LocalMenuPlugin {
 }
 
 /// Check if we should auto-host when entering main menu
-fn conditional_auto_host(auto_host: Option<Res<AutoHost>>, commands: Commands) {
+fn conditional_auto_host(auto_host: Option<Res<AutoHost>>, mut commands: Commands) {
     if let Some(auto_host_res) = auto_host {
         if auto_host_res.0 {
             info!("Auto-hosting enabled, starting host game sequence");
+            commands.remove_resource::<AutoHost>();
             on_host_game(commands);
         }
     }
@@ -54,7 +55,6 @@ fn on_host_game(mut commands: Commands) {
     info!("⏳ Waiting for server to initialize...");
     thread::sleep(std::time::Duration::from_millis(3000));
 
-    commands.insert_resource(crate::network::AutoJoin(true));
     commands.set_state(ClientGameState::Connecting);
 
     info!("🚀 Hosting setup complete, connecting client to local server...");

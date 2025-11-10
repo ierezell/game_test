@@ -11,3 +11,6 @@ pub struct AutoHost(pub bool);
 
 #[derive(Resource)]
 pub struct AutoStart(pub bool);
+
+#[derive(Resource)]
+pub struct AutoJoin(pub bool);

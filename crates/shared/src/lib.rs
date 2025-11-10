@@ -4,6 +4,7 @@ pub mod level;
 pub mod navigation_pathfinding;
 pub mod protocol;
 pub mod render;
+use avian3d::prelude::PhysicsPlugins;
 
 use bevy::prelude::Plugin;
 
@@ -32,5 +33,6 @@ pub struct SharedPlugin;
 impl Plugin for SharedPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_plugins(protocol::ProtocolPlugin);
+        app.add_plugins(PhysicsPlugins::default());
     }
 }

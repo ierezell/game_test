@@ -1,4 +1,3 @@
-use avian3d::prelude::{Position, Rotation};
 use bevy::prelude::Color;
 use bevy::prelude::{
     AmbientLight, Assets, Commands, Component, Cuboid, Dir3, DirectionalLight, Mesh, Mesh3d,
@@ -49,52 +48,33 @@ pub fn setup_static_level(
     // Floor
     let mut floor_entity = commands.spawn((
         Name::new("Floor"),
-        Position(Vec3::new(0.0, -FLOOR_THICKNESS / 2.0, 0.0)),
+        Transform::from_xyz(0.0, -FLOOR_THICKNESS / 2.0, 0.0),
         Mesh3d(meshes.add(Plane3d {
             normal: Dir3::Y,
-            half_size: Vec2::splat(50.0),
+            half_size: Vec2::splat(ROOM_SIZE),
         })),
-        Rotation::default(),
     ));
 
-    if let Some(ref mut materials) = materials {
-        floor_entity.insert(MeshMaterial3d(
-            materials.add(StandardMaterial { ..default() }),
-        ));
+    if let Some(ref mut mats) = materials {
+        floor_entity.insert(MeshMaterial3d(mats.add(StandardMaterial { ..default() })));
     }
 
     // Walls - could be procedurally varied based on seed
     let wall_positions = [
         (
-            Vec3::new(
-                ROOM_SIZE / 2.0 + WALL_THICKNESS / 2.0,
-                WALL_HEIGHT / 2.0,
-                0.0,
-            ),
+            Vec3::new(ROOM_SIZE + WALL_THICKNESS, WALL_HEIGHT, 0.0),
             "Wall East",
         ),
         (
-            Vec3::new(
-                -ROOM_SIZE / 2.0 - WALL_THICKNESS / 2.0,
-                WALL_HEIGHT / 2.0,
-                0.0,
-            ),
+            Vec3::new(-ROOM_SIZE - WALL_THICKNESS, WALL_HEIGHT, 0.0),
             "Wall West",
         ),
         (
-            Vec3::new(
-                0.0,
-                WALL_HEIGHT / 2.0,
-                ROOM_SIZE / 2.0 + WALL_THICKNESS / 2.0,
-            ),
+            Vec3::new(0.0, WALL_HEIGHT, ROOM_SIZE + WALL_THICKNESS),
             "Wall North",
         ),
         (
-            Vec3::new(
-                0.0,
-                WALL_HEIGHT / 2.0,
-                -ROOM_SIZE / 2.0 - WALL_THICKNESS / 2.0,
-            ),
+            Vec3::new(0.0, WALL_HEIGHT, -ROOM_SIZE - WALL_THICKNESS),
             "Wall South",
         ),
     ];
@@ -107,18 +87,17 @@ pub fn setup_static_level(
         };
         let mut wall_entity = commands.spawn((
             Name::new(name),
-            Position(position),
-            Rotation::default(),
-            Mesh3d(meshes.add(Cuboid { half_size: size })),
+            Transform::from_translation(position / 2.0),
+            Mesh3d(meshes.add(Cuboid {
+                half_size: size / 2.0,
+            })),
         ));
 
-        if let Some(ref mut materials) = materials {
-            wall_entity.insert(MeshMaterial3d(
-                materials.add(StandardMaterial { ..default() }),
-            ));
+        if let Some(ref mut mats) = materials {
+            wall_entity.insert(MeshMaterial3d(mats.add(StandardMaterial { ..default() })));
         }
     }
 
-    info!("Scene setup complete with seed: {}", seed);
     commands.spawn((LevelDoneMarker, Name::new("Level")));
+    info!("Scene setup complete with seed: {}", seed);
 }

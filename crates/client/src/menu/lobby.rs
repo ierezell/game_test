@@ -133,6 +133,7 @@ fn spawn_lobby_ui(mut commands: Commands) {
                         ..Default::default()
                     },
                     BackgroundColor(SLATE_700.into()),
+                    PlayerListContainer,
                 ))
                 .with_children(|list_parent| {
                     list_parent.spawn((
@@ -145,7 +146,6 @@ fn spawn_lobby_ui(mut commands: Commands) {
                             padding: UiRect::bottom(Val::Px(10.0)),
                             ..Default::default()
                         },
-                        PlayerListContainer,
                     ));
                 });
         });

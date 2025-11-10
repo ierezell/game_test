@@ -6,7 +6,8 @@
       "Bash(find:*)",
       "Bash(cargo run:*)",
       "Bash(tee:*)",
-      "Bash(cargo doc:*)"
+      "Bash(cargo doc:*)",
+      "Bash(cargo test:*)"
     ],
     "deny": [],
     "ask": []

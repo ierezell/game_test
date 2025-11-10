@@ -40,3 +40,7 @@ web-sys = { version = "0.3.77", features = [
 [[bin]]
 name = "launcher"
 path = "src/main.rs"
+
+[lib]
+name = "launcher"
+path = "src/lib.rs"

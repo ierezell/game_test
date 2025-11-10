@@ -1,10 +1,10 @@
-use bevy::prelude::{Add, App, Commands, Name, On, Plugin, PreStartup, Query, Single, With, info};
+use bevy::prelude::{Add, App, Commands, Entity, Name, On, Plugin, PreStartup, Query, Single, With, info};
 use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
-    Connected, LinkOf, LocalAddr, MessageManager, RemoteId, ReplicationSender, SendUpdatesMode,
+    Connected, ControlledBy, Disconnected, LinkOf, LocalAddr, RemoteId, ReplicationSender, SendUpdatesMode,
     server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start},
 };
-use shared::protocol::LobbyState;
+use shared::protocol::{LobbyState, PlayerId};
 use shared::{SEND_INTERVAL, SERVER_BIND_ADDR, SHARED_SETTINGS};
 
 pub struct ServerNetworkPlugin;
@@ -13,6 +13,7 @@ impl Plugin for ServerNetworkPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, startup_server);
         app.add_observer(handle_new_client);
+        app.add_observer(handle_disconnected);
         app.add_observer(handle_connected);
     }
 }
@@ -62,7 +63,7 @@ fn handle_new_client(trigger: On<Add, LinkOf>, mut commands: Commands) {
 fn handle_connected(
     trigger: On<Add, Connected>,
     query: Query<&RemoteId, With<ClientOf>>,
-    mut lobby_query: Single<&mut LobbyState>,
+    lobby_query: Single<&mut LobbyState>,
     mut commands: Commands,
 ) {
     let Ok(client_id) = query.get(trigger.entity) else {
@@ -95,6 +96,60 @@ fn handle_connected(
         }
     }
     info!("🎪 Lobby now has {} players", lobby_state.players.len());
-
     info!("👥 Player added to lobby, waiting for game start to spawn entities");
+}
+
+fn handle_disconnected(
+    trigger: On<Add, Disconnected>,
+    query: Query<&RemoteId, With<ClientOf>>,
+    lobby_query: Single<&mut LobbyState>,
+    player_query: Query<(Entity, &ControlledBy), With<PlayerId>>,
+    mut commands: Commands,
+) {
+    let Ok(client_id) = query.get(trigger.entity) else {
+        info!(
+            "❌ Failed to get RemoteId for disconnected entity {:?}",
+            trigger.entity
+        );
+        return;
+    };
+
+    let client_id_bits = client_id.0.to_bits();
+
+    info!(
+        "❌ Client disconnected with remote-id {:?}. Removing from lobby.",
+        client_id
+    );
+
+    // Despawn all player entities controlled by this client
+    for (player_entity, controlled_by) in player_query.iter() {
+        if controlled_by.owner == trigger.entity {
+            info!(
+                "🗑️ Despawning player entity {:?} controlled by disconnected client",
+                player_entity
+            );
+            commands.entity(player_entity).despawn();
+        }
+    }
+
+    let mut lobby_state = lobby_query;
+    if let Some(pos) = lobby_state
+        .players
+        .iter()
+        .position(|&id| id == client_id_bits)
+    {
+        lobby_state.players.remove(pos);
+        info!("🎪 Lobby now has {} players", lobby_state.players.len());
+
+        // If the host disconnected, assign a new host
+        if lobby_state.host_id == client_id_bits {
+            if let Some(&new_host_id) = lobby_state.players.first() {
+                lobby_state.host_id = new_host_id;
+                info!("👑 Player {} is now the host", new_host_id);
+            } else {
+                lobby_state.host_id = 0; // No host
+                info!("👑 No players left in the lobby");
+            }
+        }
+    }
 }

@@ -38,6 +38,7 @@ pub fn create_client_app(
 ) -> App {
     let mut client_app = App::new();
     let client_id = if client_id == 0 { 1 } else { client_id };
+
     client_app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {

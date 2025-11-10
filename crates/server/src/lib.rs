@@ -9,6 +9,7 @@ use bevy::window::{Window, WindowPlugin};
 use lightyear::prelude::server::ServerPlugins;
 use std::time::Duration;
 
+use crate::entities::ServerEntitiesPlugin;
 use crate::lobby::ServerLobbyPlugin;
 use crate::network::ServerNetworkPlugin;
 use crate::render::RenderPlugin;
@@ -59,6 +60,7 @@ pub fn create_server_app(headless: bool) -> App {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
     app.add_plugins(ServerLobbyPlugin);
+    app.add_plugins(ServerEntitiesPlugin);
     app.init_state::<ServerGameState>();
     app.insert_state(ServerGameState::Lobby);
 

@@ -26,12 +26,10 @@ impl Plugin for ClientLobbyPlugin {
             OnExit(ClientGameState::Lobby),
             (despawn_lobby_ui, despawn_lobby_camera),
         );
-        // Add system to handle auto-start periodically in lobby
-        app.add_systems(OnEnter(ClientGameState::Lobby), handle_auto_start);
-        // Add system to update lobby text when LobbyState changes
+        // Add system to handle auto-start continuously in lobby
         app.add_systems(
             Update,
-            update_lobby_text.run_if(in_state(ClientGameState::Lobby)),
+            (handle_auto_start, update_lobby_text).run_if(in_state(ClientGameState::Lobby)),
         );
     }
 }
@@ -41,15 +39,29 @@ fn handle_auto_start(
     lobby_state: Query<&LobbyState>,
     local_player_id: Res<LocalPlayerId>,
     mut sender: Single<&mut MessageSender<HostStartGameEvent>>,
+    mut commands: Commands,
 ) {
     if let Some(auto_start_res) = auto_start {
-        info!("AutoStart True, Checking for auto-start conditions...");
         if auto_start_res.0 {
             if let Ok(lobby_data) = lobby_state.single() {
-                if lobby_data.host_id == local_player_id.0 {
-                    bevy::log::info!("🚀 Auto-starting game as host");
+                info!(
+                    "🔍 AUTO-START: lobby has {} players, host_id={}, local_id={}",
+                    lobby_data.players.len(), lobby_data.host_id, local_player_id.0
+                );
+                
+                // Check if we are the host and there are players in the lobby
+                if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
+                    info!("🚀 AUTO-START: Starting game as host with {} players", lobby_data.players.len());
                     sender.send::<MetadataChannel>(HostStartGameEvent);
+                    // Remove the auto-start resource so we don't trigger again
+                    commands.remove_resource::<AutoStart>();
+                } else if lobby_data.host_id != local_player_id.0 {
+                    info!("🔍 AUTO-START: Waiting for host to start game (we are not the host)");
+                } else {
+                    info!("🔍 AUTO-START: Waiting for players to join the lobby before auto-starting");
                 }
+            } else {
+                info!("🔍 AUTO-START: Waiting for lobby state to be received from server...");
             }
         }
     }
@@ -163,6 +175,7 @@ fn update_lobby_text(
     mut status_text_query: Query<&mut Text, With<LobbyStatusText>>,
     player_list_container: Query<Entity, With<PlayerListContainer>>,
     player_text_entities: Query<Entity, With<PlayerText>>,
+    play_button_entities: Query<Entity, With<PlayButton>>,
     lobby_ui: Query<Entity, With<LobbyUI>>,
     mut commands: Commands,
 ) {
@@ -185,8 +198,8 @@ fn update_lobby_text(
             };
         }
 
-        // Add play button for the host player
-        if is_host_player {
+        // Add play button for the host player (only if one doesn't already exist)
+        if is_host_player && play_button_entities.is_empty() {
             if let Ok(lobby_entity) = lobby_ui.single() {
                 commands.entity(lobby_entity).with_children(|parent| {
                     parent

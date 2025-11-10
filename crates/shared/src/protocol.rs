@@ -48,7 +48,7 @@ impl Plugin for ProtocolPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputPlugin::<PlayerAction> {
             config: InputConfig::<PlayerAction> {
-                rebroadcast_inputs: false,
+                rebroadcast_inputs: true,
                 lag_compensation: true,
                 ..default()
             },

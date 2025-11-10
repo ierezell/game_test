@@ -57,7 +57,8 @@ fn host_start_game_event(
             });
 
         setup_static_level(commands.reborrow(), meshes, materials, None);
+        info!("🚀 SERVER: Going to playing state now.");
         commands.set_state(ServerGameState::Playing);
+        message_receiver.receive().for_each(drop);
     }
-    message_receiver.receive().for_each(drop);
 }

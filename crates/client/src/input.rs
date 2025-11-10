@@ -1,6 +1,7 @@
 use avian3d::prelude::{LinearVelocity, Rotation};
+
 use bevy::prelude::{
-    Add, App, Entity, FixedUpdate, KeyCode, On, Plugin, Query, Res, Vec2, With, debug, info,
+    Add, App, Entity, FixedUpdate, KeyCode, MouseButton, On, Plugin, Query, Res, Vec2, With, info,
 };
 use bevy::prelude::{ButtonInput, MessageReader, Update};
 use bevy::window::WindowFocused;
@@ -35,6 +36,13 @@ fn client_player_movement(
     >,
 ) {
     for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
+        info!(
+            "🎮 Movement system running for entity {:?}, ActionState enabled: {}, disabled: {}",
+            entity,
+            !action_state.disabled(),
+            action_state.disabled()
+        );
+
         let move_axis_pair = action_state.axis_pair(&PlayerAction::Move);
         let look_axis_pair = action_state.axis_pair(&PlayerAction::Look);
 
@@ -42,8 +50,8 @@ fn client_player_movement(
             || !action_state.get_pressed().is_empty()
             || look_axis_pair != Vec2::ZERO
         {
-            debug!(
-                "🎮 Player input: Entity {:?}, Move: {:?}, Look: {:?}",
+            info!(
+                "🎮 Player input detected: Entity {:?}, Move: {:?}, Look: {:?}",
                 entity, move_axis_pair, look_axis_pair
             );
         }
@@ -53,13 +61,13 @@ fn client_player_movement(
 }
 
 pub fn get_player_input_map() -> InputMap<PlayerAction> {
-    let input_map = InputMap::<PlayerAction>::new([
-        (PlayerAction::Jump, KeyCode::Space),
-        (PlayerAction::Shoot, KeyCode::Enter),
-    ])
-    .with_dual_axis(PlayerAction::Move, VirtualDPad::wasd())
-    .with_dual_axis(PlayerAction::Move, VirtualDPad::arrow_keys())
-    .with_dual_axis(PlayerAction::Look, MouseMove::default());
+    let input_map = InputMap::<PlayerAction>::default()
+        .with(PlayerAction::Jump, KeyCode::Space)
+        .with(PlayerAction::Shoot, MouseButton::Left)
+        .with(PlayerAction::Aim, MouseButton::Right)
+        .with_dual_axis(PlayerAction::Move, VirtualDPad::wasd())
+        .with_dual_axis(PlayerAction::Move, VirtualDPad::arrow_keys())
+        .with_dual_axis(PlayerAction::Look, MouseMove::default());
 
     input_map
 }
@@ -90,6 +98,7 @@ fn toggle_cursor_grab(
                     if let Ok(mut action_state) = action_query.single_mut() {
                         action_state.reset_all();
                         action_state.enable();
+                        info!("🎮 Inputs enabled with cursor lock");
                     }
                 }
                 _ => {
@@ -99,6 +108,7 @@ fn toggle_cursor_grab(
                     if let Ok(mut action_state) = action_query.single_mut() {
                         action_state.reset_all();
                         action_state.disable();
+                        info!("🎮 Inputs disabled with cursor release");
                     }
                 }
             }
@@ -133,26 +143,30 @@ fn handle_focus_change(
                 info!("🎮 Inputs enabled on focus gain");
             }
         } else {
-            if cursor_options.grab_mode != CursorGrabMode::None {
-                cursor_options.grab_mode = CursorGrabMode::None;
-                cursor_options.visible = true;
-                info!("🔓 Cursor released on focus loss");
-            }
-            if !action_state.disabled() {
-                action_state.disable();
-                info!("🎮 Inputs disabled on focus loss");
-            }
+            // Don't disable inputs or release cursor on focus loss - keep them active
+            info!("🎮 Focus lost but keeping input active for FPS gameplay");
         }
     }
 }
 
 fn grab_cursor(
-    _trigger: On<Add, (PlayerId, Predicted)>,
+    _trigger: On<Add, Controlled>,
     mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut action_query: Query<
+        &mut ActionState<PlayerAction>,
+        (With<PlayerId>, With<Predicted>, With<Controlled>),
+    >,
 ) {
     if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
         cursor_options.grab_mode = CursorGrabMode::Locked;
         cursor_options.visible = false;
         info!("🔒 Initial cursor lock enabled for FPS gameplay");
+    }
+
+    if let Ok(mut action_state) = action_query.single_mut() {
+        if action_state.disabled() {
+            action_state.enable();
+            info!("🎮 Initial input enabled for FPS gameplay");
+        }
     }
 }

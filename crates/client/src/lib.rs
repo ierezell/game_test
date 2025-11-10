@@ -1,10 +1,12 @@
 pub mod camera;
 pub mod entity;
+pub mod game;
 pub mod input;
 pub mod menu;
 pub mod network;
 use crate::camera::RenderPlugin;
 use crate::entity::ClientEntitiesPlugin;
+use crate::game::GameClientPlugin;
 use crate::input::ClientInputPlugin;
 use crate::menu::{ClientLobbyPlugin, LocalMenuPlugin};
 use crate::network::ClientNetworkPlugin;
@@ -75,12 +77,7 @@ pub fn create_client_app(
     client_app.add_plugins(ClientEntitiesPlugin);
     client_app.add_plugins(LocalMenuPlugin);
     client_app.add_plugins(ClientLobbyPlugin);
-
-    if auto_join {
-        if !auto_host {
-            client_app.insert_resource(crate::network::AutoJoin(true));
-        }
-    }
+    client_app.add_plugins(GameClientPlugin);
 
     if auto_host {
         client_app.insert_resource(crate::menu::AutoHost(true));
@@ -88,6 +85,10 @@ pub fn create_client_app(
 
     if auto_start {
         client_app.insert_resource(crate::menu::AutoStart(true));
+    }
+
+    if auto_join {
+        client_app.insert_resource(crate::menu::AutoJoin(true));
     }
 
     client_app.init_state::<ClientGameState>();

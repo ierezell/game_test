@@ -20,6 +20,9 @@ pub enum PlayerAction {
 
     #[actionlike(Button)]
     Shoot,
+
+    #[actionlike(Button)]
+    Aim,
 }
 
 pub const PLAYER_CAPSULE_RADIUS: f32 = 0.5;
@@ -45,7 +48,6 @@ pub fn shared_player_movement(
 
     update_player_velocity(velocity, rotation, move_input);
 }
-
 
 #[inline]
 fn get_movement_input(action_state: &ActionState<PlayerAction>) -> Vec2 {

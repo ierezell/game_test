@@ -64,9 +64,9 @@ fn spawn_bots_on_server_start(
 
 /// Spawn a classic AI bot that behaves autonomously
 pub fn spawn_classic_ai_bot(commands: &mut Commands, bot_id: u32, position: Vec3) -> Entity {
-    // Create a fake peer_id for the bot (using high values to avoid collision)
-    let fake_peer_id = PeerId::Netcode(2000 + bot_id as u64); // Different range for classic bots
-    let color = color_from_id(fake_peer_id.to_bits());
+    // Create a fake client_id for the bot (using high values to avoid collision)
+    let fake_client_id = 2000 + bot_id as u64; // Different range for classic bots
+    let color = color_from_id(fake_client_id);
 
     info!(
         "Spawning Classic AI Bot {} at position {:?}",
@@ -76,7 +76,7 @@ pub fn spawn_classic_ai_bot(commands: &mut Commands, bot_id: u32, position: Vec3
     let bot_entity = commands
         .spawn((
             Name::new(format!("Classic_AI_Bot_{}", bot_id)),
-            PlayerId(fake_peer_id),
+            PlayerId(fake_client_id),
             LinearVelocity::default(),
             Position(position),
             Rotation::default(),

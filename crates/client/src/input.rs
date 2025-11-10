@@ -8,12 +8,11 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use leafwing_input_manager::prelude::{ActionState, InputMap, MouseMove, VirtualDPad};
 use shared::input::shared_player_movement;
 
-// Removed unused LocalPlayerId import
 use lightyear::prelude::{Controlled, Predicted};
-// Removed unused EnhancedPlayerPhysicsBundle import
+
 use shared::input::PlayerAction;
 use shared::protocol::PlayerId;
-// Removed unused scene physics imports
+
 pub struct ClientInputPlugin;
 
 impl Plugin for ClientInputPlugin {

@@ -1,35 +1,68 @@
-use bevy::prelude::{
-    Click, CommandsStatesExt, Entity, On, OnEnter, Pointer, TextFont, debug, info,
-};
-use shared::game_state::GameState;
-
+use crate::ClientGameState;
+use crate::menu::AutoHost;
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
-        AlignItems, App, BackgroundColor, Camera2d, Commands, Component, FlexDirection,
-        JustifyContent, Name, Node, Plugin, Query, Text, UiRect, Val, With, default,
+        AlignItems, App, BackgroundColor, Camera2d, Click, Commands, CommandsStatesExt, Component,
+        Entity, FlexDirection, JustifyContent, Name, Node, On, OnEnter, OnExit, Plugin, Pointer,
+        Query, Res, Text, TextFont, UiRect, Val, With, debug, default, info,
     },
 };
+use server::create_server_app;
+use std::thread;
 
 pub struct LocalMenuPlugin;
 
 impl Plugin for LocalMenuPlugin {
     fn build(&self, app: &mut App) {
+        app.add_systems(OnEnter(ClientGameState::LocalMenu), conditional_auto_host);
         app.add_systems(
-            OnEnter(GameState::MainMenu),
+            OnEnter(ClientGameState::LocalMenu),
             (spawn_main_menu_ui, spawn_menu_camera),
         );
-        app.add_systems(OnEnter(GameState::Connecting), despawn_main_menu_buttons);
-        app.add_systems(OnEnter(GameState::HostingLobby), despawn_main_menu_buttons);
-        app.add_systems(OnEnter(GameState::JoiningGame), despawn_main_menu_buttons);
-        // Clean up menu camera when leaving main menu for lobby
-        app.add_systems(OnEnter(GameState::InLobby), despawn_menu_camera);
-        app.add_systems(OnEnter(GameState::Loading), on_client_begin_loading);
         app.add_systems(
-            OnEnter(GameState::Playing),
-            (despawn_main_menu_ui, despawn_menu_camera),
+            OnExit(ClientGameState::LocalMenu),
+            (despawn_menu_camera, despawn_main_menu_ui),
         );
     }
+}
+
+/// Check if we should auto-host when entering main menu
+fn conditional_auto_host(auto_host: Option<Res<AutoHost>>, commands: Commands) {
+    if let Some(auto_host_res) = auto_host {
+        if auto_host_res.0 {
+            info!("Auto-hosting enabled, starting host game sequence");
+            on_host_game(commands);
+        }
+    }
+}
+
+/// System that handles hosting a game
+/// Spawns a server in a separate thread and then connects the client to it
+fn on_host_game(mut commands: Commands) {
+    info!("🏠 Starting to host a game...");
+
+    // Spawn server in a separate thread
+    let server_handle = thread::spawn(move || {
+        info!("🖥️ Starting server thread...");
+        let mut server_app = create_server_app(true);
+        server_app.run();
+        info!("✅ Server started and running...");
+    });
+
+    // Give the server more time to start up properly to avoid port conflicts
+    info!("⏳ Waiting for server to initialize...");
+    thread::sleep(std::time::Duration::from_millis(3000));
+
+    commands.insert_resource(crate::network::AutoJoin(true));
+    commands.set_state(ClientGameState::Connecting);
+
+    info!("🚀 Hosting setup complete, connecting client to local server...");
+
+    // Store the server handle so we can clean it up later if needed
+    // For now we'll let it run detached
+    std::mem::forget(server_handle);
+    commands.set_state(ClientGameState::Lobby);
 }
 
 #[derive(Component)]
@@ -39,12 +72,10 @@ fn despawn_menu_camera(mut commands: Commands, q_menu_camera: Query<Entity, With
     for entity in &q_menu_camera {
         commands.entity(entity).despawn();
     }
-    info!("Despawned menu camera");
 }
 
 fn spawn_menu_camera(mut commands: Commands) {
     commands.spawn((Camera2d, MenuCamera, Name::new("MenuCamera")));
-    debug!("Spawned fallback 2D camera for menu (z=10.0)");
 }
 
 #[derive(Component)]
@@ -102,9 +133,8 @@ fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<Ma
                     },
                 ))
                 .insert(HostButton)
-                .observe(|_click: On<Pointer<Click>>, mut commands: Commands| {
-                    debug!("Host button clicked, transitioning to HostingLobby");
-                    commands.set_state(GameState::HostingLobby);
+                .observe(|_click: On<Pointer<Click>>, commands: Commands| {
+                    on_host_game(commands);
                 });
 
             child_builder
@@ -117,45 +147,13 @@ fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<Ma
                 ))
                 .insert(JoinButton)
                 .observe(|_click: On<Pointer<Click>>, mut commands: Commands| {
-                    debug!("Join button clicked, transitioning to JoiningGame");
-                    commands.set_state(GameState::JoiningGame);
+                    commands.set_state(ClientGameState::Lobby);
                 });
         });
 }
 
-fn despawn_main_menu_buttons(
-    mut commands: Commands,
-    q_host_buttons: Query<Entity, With<HostButton>>,
-    q_join_buttons: Query<Entity, With<JoinButton>>,
-) {
-    for entity in &q_host_buttons {
-        commands.entity(entity).despawn();
-    }
-    for entity in &q_join_buttons {
-        commands.entity(entity).despawn();
-    }
-    debug!("Despawned main menu buttons");
-}
-
-fn on_client_begin_loading(mut q_status_text: Query<&mut Text, With<MainMenuStatusText>>) {
-    for mut text in q_status_text.iter_mut() {
-        text.0 = String::from("Loading game...");
-    }
-    debug!("Main menu status: Loading game...");
-}
-
-fn despawn_main_menu_ui(
-    mut commands: Commands,
-    q_main_menu: Query<Entity, With<MainMenu>>,
-    mut q_status_text: Query<&mut Text, With<MainMenuStatusText>>,
-) {
+fn despawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<MainMenu>>) {
     for entity in &q_main_menu {
         commands.entity(entity).despawn();
     }
-
-    for mut text in q_status_text.iter_mut() {
-        text.0 = String::from("Connecting");
-    }
-    debug!("Despawned main menu UI");
-    debug!("Main menu status: Connecting");
 }

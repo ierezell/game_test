@@ -5,8 +5,8 @@ members = [
     "crates/shared",
     "crates/launcher",
     "crates/server",
-    "crates/llm",
-    "crates/reinforcement_learning",
+    # "crates/llm",
+    # "crates/reinforcement_learning",
 ]
 resolver = "2"
 
@@ -39,9 +39,6 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
-
-[profile.dev.package.bevy_dylib]
-opt-level = 1
 
 [profile.release]
 codegen-units = 1

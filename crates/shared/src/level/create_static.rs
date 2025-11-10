@@ -20,7 +20,7 @@ pub struct LevelDoneMarker;
 pub fn setup_static_level(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: Option<ResMut<Assets<StandardMaterial>>>,
     seed: Option<u64>,
 ) {
     let seed = seed.unwrap_or(42); // Default seed if none provided
@@ -28,34 +28,40 @@ pub fn setup_static_level(
 
     // Use seed for procedural generation
     let mut _rng = StdRng::seed_from_u64(seed);
-
-    commands.insert_resource(AmbientLight {
-        color: Color::WHITE.into(),
-        brightness: 0.3,
-        affects_lightmapped_meshes: true,
-    });
-
-    commands.spawn((
-        DirectionalLight {
+    if materials.is_some() {
+        commands.insert_resource(AmbientLight {
             color: Color::WHITE.into(),
-            illuminance: 10000.0,
-            ..default()
-        },
-        Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
-        Name::new("Sun"),
-    ));
+            brightness: 0.3,
+            affects_lightmapped_meshes: true,
+        });
+
+        commands.spawn((
+            DirectionalLight {
+                color: Color::WHITE.into(),
+                illuminance: 10000.0,
+                ..default()
+            },
+            Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+            Name::new("Sun"),
+        ));
+    }
 
     // Floor
-    commands.spawn((
+    let mut floor_entity = commands.spawn((
         Name::new("Floor"),
         Position(Vec3::new(0.0, -FLOOR_THICKNESS / 2.0, 0.0)),
         Mesh3d(meshes.add(Plane3d {
             normal: Dir3::Y,
             half_size: Vec2::splat(50.0),
         })),
-        MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
         Rotation::default(),
     ));
+
+    if let Some(ref mut materials) = materials {
+        floor_entity.insert(MeshMaterial3d(
+            materials.add(StandardMaterial { ..default() }),
+        ));
+    }
 
     // Walls - could be procedurally varied based on seed
     let wall_positions = [
@@ -99,24 +105,20 @@ pub fn setup_static_level(
         } else {
             Vec3::new(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE)
         };
-        commands.spawn((
+        let mut wall_entity = commands.spawn((
             Name::new(name),
             Position(position),
             Rotation::default(),
             Mesh3d(meshes.add(Cuboid { half_size: size })),
-            MeshMaterial3d(materials.add(StandardMaterial { ..default() })),
         ));
+
+        if let Some(ref mut materials) = materials {
+            wall_entity.insert(MeshMaterial3d(
+                materials.add(StandardMaterial { ..default() }),
+            ));
+        }
     }
 
     info!("Scene setup complete with seed: {}", seed);
     commands.spawn((LevelDoneMarker, Name::new("Level")));
-}
-
-// Convenience function that uses default parameters for existing code
-pub fn setup_static_level_default(
-    commands: Commands,
-    meshes: ResMut<Assets<Mesh>>,
-    materials: ResMut<Assets<StandardMaterial>>,
-) {
-    setup_static_level(commands, meshes, materials, None);
 }

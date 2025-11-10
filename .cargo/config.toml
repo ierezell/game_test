@@ -12,3 +12,6 @@ target-dir = "target"
 # Optional: Use a different target directory for faster compilation
 # [build]
 # target-dir = "C:/tmp/bevy-target" # Use a different drive if available
+
+[alias]
+bevy_test = "test -- --test-threads=1"

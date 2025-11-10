@@ -1,13 +1,13 @@
 use crate::input::PlayerAction;
-
+use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     log::debug,
-    prelude::{App, Color, Component, Entity, Event, Name, Plugin, default},
+    prelude::{App, Color, Component, Name, Plugin, default},
 };
 
 use lightyear::prelude::{
-    AppComponentExt, AppMessageExt, AppTriggerExt, NetworkDirection, PeerId,
-    input::leafwing::InputPlugin,
+    AppComponentExt, AppMessageExt, InterpolationRegistrationExt, NetworkDirection, PeerId,
+    PredictionRegistrationExt, input::leafwing::InputPlugin,
 };
 
 use lightyear::input::config::InputConfig;
@@ -46,32 +46,28 @@ pub struct StartLoadingGameEvent;
 pub struct ProtocolPlugin;
 impl Plugin for ProtocolPlugin {
     fn build(&self, app: &mut App) {
-        // app.add_plugins(InputPlugin::<PlayerAction> {
-        //     config: InputConfig::<PlayerAction> {
-        //         rebroadcast_inputs: false,
-        //         lag_compensation: true,
-        //         ..default()
-        //     },
-        // });
+        app.add_plugins(InputPlugin::<PlayerAction> {
+            config: InputConfig::<PlayerAction> {
+                rebroadcast_inputs: false,
+                lag_compensation: true,
+                ..default()
+            },
+        });
 
-        // Essential component registrations - minimal set to prevent protocol mismatches
         app.register_component::<PlayerId>();
         app.register_component::<Name>();
         app.register_component::<PlayerColor>();
         app.register_component::<GameSeed>();
 
-        // app.register_component::<Rotation>()
-        //     .add_prediction()
-        //     .add_linear_interpolation();
+        app.register_component::<Rotation>()
+            .add_prediction()
+            .add_linear_interpolation();
 
-        // app.register_component::<Position>()
-        //     .add_prediction()
-        //     .add_linear_interpolation();
+        app.register_component::<Position>()
+            .add_prediction()
+            .add_linear_interpolation();
 
-        // app.register_component::<LinearVelocity>().add_prediction();
-
-        // app.register_component::<ActionState<PlayerAction>>()
-        //     .add_prediction();
+        app.register_component::<LinearVelocity>().add_prediction();
 
         app.register_component::<LobbyState>()
             .add_component_map_entities();

@@ -159,10 +159,7 @@ RTS-lite squad commands if someone disconnects or you play solo.
 🔧 TL;DR — You Can Differentiate GTFO By:
 Category	Add or Change
 Gameplay Loop	Procedural levels, branching paths, dynamic objectives
-Enemy Design	Smarter AI, different factions, psychological threats
-Classes & Roles	More roles, tools, and class synergy
-Co-op Mechanics	Forced splits, asymmetric tools, emergent coordination
-Setting & Lore	New environments, richer narrative, persistent storyworld
+Enemy Design	Smarter AI, psychological threats
+Co-op Mechanics	asymmetric tools, emergent coordination
+Setting & Lore	New environments
 Systems Innovation	Sanity, stress, rogue-lite, or extraction mechanics
-
-Want help fleshing out a specific setting, core mechanic, or gameplay system? Let me know what direction you’re leaning, and I’ll help shape it further.

@@ -14,7 +14,9 @@ use bevy::log::LogPlugin;
 use bevy::prelude::{App, AssetPlugin, DefaultPlugins, PluginGroup, Resource, States, default};
 use bevy::state::app::AppExtStates;
 use bevy::window::{Window, WindowPlugin};
+
 use lightyear::prelude::client::ClientPlugins;
+
 use std::time::Duration;
 
 #[derive(Resource)]
@@ -65,7 +67,6 @@ pub fn create_client_app(
     // IMPORTANT: SharedPlugin must be added BEFORE ClientPlugins
     // to ensure protocol registration happens before lightyear initialization
     client_app.add_plugins(shared::SharedPlugin);
-
     client_app.add_plugins(ClientPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });

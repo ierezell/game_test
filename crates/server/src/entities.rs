@@ -2,7 +2,8 @@ use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     ecs::schedule::IntoScheduleConfigs,
     prelude::{
-        App, Commands, Entity, FixedUpdate, Name, Plugin, Query, Vec2, With, debug, info, warn,
+        Transform, App, Commands, Entity, FixedUpdate, Name, Vec3, Plugin, Query, Vec2, With, debug, info,
+        warn,
     },
     state::{condition::in_state, state::OnEnter},
 };
@@ -41,7 +42,10 @@ fn spawn_player_entities(
         lobby_data.players.len()
     );
 
-    for player_id in &lobby_data.players {
+    let player_count = lobby_data.players.len() as f32;
+    let spawn_radius = 3.0; // Radius for circular spawn pattern
+    
+    for (index, player_id) in lobby_data.players.iter().enumerate() {
         // Find the client entity for this player
         if let Some((client_entity, remote_id)) =
             client_query
@@ -53,19 +57,26 @@ fn spawn_player_entities(
         {
             let color = color_from_id(*player_id);
 
-            info!(
-                "🎯 SERVER: Spawning player for remote_id: {:?} (client_id: {})",
-                remote_id, player_id
-            );
+            // Calculate spawn position in a circle to avoid stacking
+            let angle = (index as f32) * 2.0 * std::f32::consts::PI / player_count;
+            let spawn_x = spawn_radius * angle.cos();
+            let spawn_z = spawn_radius * angle.sin();
+            let spawn_position = Vec3::new(spawn_x, 5.0, spawn_z);
 
+            info!(
+                "🎯 SERVER: Spawning player for remote_id: {:?} (client_id: {}) at position ({:.2}, {:.2}, {:.2})",
+                remote_id, player_id, spawn_x, 5.0, spawn_z
+            );
+            
+            
             let player = commands
                 .spawn((
                     Name::new(format!("Player_{}", player_id)),
-                    ActionState::<PlayerAction>::default(),
                     PlayerId(PeerId::Netcode(*player_id)),
                     PlayerColor(color),
                     Position::default(),
                     Rotation::default(),
+                    Transform::from_translation(spawn_position),
                     LinearVelocity::default(),
                     ControlledBy {
                         owner: client_entity,

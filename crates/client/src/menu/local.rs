@@ -1,5 +1,5 @@
 use crate::ClientGameState;
-use crate::menu::AutoHost;
+use crate::menu::{AutoHost, AutoJoin};
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
@@ -15,7 +15,10 @@ pub struct LocalMenuPlugin;
 
 impl Plugin for LocalMenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(ClientGameState::LocalMenu), conditional_auto_host);
+        app.add_systems(
+            OnEnter(ClientGameState::LocalMenu),
+            (conditional_auto_host, conditional_auto_join),
+        );
         app.add_systems(
             OnEnter(ClientGameState::LocalMenu),
             (spawn_main_menu_ui, spawn_menu_camera),
@@ -34,6 +37,17 @@ fn conditional_auto_host(auto_host: Option<Res<AutoHost>>, mut commands: Command
             info!("Auto-hosting enabled, starting host game sequence");
             commands.remove_resource::<AutoHost>();
             on_host_game(commands);
+        }
+    }
+}
+
+/// Check if we should auto-join when entering main menu
+fn conditional_auto_join(auto_join: Option<Res<AutoJoin>>, mut commands: Commands) {
+    if let Some(auto_join_res) = auto_join {
+        if auto_join_res.0 {
+            info!("Auto-join enabled, joining game sequence");
+            commands.remove_resource::<AutoJoin>();
+            on_join_game(commands);
         }
     }
 }
@@ -62,6 +76,12 @@ fn on_host_game(mut commands: Commands) {
     // Store the server handle so we can clean it up later if needed
     // For now we'll let it run detached
     std::mem::forget(server_handle);
+    commands.set_state(ClientGameState::Lobby);
+}
+
+/// System that handles joining a game
+fn on_join_game(mut commands: Commands) {
+    info!("🔗 Joining a game...");
     commands.set_state(ClientGameState::Lobby);
 }
 
@@ -146,8 +166,8 @@ fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<Ma
                     },
                 ))
                 .insert(JoinButton)
-                .observe(|_click: On<Pointer<Click>>, mut commands: Commands| {
-                    commands.set_state(ClientGameState::Lobby);
+                .observe(|_click: On<Pointer<Click>>, commands: Commands| {
+                    on_join_game(commands);
                 });
         });
 }

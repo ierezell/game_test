@@ -1,7 +1,8 @@
 use avian3d::prelude::{LinearVelocity, Rotation};
 
 use bevy::prelude::{
-    Add, App, Entity, FixedUpdate, KeyCode, MouseButton, On, Plugin, Query, Res, Vec2, With, info,
+    Add, App, Entity, FixedUpdate, KeyCode, MouseButton, On, Plugin, Query, Res, Vec2, With, debug,
+    info,
 };
 use bevy::prelude::{ButtonInput, MessageReader, Update};
 use bevy::window::WindowFocused;
@@ -36,13 +37,6 @@ fn client_player_movement(
     >,
 ) {
     for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
-        info!(
-            "🎮 Movement system running for entity {:?}, ActionState enabled: {}, disabled: {}",
-            entity,
-            !action_state.disabled(),
-            action_state.disabled()
-        );
-
         let move_axis_pair = action_state.axis_pair(&PlayerAction::Move);
         let look_axis_pair = action_state.axis_pair(&PlayerAction::Look);
 
@@ -50,7 +44,7 @@ fn client_player_movement(
             || !action_state.get_pressed().is_empty()
             || look_axis_pair != Vec2::ZERO
         {
-            info!(
+            debug!(
                 "🎮 Player input detected: Entity {:?}, Move: {:?}, Look: {:?}",
                 entity, move_axis_pair, look_axis_pair
             );

@@ -1,3 +1,4 @@
+use avian3d::prelude::{Collider, RigidBody};
 use bevy::prelude::Color;
 use bevy::prelude::{
     AmbientLight, Assets, Commands, Component, Cuboid, Dir3, DirectionalLight, Mesh, Mesh3d,
@@ -45,7 +46,7 @@ pub fn setup_static_level(
         ));
     }
 
-    // Floor
+    // Floor with physics collision
     let mut floor_entity = commands.spawn((
         Name::new("Floor"),
         Transform::from_xyz(0.0, -FLOOR_THICKNESS / 2.0, 0.0),
@@ -53,6 +54,8 @@ pub fn setup_static_level(
             normal: Dir3::Y,
             half_size: Vec2::splat(ROOM_SIZE),
         })),
+        RigidBody::Static,
+        Collider::cuboid(ROOM_SIZE * 2.0, FLOOR_THICKNESS, ROOM_SIZE * 2.0),
     ));
 
     if let Some(ref mut mats) = materials {
@@ -91,6 +94,8 @@ pub fn setup_static_level(
             Mesh3d(meshes.add(Cuboid {
                 half_size: size / 2.0,
             })),
+            RigidBody::Static,
+            Collider::cuboid(size.x, size.y, size.z),
         ));
 
         if let Some(ref mut mats) = materials {

@@ -15,6 +15,7 @@ EXAMPLES:
     cargo run --bin launcher -- client                           # Start client in menu
     cargo run --bin launcher -- client --auto-host --client-id 1 # Auto-host and wait in lobby
     cargo run --bin launcher -- client --auto-host --auto-start  # Auto-host and auto-start game
+    cargo run --bin launcher -- client --auto-join --client-id 2 # Auto-join a game
     cargo run --bin launcher -- server                           # Start dedicated server
 ")]
 struct Cli {

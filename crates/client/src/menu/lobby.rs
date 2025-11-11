@@ -46,19 +46,27 @@ fn handle_auto_start(
             if let Ok(lobby_data) = lobby_state.single() {
                 info!(
                     "🔍 AUTO-START: lobby has {} players, host_id={}, local_id={}",
-                    lobby_data.players.len(), lobby_data.host_id, local_player_id.0
+                    lobby_data.players.len(),
+                    lobby_data.host_id,
+                    local_player_id.0
                 );
-                
+
                 // Check if we are the host and there are players in the lobby
                 if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
-                    info!("🚀 AUTO-START: Starting game as host with {} players", lobby_data.players.len());
+                    info!(
+                        "🚀 AUTO-START: Starting game as host with {} players",
+                        lobby_data.players.len()
+                    );
                     sender.send::<MetadataChannel>(HostStartGameEvent);
+                    info!("✅ CLIENT AUTO-START: Sent HostStartGameEvent to server");
                     // Remove the auto-start resource so we don't trigger again
                     commands.remove_resource::<AutoStart>();
                 } else if lobby_data.host_id != local_player_id.0 {
                     info!("🔍 AUTO-START: Waiting for host to start game (we are not the host)");
                 } else {
-                    info!("🔍 AUTO-START: Waiting for players to join the lobby before auto-starting");
+                    info!(
+                        "🔍 AUTO-START: Waiting for players to join the lobby before auto-starting"
+                    );
                 }
             } else {
                 info!("🔍 AUTO-START: Waiting for lobby state to be received from server...");
@@ -221,9 +229,10 @@ fn update_lobby_text(
                                         ..Default::default()
                                     },
                                 ))
-                                .observe(|_click: On<Pointer<Click>>,  mut sender: Single<&mut MessageSender<HostStartGameEvent>>| {
-                                    info!("🚀 CLIENT: Play button clicked, sending HostStartGameEvent to server");
+                                .observe(|_click: On<Pointer<Click>>,mut commands: Commands , mut sender: Single<&mut MessageSender<HostStartGameEvent>>| {
                                     sender.send::<MetadataChannel>(HostStartGameEvent);
+                                    info!("✅ CLIENT: Sent HostStartGameEvent to server");
+                                    commands.remove_resource::<AutoStart>();
                                 });
                         });
                 });

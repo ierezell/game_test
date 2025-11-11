@@ -1,9 +1,9 @@
-# Faster compilation and linking on Windows
-[target.x86_64-pc-windows-msvc]
-linker = "rust-lld"
+# # Faster compilation and linking on Windows
+# [target.x86_64-pc-windows-msvc]
+# linker = "rust-lld"
 
-[target.wasm32-unknown-unknown]
-rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
+# [target.wasm32-unknown-unknown]
+# rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
 
 # Enable faster incremental builds
 [build]

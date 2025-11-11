@@ -1,7 +1,7 @@
 use bevy::app::Startup;
 use bevy::prelude::{
-    App, Assets, Commands, CommandsStatesExt, Mesh, Name, Plugin, ResMut, Single, StandardMaterial,
-    Update, error, info,
+    App, Assets, Commands, CommandsStatesExt, Mesh, Name, Plugin, Query, ResMut, Single,
+    StandardMaterial, Update, error, info,
 };
 
 use lightyear::prelude::{
@@ -35,14 +35,23 @@ fn init_lobby(mut commands: Commands) {
 }
 
 fn host_start_game_event(
-    mut message_receiver: Single<&mut MessageReceiver<HostStartGameEvent>>,
+    mut message_receiver_query: Query<&mut MessageReceiver<HostStartGameEvent>>,
     mut sender: ServerMultiMessageSender,
     server: Single<&Server>,
     mut commands: Commands,
     meshes: ResMut<Assets<Mesh>>,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
-    if message_receiver.has_messages() {
+    let mut trigger = false;
+    for mut message_receiver in message_receiver_query.iter_mut() {
+        // There is one message receiver per connected client...
+        if message_receiver.has_messages() {
+            trigger = true;
+            message_receiver.receive().for_each(drop); // Clean the queue
+        }
+    }
+
+    if trigger {
         info!("🚀 SERVER: Received HostStartGameEvent from client");
         commands.spawn(GameSeed { seed: 42 });
         commands.set_state(ServerGameState::Loading);
@@ -59,6 +68,5 @@ fn host_start_game_event(
         setup_static_level(commands.reborrow(), meshes, materials, None);
         info!("🚀 SERVER: Going to playing state now.");
         commands.set_state(ServerGameState::Playing);
-        message_receiver.receive().for_each(drop);
     }
 }

@@ -4,6 +4,8 @@ use bevy::prelude::{
     Add, App, Assets, Capsule3d, Commands, FixedUpdate, Mesh, Mesh3d, MeshMaterial3d, Name, On,
     Plugin, Query, Res, ResMut, Single, StandardMaterial, With, debug, info,
 };
+use leafwing_input_manager::prelude::ActionState;
+use shared::input::PlayerAction;
 
 use crate::LocalPlayerId;
 use lightyear::prelude::{
@@ -75,7 +77,7 @@ fn handle_player_spawn(
             "✅ CLIENT: This is our local player! Adding rendering and input to entity {:?} ({:?})",
             entity, name
         );
-        // Only add client-side rendering and input components - no physics for now
+        // Add rendering
         commands
             .entity(entity)
             .insert(Mesh3d(meshes.add(Capsule3d::new(
@@ -84,8 +86,16 @@ fn handle_player_spawn(
             ))))
             .insert(MeshMaterial3d(materials.add(color.0)));
 
+        // Add input components
         let input_map = get_player_input_map();
-        commands.entity(entity).insert(input_map);
+        commands
+            .entity(entity)
+            .insert((input_map, ActionState::<PlayerAction>::default()));
+
+        // Add physics components
+        commands
+            .entity(entity)
+            .insert(shared::entities::player::PlayerPhysicsBundle::default());
         info!(
             "✅ CLIENT: Local player rendering and input setup complete for entity {:?}",
             entity
@@ -111,14 +121,6 @@ fn handle_other_players_spawn(
         "🌐 CLIENT: handle_other_players_spawn triggered for entity {:?}",
         entity
     );
-
-    let Ok((name, color)) = player_query.get(entity) else {
-        info!(
-            "❌ CLIENT: Failed to get interpolated player data for entity {:?}",
-            entity
-        );
-        return;
-    };
 
     commands.entity(entity).insert((
         Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),

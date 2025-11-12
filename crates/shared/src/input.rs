@@ -49,7 +49,6 @@ pub fn shared_player_movement(
     update_player_velocity(velocity, rotation, move_input);
 }
 
-#[inline]
 fn get_movement_input(action_state: &ActionState<PlayerAction>) -> Vec2 {
     let move_input = action_state
         .axis_pair(&PlayerAction::Move)
@@ -62,7 +61,6 @@ fn get_movement_input(action_state: &ActionState<PlayerAction>) -> Vec2 {
     }
 }
 
-#[inline]
 fn get_look_input(action_state: &ActionState<PlayerAction>) -> Option<Vec2> {
     let mouse_delta = action_state.axis_pair(&PlayerAction::Look);
 

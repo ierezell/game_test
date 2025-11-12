@@ -1,13 +1,15 @@
+use crate::navigation::NavigationObstacle;
 use avian3d::prelude::{Collider, RigidBody};
 use bevy::prelude::Color;
 use bevy::prelude::{
     AmbientLight, Assets, Commands, Component, Cuboid, Dir3, DirectionalLight, Mesh, Mesh3d,
-    MeshMaterial3d, Name, Plane3d, ResMut, StandardMaterial, Transform, Vec2, Vec3, default, info,
+    MeshMaterial3d, Name, Plane3d, Quat, ResMut, StandardMaterial, Transform, Vec2, Vec3, default,
+    info,
 };
-
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use serde::{Deserialize, Serialize};
+use vleue_navigator::prelude::*;
 
 pub const FLOOR_THICKNESS: f32 = 1.0;
 pub const WALL_THICKNESS: f32 = 1.0;
@@ -96,6 +98,7 @@ pub fn setup_static_level(
             })),
             RigidBody::Static,
             Collider::cuboid(size.x, size.y, size.z),
+            NavigationObstacle, // Mark walls as navigation obstacles
         ));
 
         if let Some(ref mut mats) = materials {
@@ -103,6 +106,58 @@ pub fn setup_static_level(
         }
     }
 
+    // Create some interior obstacles for more interesting pathfinding
+    let obstacle_positions = [
+        Vec3::new(15.0, 2.5, 10.0),
+        Vec3::new(-10.0, 2.5, -15.0),
+        Vec3::new(20.0, 2.5, -20.0),
+        Vec3::new(-15.0, 2.5, 15.0),
+    ];
+
+    for (i, pos) in obstacle_positions.iter().enumerate() {
+        let mut obstacle_entity = commands.spawn((
+            Name::new(format!("Obstacle_{}", i + 1)),
+            Transform::from_translation(*pos),
+            Mesh3d(meshes.add(Cuboid::new(4.0, 5.0, 4.0))),
+            RigidBody::Static,
+            Collider::cuboid(2.0, 2.5, 2.0),
+            NavigationObstacle, // Mark as navigation obstacle
+        ));
+
+        if let Some(ref mut mats) = materials {
+            obstacle_entity.insert(MeshMaterial3d(mats.add(StandardMaterial {
+                base_color: Color::srgb(0.7, 0.4, 0.2),
+                ..default()
+            })));
+        }
+    }
+
+    // Setup navigation mesh for pathfinding
+    // The navmesh covers the floor area minus the walls
+    let nav_area = ROOM_SIZE - 1.0; // Leave some margin from walls
+    commands.spawn((
+        NavMeshSettings {
+            // Define the outer borders of the navmesh (floor area)
+            fixed: Triangulation::from_outer_edges(&[
+                Vec2::new(-nav_area, -nav_area),
+                Vec2::new(nav_area, -nav_area),
+                Vec2::new(nav_area, nav_area),
+                Vec2::new(-nav_area, nav_area),
+            ]),
+            simplify: 0.1,
+            merge_steps: 1,
+            build_timeout: Some(5.0), // Allow more time for complex levels
+            agent_radius: 0.5,        // Match typical player/bot radius
+            ..default()
+        },
+        // Position the navmesh slightly above the floor
+        Transform::from_xyz(0.0, 0.1, 0.0)
+            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+        // Auto-update navmesh when obstacles change
+        NavMeshUpdateMode::Direct,
+        Name::new("NavMesh"),
+    ));
+
     commands.spawn((LevelDoneMarker, Name::new("Level")));
-    info!("Scene setup complete with seed: {}", seed);
+    info!("Scene setup complete with navmesh and seed: {}", seed);
 }

@@ -2,7 +2,7 @@ use bevy::prelude::{
     App, Assets, Commands, Mesh, Plugin, ResMut, Single, StandardMaterial, Update, info,
 };
 use bevy::state::commands::CommandsStatesExt;
-use shared::level::create_static::setup_static_level;
+use shared::create_static_level::setup_static_level;
 
 use crate::ClientGameState;
 use lightyear::prelude::MessageReceiver;

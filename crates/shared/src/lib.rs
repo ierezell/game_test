@@ -1,7 +1,8 @@
+pub mod components;
+pub mod create_static_level;
 pub mod entities;
 pub mod input;
-pub mod level;
-pub mod navigation_pathfinding;
+pub mod navigation;
 pub mod protocol;
 pub mod render;
 use avian3d::prelude::PhysicsPlugins;
@@ -34,5 +35,6 @@ impl Plugin for SharedPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_plugins(protocol::ProtocolPlugin);
         app.add_plugins(PhysicsPlugins::default());
+        app.add_plugins(navigation::NavigationPlugin);
     }
 }

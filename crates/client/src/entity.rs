@@ -1,8 +1,8 @@
 use crate::input::get_player_input_map;
 use avian3d::prelude::{LinearVelocity, Position};
 use bevy::prelude::{
-    Add, App, Assets, Capsule3d, Commands, FixedUpdate, Mesh, Mesh3d, MeshMaterial3d, Name, On,
-    Plugin, Query, Res, ResMut, Single, StandardMaterial, With, debug, info,
+    Add, App, Assets, Capsule3d, Color, Commands, FixedUpdate, Mesh, Mesh3d, MeshMaterial3d, Name,
+    On, Plugin, Query, Res, ResMut, Single, StandardMaterial, With, Without, debug, default, info,
 };
 use leafwing_input_manager::prelude::ActionState;
 use shared::input::PlayerAction;
@@ -21,6 +21,7 @@ impl Plugin for ClientEntitiesPlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(handle_player_spawn);
         app.add_observer(handle_other_players_spawn);
+        app.add_observer(handle_npc_spawn);
         app.add_systems(FixedUpdate, debug_player_position);
     }
 }
@@ -95,7 +96,7 @@ fn handle_player_spawn(
         // Add physics components
         commands
             .entity(entity)
-            .insert(shared::entities::player::PlayerPhysicsBundle::default());
+            .insert(shared::entities::PhysicsBundle::default());
         info!(
             "✅ CLIENT: Local player rendering and input setup complete for entity {:?}",
             entity
@@ -122,6 +123,14 @@ fn handle_other_players_spawn(
         entity
     );
 
+    let Ok((name, color)) = player_query.get(entity) else {
+        info!(
+            "❌ CLIENT: Failed to get interpolated player data for entity {:?}",
+            entity
+        );
+        return;
+    };
+
     commands.entity(entity).insert((
         Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
         MeshMaterial3d(materials.add(color.0)),
@@ -129,5 +138,54 @@ fn handle_other_players_spawn(
     info!(
         "✅ CLIENT: INTERPOLATED player setup complete! Entity: {:?} Player: {:?}",
         entity, name
+    );
+}
+
+fn handle_npc_spawn(
+    trigger: On<Add, Interpolated>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    npc_query: Query<&Name, (With<Interpolated>, Without<PlayerId>)>,
+) {
+    let entity = trigger.entity;
+
+    // Check if this entity has a name but no PlayerId (making it an NPC)
+    let Ok(name) = npc_query.get(entity) else {
+        return; // Not an NPC or no name component
+    };
+
+    info!(
+        "🤖 CLIENT: Spawning NPC visual for entity {:?} ({})",
+        entity,
+        name.as_str()
+    );
+
+    // Determine NPC type and color based on name
+    let (color, height) = if name.as_str().contains("Enemy") {
+        (Color::srgb(0.8, 0.2, 0.2), 2.2) // Red enemies, taller
+    } else if name.as_str().contains("Guard") {
+        (Color::srgb(0.9, 0.4, 0.1), 2.0) // Orange guards
+    } else if name.as_str().contains("Bot") {
+        (Color::srgb(0.2, 0.2, 0.8), 1.8) // Blue bots
+    } else if name.as_str().contains("Scout") {
+        (Color::srgb(0.1, 0.7, 0.3), 1.9) // Green scouts
+    } else {
+        (Color::srgb(0.5, 0.5, 0.5), 2.0) // Default gray
+    };
+
+    commands.entity(entity).insert((
+        Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS * 0.8, height))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: color,
+            emissive: color.to_linear() * 0.1, // Slight glow
+            ..default()
+        })),
+    ));
+
+    info!(
+        "✅ CLIENT: NPC visual setup complete for entity {:?} ({})",
+        entity,
+        name.as_str()
     );
 }

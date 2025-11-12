@@ -9,7 +9,7 @@ use lightyear::prelude::{
 };
 
 use crate::ServerGameState;
-use shared::level::create_static::setup_static_level;
+use shared::create_static_level::setup_static_level;
 
 use shared::protocol::{GameSeed, HostStartGameEvent, LobbyState, StartLoadingGameEvent};
 

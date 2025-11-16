@@ -1,5 +1,3 @@
-#![cfg(not(target_family = "wasm"))]
-
 use client::create_client_app;
 
 use clap::{Parser, ValueEnum};

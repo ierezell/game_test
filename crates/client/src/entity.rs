@@ -57,7 +57,10 @@ fn handle_player_spawn(
 ) {
     // Should spawn when exiting lobby after world creation, then we add controls and rendering
     let entity = trigger.entity;
-    info!("🎯 CLIENT: Received player entity from server {:?}", entity);
+    info!(
+        "🎯 CLIENT: Received controllable player entity from server {:?}",
+        entity
+    );
 
     let Ok((name, color, player_id)) = player_query.get(entity) else {
         info!(

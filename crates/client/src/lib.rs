@@ -1,4 +1,5 @@
 pub mod camera;
+pub mod debug;
 pub mod entity;
 pub mod game;
 pub mod input;

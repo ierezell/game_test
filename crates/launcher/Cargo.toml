@@ -7,35 +7,9 @@ edition = "2024"
 shared = { path = "../shared" }
 server = { path = "../server" }
 client = { path = "../client" }
+clap.workspace = true
 lightyear.workspace = true
 bevy.workspace = true
-vleue_navigator = "0.14.0"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1", features = ["rt", "fs"] } # need async to load certs
-clap = { version = "4.5", features = ["derive"] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2.101"
-wasm-bindgen-futures = "0.4.40"
-console_error_panic_hook = "0.1.6"
-js-sys = "0.3.67"
-web-sys = { version = "0.3.77", features = [
-    "Location",
-    "UrlSearchParams",
-    "console",
-    "Document",
-    "Window",
-    "Element",
-    "HtmlCanvasElement",
-    "HtmlElement",
-    "RequestInit",
-    "RequestMode",
-    "Request",
-    "Response",
-    "Headers",
-] }
-
 
 [[bin]]
 name = "launcher"

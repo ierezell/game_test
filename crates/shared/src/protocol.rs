@@ -54,6 +54,12 @@ impl Plugin for ProtocolPlugin {
             },
         });
 
+        app.insert_resource(avian3d::physics_transform::PhysicsTransformConfig {
+            transform_to_position: false,
+            position_to_transform: true,
+            ..default()
+        });
+
         app.register_component::<PlayerId>();
         app.register_component::<Name>();
         app.register_component::<PlayerColor>();

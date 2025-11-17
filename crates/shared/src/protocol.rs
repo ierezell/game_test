@@ -20,6 +20,9 @@ pub struct PlayerId(pub PeerId);
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PlayerColor(pub Color);
 
+#[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CharacterMarker;
+
 #[derive(Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GameSeed {
     pub seed: u64,

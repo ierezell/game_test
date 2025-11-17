@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use vleue_navigator::prelude::*;
 
-/// Plugin that handles all navigation and pathfinding functionality
+/// Component for entities that should block navigation (obstacles)
+#[derive(Component, Clone, Debug)]
+pub struct NavigationObstacle;
+
 pub struct NavigationPlugin;
 
 impl Plugin for NavigationPlugin {
@@ -14,7 +17,8 @@ impl Plugin for NavigationPlugin {
             .add_systems(
                 Update,
                 (
-                    process_navigation_requests,
+                    process_navigation_requests_changed,
+                    process_navigation_patrol_fallback,
                     update_pathfinding,
                     move_navigation_agents,
                     refresh_paths_on_navmesh_change,
@@ -26,11 +30,38 @@ impl Plugin for NavigationPlugin {
                 FixedUpdate,
                 (obstacle_avoidance_system, formation_movement_system),
             );
+        app.insert_resource(NavDebugTimer::default())
+            .add_systems(Update, log_agent_positions);
     }
 }
 
-/// Component that makes an entity capable of navigation and pathfinding
-/// Attach this to any player or bot to enable AI movement
+#[derive(Resource, Default)]
+struct NavDebugTimer {
+    last: f32,
+}
+
+fn log_agent_positions(
+    mut timer: ResMut<NavDebugTimer>,
+    time: Res<Time>,
+    query: Query<(Entity, &Position, &NavigationTarget), With<NavigationAgent>>,
+) {
+    let now = time.elapsed_secs();
+    if now - timer.last < 1.0 {
+        return;
+    }
+    timer.last = now;
+
+    for (entity, pos, target) in query.iter() {
+        info!(
+            "NAV DEBUG: entity {:?} pos={:?} path_len={} next={:?}",
+            entity,
+            pos.0,
+            target.path.len(),
+            target.get_next_waypoint()
+        );
+    }
+}
+
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct NavigationAgent {
     /// Movement speed in units per second
@@ -179,10 +210,6 @@ impl NavigationTarget {
     }
 }
 
-/// Component for entities that should block navigation (obstacles)
-#[derive(Component, Clone, Debug)]
-pub struct NavigationObstacle;
-
 /// Component for patrol routes
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct PatrolRoute {
@@ -264,11 +291,11 @@ pub enum FormationType {
     Box,
 }
 
-/// System to process navigation requests and start pathfinding
-fn process_navigation_requests(
+/// System to process navigation requests and start pathfinding (handles Changed targets)
+fn process_navigation_requests_changed(
     mut agents: Query<
-        (Entity, &Transform, &mut NavigationTarget, &NavigationAgent),
-        Changed<NavigationTarget>,
+        (Entity, &Position, &mut NavigationTarget, &NavigationAgent),
+        (Changed<NavigationTarget>, With<NavigationAgent>),
     >,
     navmesh_query: Query<&ManagedNavMesh>,
     navmeshes: Res<Assets<NavMesh>>,
@@ -276,7 +303,8 @@ fn process_navigation_requests(
 ) {
     let current_time = time.elapsed_secs();
 
-    for (entity, transform, mut target, _agent) in agents.iter_mut() {
+    // Handle agents whose NavigationTarget was changed this frame
+    for (entity, position, mut target, _agent) in agents.iter_mut() {
         if target.pathfinding_in_progress {
             continue;
         }
@@ -288,38 +316,100 @@ fn process_navigation_requests(
         if needs_new_path {
             if let Ok(navmesh_handle) = navmesh_query.single() {
                 if let Some(navmesh) = navmeshes.get(navmesh_handle) {
-                    let start_pos = transform.translation;
+                    let start_pos = position.0;
                     let end_pos = target.destination;
 
-                    // Check if both positions are valid
-                    if navmesh.transformed_is_in_mesh(start_pos)
-                        && navmesh.transformed_is_in_mesh(end_pos)
-                    {
-                        if let Some(path_result) = navmesh.transformed_path(start_pos, end_pos) {
+                    // Project positions onto navmesh plane (use navmesh sampling height)
+                    // Many navmeshes are built slightly above the floor; use y=0.1 as a safe projection
+                    let projected_start = Vec3::new(start_pos.x, 0.1, start_pos.z);
+                    let projected_end = Vec3::new(end_pos.x, 0.1, end_pos.z);
+
+                    // Check if both projected positions are inside the navmesh
+                    let mut start_in = navmesh.transformed_is_in_mesh(projected_start);
+                    let mut end_in = navmesh.transformed_is_in_mesh(projected_end);
+
+                    // If either end is outside the mesh, try to find a nearby valid sample
+                    // by probing points in a small spiral around the projected point. This
+                    // avoids rejecting path requests early when the original Y or slight
+                    // coordinate drift places the point just outside the navmesh.
+                    let mut used_start = projected_start;
+                    let mut used_end = projected_end;
+
+                    if !start_in {
+                        if let Some(snap) = find_nearest_in_mesh(navmesh, projected_start, 3.0, 0.5)
+                        {
+                            used_start = snap;
+                            start_in = true;
+                            info!(
+                                "Snapped start for entity {:?} from {:?} to {:?}",
+                                entity, projected_start, used_start
+                            );
+                        }
+                    }
+
+                    if !end_in {
+                        if let Some(snap) = find_nearest_in_mesh(navmesh, projected_end, 3.0, 0.5) {
+                            used_end = snap;
+                            end_in = true;
+                            info!(
+                                "Snapped end for entity {:?} from {:?} to {:?}",
+                                entity, projected_end, used_end
+                            );
+                        }
+                    }
+
+                    if start_in && end_in {
+                        if let Some(path_result) = navmesh.transformed_path(used_start, used_end) {
                             let mut new_path = VecDeque::new();
 
-                            // Convert path to waypoints, skipping the first point (current position)
-                            for point in path_result.path.iter().skip(1) {
-                                new_path.push_back(*point);
+                            // Always add all path points except the first one (current position)
+                            // The pathfinding algorithm returns all points on the path including start/end
+                            if path_result.path.len() > 1 {
+                                // Multiple points: skip the first (current position)
+                                for point in path_result.path.iter().skip(1) {
+                                    new_path.push_back(*point);
+                                }
+                            } else if path_result.path.len() == 1 {
+                                // Single point: could be the current position or very close to destination
+                                // Always add it since the destination might be very close to current pos
+                                new_path.push_back(path_result.path[0]);
                             }
 
+                            // Attach the computed path and record time
                             target.path = new_path;
                             target.current_waypoint = 0;
                             target.pathfind_request_time = current_time;
 
-                            info!(
-                                "Found path for entity {:?} with {} waypoints",
-                                entity,
-                                target.path.len()
-                            );
+                            if target.path.is_empty() {
+                                // This shouldn't happen now, but log if it does
+                                warn!(
+                                    "Found path for entity {:?} but it contains 0 waypoints. projected_start={:?} projected_end={:?} raw_path={:?}",
+                                    entity, projected_start, projected_end, path_result.path
+                                );
+                            } else {
+                                info!(
+                                    "Found path for entity {:?} with {} waypoints",
+                                    entity,
+                                    target.path.len()
+                                );
+                            }
                         } else {
                             warn!(
                                 "No path found for entity {:?} from {:?} to {:?}",
-                                entity, start_pos, end_pos
+                                entity, projected_start, projected_end
                             );
                         }
                     } else {
-                        warn!("Invalid start or end position for entity {:?}", entity);
+                        warn!(
+                            "Invalid start or/or end position for entity {:?}: start_in={} end_in={} projected_start={:?} projected_end={:?} original_start={:?} original_end={:?}",
+                            entity,
+                            start_in,
+                            end_in,
+                            projected_start,
+                            projected_end,
+                            start_pos,
+                            end_pos
+                        );
                     }
                 }
             }
@@ -327,21 +417,124 @@ fn process_navigation_requests(
     }
 }
 
+/// Fallback system for patrol agents: if they have an empty path, request a new path.
+fn process_navigation_patrol_fallback(
+    mut all_agents: Query<(Entity, &Position, &mut NavigationTarget, &NavigationAgent)>,
+    navmesh_query: Query<&ManagedNavMesh>,
+    navmeshes: Res<Assets<NavMesh>>,
+    time: Res<Time>,
+) {
+    let current_time = time.elapsed_secs();
+
+    for (_entity, position, mut target, agent) in all_agents.iter_mut() {
+        // Only process patrol agents with empty paths
+        if !target.path.is_empty() {
+            continue;
+        }
+
+        if matches!(agent.behavior, NavigationBehavior::Patrol) {
+            // Request new pathfinding
+            if let Ok(navmesh_handle) = navmesh_query.single() {
+                if let Some(navmesh) = navmeshes.get(navmesh_handle) {
+                    let start_pos = position.0;
+                    let end_pos = target.destination;
+
+                    let projected_start = Vec3::new(start_pos.x, 0.1, start_pos.z);
+                    let projected_end = Vec3::new(end_pos.x, 0.1, end_pos.z);
+
+                    let mut start_in = navmesh.transformed_is_in_mesh(projected_start);
+                    let mut end_in = navmesh.transformed_is_in_mesh(projected_end);
+
+                    let mut used_start = projected_start;
+                    let mut used_end = projected_end;
+
+                    if !start_in {
+                        if let Some(snap) = find_nearest_in_mesh(navmesh, projected_start, 3.0, 0.5)
+                        {
+                            used_start = snap;
+                            start_in = true;
+                        }
+                    }
+
+                    if !end_in {
+                        if let Some(snap) = find_nearest_in_mesh(navmesh, projected_end, 3.0, 0.5) {
+                            used_end = snap;
+                            end_in = true;
+                        }
+                    }
+
+                    if start_in && end_in {
+                        if let Some(path_result) = navmesh.transformed_path(used_start, used_end) {
+                            let mut new_path = VecDeque::new();
+
+                            if path_result.path.len() > 1 {
+                                for point in path_result.path.iter().skip(1) {
+                                    new_path.push_back(*point);
+                                }
+                            } else if path_result.path.len() == 1 {
+                                new_path.push_back(path_result.path[0]);
+                            }
+
+                            target.path = new_path;
+                            target.current_waypoint = 0;
+                            target.pathfind_request_time = current_time;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Try to find the nearest point inside the navmesh by sampling points
+/// in a square/spiral around the center. Returns the first sampled point
+/// that `navmesh.transformed_is_in_mesh` reports as inside.
+fn find_nearest_in_mesh(
+    navmesh: &NavMesh,
+    center: Vec3,
+    max_radius: f32,
+    step: f32,
+) -> Option<Vec3> {
+    // Check the center first
+    if navmesh.transformed_is_in_mesh(center) {
+        return Some(center);
+    }
+
+    let mut radius = step;
+    while radius <= max_radius {
+        // sample in a square ring at distance `radius`
+        let count = ((radius / step).ceil() as i32) * 8; // rough number of samples
+        for i in 0..count {
+            let t = (i as f32) / (count as f32);
+            let angle = t * std::f32::consts::TAU;
+            let dx = angle.cos() * radius;
+            let dz = angle.sin() * radius;
+            let sample = Vec3::new(center.x + dx, center.y, center.z + dz);
+            if navmesh.transformed_is_in_mesh(sample) {
+                return Some(sample);
+            }
+        }
+        radius += step;
+    }
+
+    None
+}
+
 /// System to update pathfinding for agents with targets
 fn update_pathfinding(
-    mut agents: Query<(Entity, &Transform, &mut NavigationTarget, &NavigationAgent)>,
-    follow_targets: Query<&Transform, Without<NavigationTarget>>,
+    mut agents: Query<(Entity, &Position, &mut NavigationTarget, &NavigationAgent)>,
+    follow_targets: Query<&Position, Without<NavigationTarget>>,
     _time: Res<Time>,
 ) {
-    for (_entity, transform, mut target, agent) in agents.iter_mut() {
+    for (_entity, position, mut target, agent) in agents.iter_mut() {
         // Handle follow behavior
         if let Some(follow_entity) = target.follow_target {
-            if let Ok(follow_transform) = follow_targets.get(follow_entity) {
-                let distance = transform.translation.distance(follow_transform.translation);
+            if let Ok(follow_pos) = follow_targets.get(follow_entity) {
+                let distance = position.0.distance(follow_pos.0);
 
                 // Update destination if target moved significantly
                 if distance > 2.0 {
-                    target.destination = follow_transform.translation;
+                    target.destination = follow_pos.0;
                     target.clear_path(); // Force re-pathfinding
                 }
             }
@@ -356,14 +549,19 @@ fn update_pathfinding(
 
 /// System to move navigation agents along their paths
 fn move_navigation_agents(
-    mut agents: Query<(&mut Transform, &mut NavigationTarget, &mut NavigationAgent)>,
+    mut agents: Query<(
+        &mut Position,
+        Option<&mut LinearVelocity>,
+        &mut NavigationTarget,
+        &mut NavigationAgent,
+    )>,
     time: Res<Time>,
 ) {
     let delta_time = time.delta_secs();
 
-    for (mut transform, mut target, mut agent) in agents.iter_mut() {
+    for (mut position, mut maybe_linear_velocity, mut target, mut agent) in agents.iter_mut() {
         if let Some(next_waypoint) = target.get_next_waypoint() {
-            let current_pos = transform.translation;
+            let current_pos = position.0;
             let direction = (next_waypoint - current_pos).normalize();
 
             if direction.is_finite() {
@@ -377,15 +575,11 @@ fn move_navigation_agents(
 
                 // Apply movement
                 let movement = agent.velocity * delta_time;
-                transform.translation += movement;
+                position.0 += movement;
 
-                // Rotate to face movement direction
-                if agent.velocity.length() > 0.1 {
-                    let forward = agent.velocity.normalize();
-                    if forward.y.abs() < 0.9 {
-                        // Avoid gimbal lock
-                        transform.look_to(forward, Vec3::Y);
-                    }
+                // Update linear velocity component if present
+                if let Some(ref mut lin_vel) = maybe_linear_velocity {
+                    lin_vel.0 = agent.velocity;
                 }
 
                 // Check if we've reached the waypoint
@@ -396,6 +590,9 @@ fn move_navigation_agents(
                     // If no more waypoints and we should stop at destination
                     if target.is_path_complete() && agent.stop_at_destination {
                         agent.velocity = Vec3::ZERO;
+                        if let Some(ref mut lin_vel) = maybe_linear_velocity {
+                            lin_vel.0 = Vec3::ZERO;
+                        }
                     }
                 }
             }
@@ -404,6 +601,9 @@ fn move_navigation_agents(
             agent.velocity *= 0.9;
             if agent.velocity.length() < 0.01 {
                 agent.velocity = Vec3::ZERO;
+                if let Some(mut lin_vel) = maybe_linear_velocity {
+                    lin_vel.0 = Vec3::ZERO;
+                }
             }
         }
     }
@@ -428,11 +628,11 @@ fn refresh_paths_on_navmesh_change(
 
 /// System to handle path completion and behavior-specific actions
 fn handle_path_completion(
-    mut agents: Query<(Entity, &Transform, &mut NavigationTarget, &NavigationAgent)>,
+    mut agents: Query<(Entity, &Position, &mut NavigationTarget, &NavigationAgent)>,
     mut patrol_query: Query<&mut PatrolRoute>,
     time: Res<Time>,
 ) {
-    for (entity, _transform, mut target, agent) in agents.iter_mut() {
+    for (entity, _position, mut target, agent) in agents.iter_mut() {
         if target.is_path_complete() {
             match &agent.behavior {
                 NavigationBehavior::Patrol => {
@@ -467,26 +667,26 @@ fn handle_path_completion(
 }
 
 /// System for basic obstacle avoidance
-fn obstacle_avoidance_system(mut agents: Query<(&Transform, &mut NavigationAgent)>) {
+fn obstacle_avoidance_system(mut agents: Query<(&Position, &mut NavigationAgent)>) {
     // Simple obstacle avoidance using agent positions
     let agent_positions: Vec<(Vec3, f32)> = agents
         .iter()
-        .map(|(transform, agent)| (transform.translation, agent.radius))
+        .map(|(pos, agent)| (pos.0, agent.radius))
         .collect();
 
-    for (transform, mut agent) in agents.iter_mut() {
+    for (position, mut agent) in agents.iter_mut() {
         let mut avoidance_force = Vec3::ZERO;
 
         for (other_pos, other_radius) in &agent_positions {
-            if *other_pos == transform.translation {
+            if *other_pos == position.0 {
                 continue; // Skip self
             }
 
-            let distance = transform.translation.distance(*other_pos);
+            let distance = position.0.distance(*other_pos);
             let min_distance = agent.radius + other_radius + 0.1;
 
             if distance < min_distance && distance > 0.0 {
-                let avoid_direction = (transform.translation - *other_pos).normalize();
+                let avoid_direction = (position.0 - *other_pos).normalize();
                 let avoid_strength = (min_distance - distance) / min_distance;
                 avoidance_force += avoid_direction * avoid_strength * agent.speed * 0.5;
             }
@@ -502,11 +702,11 @@ fn obstacle_avoidance_system(mut agents: Query<(&Transform, &mut NavigationAgent
 /// System for formation movement
 fn formation_movement_system(
     mut members: Query<(&mut NavigationTarget, &FormationMember)>,
-    leaders: Query<&Transform, Without<FormationMember>>,
+    leaders: Query<&Position, Without<FormationMember>>,
 ) {
     for (mut target, formation) in members.iter_mut() {
-        if let Ok(leader_transform) = leaders.get(formation.leader) {
-            let formation_position = leader_transform.translation + formation.offset;
+        if let Ok(leader_pos) = leaders.get(formation.leader) {
+            let formation_position = leader_pos.0 + formation.offset;
 
             // Update target to maintain formation
             let distance_to_formation = target.destination.distance(formation_position);

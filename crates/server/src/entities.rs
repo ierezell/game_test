@@ -2,8 +2,8 @@ use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     ecs::schedule::IntoScheduleConfigs,
     prelude::{
-        App, Commands, Entity, FixedUpdate, Name, Plugin, Query, Transform, Vec2, Vec3, With,
-        debug, info, warn,
+        App, Commands, Entity, FixedUpdate, Name, Plugin, Query, Vec2, Vec3, With, debug, info,
+        warn,
     },
     state::{condition::in_state, state::OnEnter},
 };
@@ -13,11 +13,10 @@ use lightyear::prelude::{
     Replicate, server::ClientOf,
 };
 use shared::{
-    entities::PhysicsBundle,
-    entities::color_from_id,
+    entities::{NpcPhysicsBundle, PlayerPhysicsBundle, color_from_id},
     input::{PlayerAction, shared_player_movement},
     navigation::setup_patrol,
-    protocol::{LobbyState, PlayerColor, PlayerId},
+    protocol::{CharacterMarker, LobbyState, PlayerColor, PlayerId},
 };
 
 use crate::ServerGameState;
@@ -66,7 +65,8 @@ fn spawn_player_entities(
             let angle = (index as f32) * 2.0 * std::f32::consts::PI / player_count;
             let spawn_x = spawn_radius * angle.cos();
             let spawn_z = spawn_radius * angle.sin();
-            let spawn_position = Vec3::new(spawn_x, 5.0, spawn_z);
+            // Spawn players closer to the navmesh/floor so navmesh sampling succeeds
+            let spawn_position = Vec3::new(spawn_x, 1.5, spawn_z);
 
             info!(
                 "🎯 SERVER: Spawning player for remote_id: {:?} (client_id: {}) at position ({:.2}, {:.2}, {:.2})",
@@ -78,9 +78,8 @@ fn spawn_player_entities(
                     Name::new(format!("Player_{}", player_id)),
                     PlayerId(PeerId::Netcode(*player_id)),
                     PlayerColor(color),
-                    Position::default(),
                     Rotation::default(),
-                    Transform::from_translation(spawn_position),
+                    Position::new(spawn_position),
                     LinearVelocity::default(),
                     ControlledBy {
                         owner: client_entity,
@@ -89,6 +88,9 @@ fn spawn_player_entities(
                     Replicate::to_clients(NetworkTarget::All),
                     PredictionTarget::to_clients(NetworkTarget::Single(remote_id.0)),
                     InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(remote_id.0)),
+                    CharacterMarker,
+                    // Use player-specific physics bundle at spawn so replication includes tuned components
+                    PlayerPhysicsBundle::default(),
                 ))
                 .id();
 
@@ -96,10 +98,6 @@ fn spawn_player_entities(
                 "🌐 SERVER: Player entity {:?} created for client_id: {}",
                 player, player_id
             );
-
-            // Add physics bundle
-            commands.entity(player).insert(PhysicsBundle::default());
-
             info!(
                 "✅ SERVER: Player entity {:?} fully configured for client_id: {}",
                 player, player_id
@@ -117,121 +115,117 @@ fn spawn_player_entities(
 
 fn spawn_patrolling_npc_entities(mut commands: Commands) {
     info!("🚀 SERVER: Spawning patrolling NPCs with navigation");
-    
-    // Spawn a patrolling enemy that moves in a rectangle
+
+    // Spawn a patrolling enemy that moves in a rectangle (different path)
     let enemy = commands
         .spawn((
             Name::new("Patrol_Enemy_1"),
-            Position::default(),
+            Position::new(Vec3::new(0.0, 1.5, -10.0)),
             Rotation::default(),
-            Transform::from_translation(Vec3::new(0.0, 1.0, -10.0)),
             LinearVelocity::default(),
             Replicate::to_clients(NetworkTarget::All),
             InterpolationTarget::to_clients(NetworkTarget::All),
+            CharacterMarker,
+            NpcPhysicsBundle::default(),
         ))
         .id();
 
-    commands
-        .entity(enemy)
-        .insert(PhysicsBundle::default());
-
-    // Setup patrol route for the enemy - rectangular path
+    // Setup patrol route for the enemy - rectangular path in one area
     let patrol_points = vec![
-        Vec3::new(-20.0, 1.0, -10.0),
-        Vec3::new(20.0, 1.0, -10.0),
-        Vec3::new(20.0, 1.0, 10.0),
-        Vec3::new(-20.0, 1.0, 10.0),
+        Vec3::new(-10.0, 1.0, -15.0),
+        Vec3::new(10.0, 1.0, -15.0),
+        Vec3::new(10.0, 1.0, -5.0),
+        Vec3::new(-10.0, 1.0, -5.0),
     ];
-    
+
     setup_patrol(&mut commands, enemy, patrol_points, 3.0, false);
-    
-    info!("✅ SERVER: Patrol enemy entity {:?} configured with navigation", enemy);
-    
-    // Spawn a guard enemy that patrols back and forth
+
+    info!(
+        "✅ SERVER: Patrol enemy entity {:?} configured with navigation",
+        enemy
+    );
+
+    // Spawn a guard enemy that patrols a different area (ping-pong)
     let guard = commands
         .spawn((
             Name::new("Guard_Enemy_1"),
-            Position::default(),
+            Position::new(Vec3::new(15.0, 1.5, 0.0)),
             Rotation::default(),
-            Transform::from_translation(Vec3::new(15.0, 1.0, 0.0)),
             LinearVelocity::default(),
             Replicate::to_clients(NetworkTarget::All),
             InterpolationTarget::to_clients(NetworkTarget::All),
+            CharacterMarker,
+            NpcPhysicsBundle::default(),
         ))
         .id();
 
-    commands
-        .entity(guard)
-        .insert(PhysicsBundle::default());
+    // Setup ping-pong patrol for the guard in a different corridor
+    let guard_patrol_points = vec![Vec3::new(15.0, 1.0, -10.0), Vec3::new(15.0, 1.0, 10.0)];
 
-    // Setup ping-pong patrol for the guard
-    let guard_patrol_points = vec![
-        Vec3::new(10.0, 1.0, -5.0),
-        Vec3::new(25.0, 1.0, -5.0),
-    ];
-    
     setup_patrol(&mut commands, guard, guard_patrol_points, 2.0, true); // ping-pong = true
-    
-    info!("✅ SERVER: Guard enemy entity {:?} configured with ping-pong patrol", guard);
-    
-    // Spawn a wandering bot with complex patrol route
+
+    info!(
+        "✅ SERVER: Guard enemy entity {:?} configured with ping-pong patrol",
+        guard
+    );
+
+    // Spawn a wandering bot with a different complex patrol route
     let bot = commands
         .spawn((
             Name::new("Wandering_Bot_1"),
-            Position::default(),
+            Position::new(Vec3::new(-15.0, 1.5, 5.0)),
             Rotation::default(),
-            Transform::from_translation(Vec3::new(10.0, 1.0, 5.0)),
             LinearVelocity::default(),
             Replicate::to_clients(NetworkTarget::All),
             InterpolationTarget::to_clients(NetworkTarget::All),
+            CharacterMarker,
+            NpcPhysicsBundle::default(),
         ))
         .id();
 
-    commands
-        .entity(bot)
-        .insert(PhysicsBundle::default());
-
-    // Setup a complex patrol route for the bot
+    // Setup a complex patrol route for the bot in a different area
     let bot_patrol_points = vec![
-        Vec3::new(5.0, 1.0, 5.0),
-        Vec3::new(-5.0, 1.0, 5.0),
-        Vec3::new(-5.0, 1.0, -5.0),
-        Vec3::new(5.0, 1.0, -5.0),
-        Vec3::new(0.0, 1.0, 0.0), // Visit center
+        Vec3::new(-20.0, 1.0, 5.0),
+        Vec3::new(-10.0, 1.0, 10.0),
+        Vec3::new(-10.0, 1.0, 0.0),
+        Vec3::new(-20.0, 1.0, 0.0),
     ];
-    
+
     setup_patrol(&mut commands, bot, bot_patrol_points, 2.5, false);
-    
-    info!("✅ SERVER: Wandering bot entity {:?} configured with complex patrol", bot);
-    
-    // Spawn a scout bot that patrols the perimeter
+
+    info!(
+        "✅ SERVER: Wandering bot entity {:?} configured with complex patrol",
+        bot
+    );
+
+    // Spawn a scout bot that patrols the perimeter (yet another distinct path)
     let scout = commands
         .spawn((
             Name::new("Scout_Bot_1"),
-            Position::default(),
+            Position::new(Vec3::new(-15.0, 1.5, -15.0)),
             Rotation::default(),
-            Transform::from_translation(Vec3::new(-15.0, 1.0, 10.0)),
             LinearVelocity::default(),
             Replicate::to_clients(NetworkTarget::All),
             InterpolationTarget::to_clients(NetworkTarget::All),
+            CharacterMarker,
+            NpcPhysicsBundle::default(),
         ))
         .id();
 
-    commands
-        .entity(scout)
-        .insert(PhysicsBundle::default());
-
-    // Setup perimeter patrol for scout bot
+    // Setup perimeter patrol for scout bot in completely different area
     let scout_patrol_points = vec![
-        Vec3::new(-30.0, 1.0, 30.0),
-        Vec3::new(30.0, 1.0, 30.0),
-        Vec3::new(30.0, 1.0, -30.0),
-        Vec3::new(-30.0, 1.0, -30.0),
+        Vec3::new(-25.0, 1.0, -25.0),
+        Vec3::new(5.0, 1.0, -25.0),
+        Vec3::new(5.0, 1.0, -5.0),
+        Vec3::new(-25.0, 1.0, -5.0),
     ];
-    
+
     setup_patrol(&mut commands, scout, scout_patrol_points, 4.0, false);
-    
-    info!("✅ SERVER: Scout bot entity {:?} configured with perimeter patrol", scout);
+
+    info!(
+        "✅ SERVER: Scout bot entity {:?} configured with perimeter patrol",
+        scout
+    );
 }
 
 pub fn server_player_movement(

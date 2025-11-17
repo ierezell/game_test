@@ -1,10 +1,9 @@
 use crate::navigation::NavigationObstacle;
-use avian3d::prelude::{Collider, RigidBody};
+use avian3d::prelude::{Collider, Position, RigidBody};
 use bevy::prelude::Color;
 use bevy::prelude::{
     AmbientLight, Assets, Commands, Component, Cuboid, Dir3, DirectionalLight, Mesh, Mesh3d,
-    MeshMaterial3d, Name, Plane3d, Quat, ResMut, StandardMaterial, Transform, Vec2, Vec3, default,
-    info,
+    MeshMaterial3d, Name, Plane3d, ResMut, StandardMaterial, Transform, Vec2, Vec3, default, info,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -40,10 +39,11 @@ pub fn setup_static_level(
         commands.spawn((
             DirectionalLight {
                 color: Color::WHITE.into(),
-                illuminance: 10000.0,
+                illuminance: 1000.0,
                 ..default()
             },
-            Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+            Transform::from_translation(Vec3::new(10.0, 10.0, 10.0))
+                .looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
             Name::new("Sun"),
         ));
     }
@@ -51,7 +51,7 @@ pub fn setup_static_level(
     // Floor with physics collision
     let mut floor_entity = commands.spawn((
         Name::new("Floor"),
-        Transform::from_xyz(0.0, -FLOOR_THICKNESS / 2.0, 0.0),
+        Position::from(Vec3::new(0.0, -FLOOR_THICKNESS / 2.0, 0.0)),
         Mesh3d(meshes.add(Plane3d {
             normal: Dir3::Y,
             half_size: Vec2::splat(ROOM_SIZE),
@@ -65,34 +65,33 @@ pub fn setup_static_level(
     }
 
     // Walls - could be procedurally varied based on seed
-    let wall_positions = [
+    let walls = [
         (
-            Vec3::new(ROOM_SIZE + WALL_THICKNESS, WALL_HEIGHT, 0.0),
+            Vec3::new(ROOM_SIZE / 2.0, WALL_HEIGHT / 2.0, 0.0),
+            Vec3::new(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE),
             "Wall East",
         ),
         (
-            Vec3::new(-ROOM_SIZE - WALL_THICKNESS, WALL_HEIGHT, 0.0),
+            Vec3::new(-ROOM_SIZE / 2.0, WALL_HEIGHT / 2.0, 0.0),
+            Vec3::new(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE),
             "Wall West",
         ),
         (
-            Vec3::new(0.0, WALL_HEIGHT, ROOM_SIZE + WALL_THICKNESS),
+            Vec3::new(0.0, WALL_HEIGHT / 2.0, ROOM_SIZE / 2.0),
+            Vec3::new(ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS),
             "Wall North",
         ),
         (
-            Vec3::new(0.0, WALL_HEIGHT, -ROOM_SIZE - WALL_THICKNESS),
+            Vec3::new(0.0, WALL_HEIGHT / 2.0, -ROOM_SIZE / 2.0),
+            Vec3::new(ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS),
             "Wall South",
         ),
     ];
 
-    for (position, name) in wall_positions {
-        let size = if name.contains("North") || name.contains("South") {
-            Vec3::new(ROOM_SIZE, WALL_HEIGHT, WALL_THICKNESS)
-        } else {
-            Vec3::new(WALL_THICKNESS, WALL_HEIGHT, ROOM_SIZE)
-        };
+    for (position, size, name) in walls {
         let mut wall_entity = commands.spawn((
             Name::new(name),
-            Transform::from_translation(position / 2.0),
+            Position::from(position),
             Mesh3d(meshes.add(Cuboid {
                 half_size: size / 2.0,
             })),
@@ -117,7 +116,7 @@ pub fn setup_static_level(
     for (i, pos) in obstacle_positions.iter().enumerate() {
         let mut obstacle_entity = commands.spawn((
             Name::new(format!("Obstacle_{}", i + 1)),
-            Transform::from_translation(*pos),
+            Position::from(*pos),
             Mesh3d(meshes.add(Cuboid::new(4.0, 5.0, 4.0))),
             RigidBody::Static,
             Collider::cuboid(2.0, 2.5, 2.0),
@@ -151,8 +150,7 @@ pub fn setup_static_level(
             ..default()
         },
         // Position the navmesh slightly above the floor
-        Transform::from_xyz(0.0, 0.1, 0.0)
-            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+        Transform::from_xyz(0.0, 0.1, 0.0),
         // Auto-update navmesh when obstacles change
         NavMeshUpdateMode::Direct,
         Name::new("NavMesh"),

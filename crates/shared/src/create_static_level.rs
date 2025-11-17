@@ -3,7 +3,7 @@ use avian3d::prelude::{Collider, Position, RigidBody};
 use bevy::prelude::Color;
 use bevy::prelude::{
     AmbientLight, Assets, Commands, Component, Cuboid, Dir3, DirectionalLight, Mesh, Mesh3d,
-    MeshMaterial3d, Name, Plane3d, ResMut, StandardMaterial, Transform, Vec2, Vec3, default, info,
+    MeshMaterial3d, Name, Plane3d, Quat, ResMut, StandardMaterial, Transform, Vec2, Vec3, default, info,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -106,20 +106,21 @@ pub fn setup_static_level(
     }
 
     // Create some interior obstacles for more interesting pathfinding
+    // Position them to be floor-to-ceiling barriers that NPCs cannot pass through
     let obstacle_positions = [
-        Vec3::new(15.0, 2.5, 10.0),
-        Vec3::new(-10.0, 2.5, -15.0),
-        Vec3::new(20.0, 2.5, -20.0),
-        Vec3::new(-15.0, 2.5, 15.0),
+        Vec3::new(15.0, 1.5, 10.0),    // Lowered Y position
+        Vec3::new(-10.0, 1.5, -15.0),  // Lowered Y position 
+        Vec3::new(20.0, 1.5, -20.0),   // Lowered Y position
+        Vec3::new(-15.0, 1.5, 15.0),   // Lowered Y position
     ];
 
     for (i, pos) in obstacle_positions.iter().enumerate() {
         let mut obstacle_entity = commands.spawn((
             Name::new(format!("Obstacle_{}", i + 1)),
             Position::from(*pos),
-            Mesh3d(meshes.add(Cuboid::new(4.0, 5.0, 4.0))),
-            RigidBody::Static,
-            Collider::cuboid(2.0, 2.5, 2.0),
+            Mesh3d(meshes.add(Cuboid::new(3.0, 3.0, 3.0))), // Smaller, cube-shaped obstacles
+            RigidBody::Static, // Use Static RigidBody to make boxes non-movable
+            Collider::cuboid(1.5, 1.5, 1.5), // Smaller collision box to match visual
             NavigationObstacle, // Mark as navigation obstacle
         ));
 
@@ -133,8 +134,9 @@ pub fn setup_static_level(
 
     // Setup navigation mesh for pathfinding
     // The navmesh covers the floor area minus the walls
-    let nav_area = ROOM_SIZE - 1.0; // Leave some margin from walls
+    let nav_area = ROOM_SIZE - 2.0; // Leave more margin from walls for safety
     commands.spawn((
+        ManagedNavMesh::single(), // Add ManagedNavMesh component
         NavMeshSettings {
             // Define the outer borders of the navmesh (floor area)
             fixed: Triangulation::from_outer_edges(&[
@@ -145,12 +147,13 @@ pub fn setup_static_level(
             ]),
             simplify: 0.1,
             merge_steps: 1,
-            build_timeout: Some(5.0), // Allow more time for complex levels
-            agent_radius: 0.5,        // Match typical player/bot radius
+            build_timeout: Some(10.0), // More time for obstacle processing
+            agent_radius: 1.0,         // Increased radius for better collision avoidance
             ..default()
         },
-        // Position the navmesh slightly above the floor
-        Transform::from_xyz(0.0, 0.1, 0.0),
+        // Position the navmesh at the actual NPC movement level
+        Transform::from_xyz(0.0, 1.0, 0.0)
+            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)), // Rotate to match Y-up coordinate system
         // Auto-update navmesh when obstacles change
         NavMeshUpdateMode::Direct,
         Name::new("NavMesh"),

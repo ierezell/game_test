@@ -1,12 +1,12 @@
 pub mod camera;
 pub mod debug;
-pub mod entity;
+pub mod entities;
 pub mod game;
 pub mod input;
 pub mod menu;
 pub mod network;
 use crate::camera::RenderPlugin;
-use crate::entity::ClientEntitiesPlugin;
+use crate::entities::ClientEntitiesPlugin;
 use crate::game::GameClientPlugin;
 use crate::input::ClientInputPlugin;
 use crate::menu::{ClientLobbyPlugin, LocalMenuPlugin};

@@ -1,8 +1,8 @@
 use avian3d::prelude::{LinearVelocity, Rotation};
 
 use bevy::prelude::{
-    Add, App, Entity, FixedUpdate, KeyCode, MouseButton, On, Plugin, Query, Res, Vec2, With, debug,
-    info,
+    Add, App, Commands, Entity, FixedUpdate, KeyCode, MouseButton, On, Plugin, Query, Res, Vec2,
+    With, debug, info,
 };
 use bevy::prelude::{ButtonInput, MessageReader, Update};
 use bevy::window::WindowFocused;
@@ -144,7 +144,8 @@ fn handle_focus_change(
 }
 
 fn grab_cursor(
-    _trigger: On<Add, Controlled>,
+    trigger: On<Add, Controlled>,
+    mut commands: Commands,
     mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut action_query: Query<
         &mut ActionState<PlayerAction>,
@@ -157,10 +158,24 @@ fn grab_cursor(
         info!("🔒 Initial cursor lock enabled for FPS gameplay");
     }
 
-    if let Ok(mut action_state) = action_query.single_mut() {
-        if action_state.disabled() {
-            action_state.enable();
-            info!("🎮 Initial input enabled for FPS gameplay");
+    let controlled_entity = trigger.entity;
+
+    match action_query.get_mut(controlled_entity) {
+        Ok(mut action_state) => {
+            if action_state.disabled() {
+                action_state.enable();
+                info!("🎮 Initial input enabled for FPS gameplay");
+            }
+        }
+        Err(_) => {
+            let input_map = get_player_input_map();
+            commands
+                .entity(controlled_entity)
+                .insert((input_map, ActionState::<PlayerAction>::default()));
+            info!(
+                "🎮 Initial input components attached to controlled entity {:?}",
+                controlled_entity
+            );
         }
     }
 }

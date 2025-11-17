@@ -7,8 +7,9 @@ use avian3d::prelude::{
 use crate::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
 use bevy::prelude::{Bundle, Color};
 
+/// Physics bundle specialized for player-controlled entities.
 #[derive(Bundle)]
-pub struct PhysicsBundle {
+pub struct PlayerPhysicsBundle {
     pub rigid_body: RigidBody,
     pub collider: Collider,
     pub mass: Mass,
@@ -16,19 +17,50 @@ pub struct PhysicsBundle {
     pub friction: Friction,
     pub linear_damping: LinearDamping,
     pub angular_damping: AngularDamping,
-    pub locked_axes: LockedAxes, // Prevent capsizing
+    pub locked_axes: LockedAxes,
 }
 
-impl Default for PhysicsBundle {
+impl Default for PlayerPhysicsBundle {
     fn default() -> Self {
         Self {
             rigid_body: RigidBody::Dynamic,
             collider: Collider::capsule(PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS),
             mass: Mass(80.0),
             restitution: Restitution::ZERO,
-            friction: Friction::ZERO,
+            // Players should have some friction to interact with the world
+            friction: Friction::new(0.5),
             linear_damping: LinearDamping(1.0),
             angular_damping: AngularDamping(8.0),
+            locked_axes: LockedAxes::ROTATION_LOCKED.unlock_rotation_y(),
+        }
+    }
+}
+
+/// Physics bundle specialized for NPCs / AI-controlled entities.
+#[derive(Bundle)]
+pub struct NpcPhysicsBundle {
+    pub rigid_body: RigidBody,
+    pub collider: Collider,
+    pub mass: Mass,
+    pub restitution: Restitution,
+    pub friction: Friction,
+    pub linear_damping: LinearDamping,
+    pub angular_damping: AngularDamping,
+    pub locked_axes: LockedAxes,
+}
+
+impl Default for NpcPhysicsBundle {
+    fn default() -> Self {
+        Self {
+            // NPCs are server-authoritative dynamic bodies
+            rigid_body: RigidBody::Dynamic,
+            collider: Collider::capsule(PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS),
+            mass: Mass(70.0),
+            restitution: Restitution::ZERO,
+            // Slightly lower friction for smoother movement along navmesh
+            friction: Friction::new(0.2),
+            linear_damping: LinearDamping(0.8),
+            angular_damping: AngularDamping(6.0),
             locked_axes: LockedAxes::ROTATION_LOCKED.unlock_rotation_y(),
         }
     }

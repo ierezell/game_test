@@ -15,6 +15,8 @@ EXAMPLES:
     cargo run --bin launcher -- client --auto-host --auto-start  # Auto-host and auto-start game
     cargo run --bin launcher -- client --auto-join --client-id 2 # Auto-join a game
     cargo run --bin launcher -- server                           # Start dedicated server
+    cargo run --bin launcher -- server --stop-after 30          # Start server, stop after 30 seconds
+    cargo run --bin launcher -- client --auto-host --stop-after 60 # Auto-host, stop after 1 minute
 ")]
 struct Cli {
     #[arg(value_enum)]
@@ -37,6 +39,10 @@ struct Cli {
     #[arg(long, default_value_t = false)]
     #[arg(help = "Automatically start the game when hosting (requires --auto-host)")]
     auto_start: bool,
+
+    #[arg(long)]
+    #[arg(help = "Automatically stop the game after X seconds (0 = disabled)")]
+    stop_after: Option<u64>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -57,10 +63,34 @@ pub fn run() {
                 cli.auto_join,
                 cli.auto_start,
             );
+
+            if let Some(stop_after_seconds) = cli.stop_after {
+                if stop_after_seconds > 0 {
+                    // Spawn a thread to stop the app after the specified time
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
+                        println!("Auto-stopping after {} seconds", stop_after_seconds);
+                        std::process::exit(0);
+                    });
+                }
+            }
+
             client_app.run();
         }
         Mode::Server => {
             let mut server_app = server::create_server_app(cli.headless);
+
+            if let Some(stop_after_seconds) = cli.stop_after {
+                if stop_after_seconds > 0 {
+                    // Spawn a thread to stop the server after the specified time
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
+                        println!("Auto-stopping server after {} seconds", stop_after_seconds);
+                        std::process::exit(0);
+                    });
+                }
+            }
+
             server_app.run();
         }
     }

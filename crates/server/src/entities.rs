@@ -15,7 +15,7 @@ use lightyear::prelude::{
 use shared::{
     entities::{NpcPhysicsBundle, PlayerPhysicsBundle, color_from_id},
     input::{PlayerAction, shared_player_movement},
-    navigation::setup_patrol,
+    navigation::{NavigationObstacle, setup_patrol, validate_spawn_position},
     protocol::{CharacterMarker, LobbyState, PlayerColor, PlayerId},
 };
 
@@ -113,14 +113,25 @@ fn spawn_player_entities(
     info!("🎮 SERVER: All players spawned, game is ready!");
 }
 
-fn spawn_patrolling_npc_entities(mut commands: Commands) {
+fn spawn_patrolling_npc_entities(
+    mut commands: Commands,
+    obstacles: Query<&Position, With<NavigationObstacle>>,
+) {
     info!("🚀 SERVER: Spawning patrolling NPCs with navigation");
+
+    // Choose a safe spawn position away from obstacles
+    // Obstacle is at (-10.0, 1.5, -15.0), so spawn at a clear area
+    // Spawn slightly offset from first patrol point (-20.0, 1.0, -10.0) to ensure movement starts
+    let initial_spawn = Vec3::new(-18.0, 1.0, -8.0);
+
+    // Validate spawn position to avoid obstacles
+    let validated_spawn = validate_spawn_position(initial_spawn, &obstacles, 0.5);
 
     // Spawn a patrolling enemy that moves in a rectangle (different path)
     let enemy = commands
         .spawn((
             Name::new("Patrol_Enemy_1"),
-            Position::new(Vec3::new(0.0, 1.5, -10.0)),
+            Position::new(validated_spawn),
             Rotation::default(),
             LinearVelocity::default(),
             Replicate::to_clients(NetworkTarget::All),
@@ -130,102 +141,109 @@ fn spawn_patrolling_npc_entities(mut commands: Commands) {
         ))
         .id();
 
-    // Setup patrol route for the enemy - rectangular path in one area
-    let patrol_points = vec![
-        Vec3::new(-10.0, 1.0, -15.0),
-        Vec3::new(10.0, 1.0, -15.0),
-        Vec3::new(10.0, 1.0, -5.0),
-        Vec3::new(-10.0, 1.0, -5.0),
+    // Setup patrol route for the enemy - rectangular path in a clear area
+    // Avoid the obstacles at (-10.0, 1.5, -15.0), (15.0, 1.5, 10.0), etc.
+    let original_patrol_points = vec![
+        Vec3::new(-20.0, 1.0, -10.0), // Safe starting position
+        Vec3::new(-5.0, 1.0, -10.0),  // Move east, avoiding obstacles
+        Vec3::new(-5.0, 1.0, 5.0),    // Move north, clear area
+        Vec3::new(-20.0, 1.0, 5.0),   // Move west, completing rectangle
     ];
 
-    setup_patrol(&mut commands, enemy, patrol_points, 3.0, false);
+    let validated_patrol_points: Vec<Vec3> = original_patrol_points
+        .iter()
+        .map(|&point| validate_spawn_position(point, &obstacles, 0.5))
+        .collect();
+
+    setup_patrol(&mut commands, enemy, validated_patrol_points, 3.0);
 
     info!(
         "✅ SERVER: Patrol enemy entity {:?} configured with navigation",
         enemy
     );
 
-    // Spawn a guard enemy that patrols a different area (ping-pong)
-    let guard = commands
-        .spawn((
-            Name::new("Guard_Enemy_1"),
-            Position::new(Vec3::new(15.0, 1.5, 0.0)),
-            Rotation::default(),
-            LinearVelocity::default(),
-            Replicate::to_clients(NetworkTarget::All),
-            InterpolationTarget::to_clients(NetworkTarget::All),
-            CharacterMarker,
-            NpcPhysicsBundle::default(),
-        ))
-        .id();
+    // // Spawn a guard enemy that patrols a different area (ping-pong)
+    // let guard = commands
+    //     .spawn((
+    //         Name::new("Guard_Enemy_1"),
+    //         Position::new(Vec3::new(15.0, 1.0, -10.0)), // Start at first patrol point
+    //         Rotation::default(),
+    //         LinearVelocity::default(),
+    //         Replicate::to_clients(NetworkTarget::All),
+    //         InterpolationTarget::to_clients(NetworkTarget::All),
+    //         CharacterMarker,
+    //         NpcPhysicsBundle::default(),
+    //     ))
+    //     .id();
 
-    // Setup ping-pong patrol for the guard in a different corridor
-    let guard_patrol_points = vec![Vec3::new(15.0, 1.0, -10.0), Vec3::new(15.0, 1.0, 10.0)];
+    // // Setup ping-pong patrol for the guard in a different corridor
+    // let guard_patrol_points = vec![Vec3::new(15.0, 1.0, -10.0), Vec3::new(15.0, 1.0, 10.0)];
 
-    setup_patrol(&mut commands, guard, guard_patrol_points, 2.0, true); // ping-pong = true
+    // setup_patrol(&mut commands, guard, guard_patrol_points, 2.5, true); // ping-pong = true
 
-    info!(
-        "✅ SERVER: Guard enemy entity {:?} configured with ping-pong patrol",
-        guard
-    );
+    // info!(
+    //     "✅ SERVER: Guard enemy entity {:?} configured with ping-pong patrol",
+    //     guard
+    // );
 
-    // Spawn a wandering bot with a different complex patrol route
-    let bot = commands
-        .spawn((
-            Name::new("Wandering_Bot_1"),
-            Position::new(Vec3::new(-15.0, 1.5, 5.0)),
-            Rotation::default(),
-            LinearVelocity::default(),
-            Replicate::to_clients(NetworkTarget::All),
-            InterpolationTarget::to_clients(NetworkTarget::All),
-            CharacterMarker,
-            NpcPhysicsBundle::default(),
-        ))
-        .id();
+    // // Spawn a wandering bot with circular patrol pattern
+    // let bot = commands
+    //     .spawn((
+    //         Name::new("Wandering_Bot_1"),
+    //         Position::new(Vec3::new(-15.0, 1.0, 5.0)), // Start at first patrol point
+    //         Rotation::default(),
+    //         LinearVelocity::default(),
+    //         Replicate::to_clients(NetworkTarget::All),
+    //         InterpolationTarget::to_clients(NetworkTarget::All),
+    //         CharacterMarker,
+    //         NpcPhysicsBundle::default(),
+    //     ))
+    //     .id();
 
-    // Setup a complex patrol route for the bot in a different area
-    let bot_patrol_points = vec![
-        Vec3::new(-20.0, 1.0, 5.0),
-        Vec3::new(-10.0, 1.0, 10.0),
-        Vec3::new(-10.0, 1.0, 0.0),
-        Vec3::new(-20.0, 1.0, 0.0),
-    ];
+    // // Setup a circular patrol route for the bot - 8 points in a circle
+    // let center = Vec3::new(-15.0, 1.0, 5.0);
+    // let radius = 8.0;
+    // let mut bot_patrol_points = Vec::new();
+    // for i in 0..8 {
+    //     let angle = (i as f32) * 2.0 * std::f32::consts::PI / 8.0;
+    //     let x = center.x + radius * angle.cos();
+    //     let z = center.z + radius * angle.sin();
+    //     bot_patrol_points.push(Vec3::new(x, 1.0, z));
+    // }
 
-    setup_patrol(&mut commands, bot, bot_patrol_points, 2.5, false);
+    // setup_patrol(&mut commands, bot, bot_patrol_points, 3.0, false);
 
-    info!(
-        "✅ SERVER: Wandering bot entity {:?} configured with complex patrol",
-        bot
-    );
+    // info!(
+    //     "✅ SERVER: Wandering bot entity {:?} configured with complex patrol",
+    //     bot
+    // );
 
-    // Spawn a scout bot that patrols the perimeter (yet another distinct path)
-    let scout = commands
-        .spawn((
-            Name::new("Scout_Bot_1"),
-            Position::new(Vec3::new(-15.0, 1.5, -15.0)),
-            Rotation::default(),
-            LinearVelocity::default(),
-            Replicate::to_clients(NetworkTarget::All),
-            InterpolationTarget::to_clients(NetworkTarget::All),
-            CharacterMarker,
-            NpcPhysicsBundle::default(),
-        ))
-        .id();
+    // // Spawn a scout bot that does ping-pong diagonal patrol
+    // let scout = commands
+    //     .spawn((
+    //         Name::new("Scout_Bot_1"),
+    //         Position::new(Vec3::new(-20.0, 1.0, -20.0)), // Start at first patrol point
+    //         Rotation::default(),
+    //         LinearVelocity::default(),
+    //         Replicate::to_clients(NetworkTarget::All),
+    //         InterpolationTarget::to_clients(NetworkTarget::All),
+    //         CharacterMarker,
+    //         NpcPhysicsBundle::default(),
+    //     ))
+    //     .id();
 
-    // Setup perimeter patrol for scout bot in completely different area
-    let scout_patrol_points = vec![
-        Vec3::new(-25.0, 1.0, -25.0),
-        Vec3::new(5.0, 1.0, -25.0),
-        Vec3::new(5.0, 1.0, -5.0),
-        Vec3::new(-25.0, 1.0, -5.0),
-    ];
+    // // Setup diagonal ping-pong patrol for scout bot
+    // let scout_patrol_points = vec![
+    //     Vec3::new(-20.0, 1.0, -20.0),
+    //     Vec3::new(20.0, 1.0, 20.0),
+    // ];
 
-    setup_patrol(&mut commands, scout, scout_patrol_points, 4.0, false);
+    // setup_patrol(&mut commands, scout, scout_patrol_points, 4.0, true); // ping-pong = true
 
-    info!(
-        "✅ SERVER: Scout bot entity {:?} configured with perimeter patrol",
-        scout
-    );
+    // info!(
+    //     "✅ SERVER: Scout bot entity {:?} configured with perimeter patrol",
+    //     scout
+    // );
 }
 
 pub fn server_player_movement(

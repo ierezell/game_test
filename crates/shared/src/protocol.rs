@@ -1,4 +1,7 @@
-use crate::input::PlayerAction;
+use crate::{
+    input::PlayerAction,
+    navigation::{SimpleNavigationAgent, PatrolRoute, PatrolState},
+};
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     log::debug,
@@ -77,6 +80,11 @@ impl Plugin for ProtocolPlugin {
             .add_linear_interpolation();
 
         app.register_component::<LinearVelocity>().add_prediction();
+
+        // Navigation components for debug visualization on client
+        app.register_component::<SimpleNavigationAgent>();
+        app.register_component::<PatrolRoute>();
+        app.register_component::<PatrolState>();
 
         app.register_component::<LobbyState>()
             .add_component_map_entities();

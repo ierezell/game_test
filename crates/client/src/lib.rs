@@ -6,6 +6,7 @@ pub mod input;
 pub mod menu;
 pub mod network;
 use crate::camera::RenderPlugin;
+use crate::debug::DebugPlugin;
 use crate::entities::ClientEntitiesPlugin;
 use crate::game::GameClientPlugin;
 use crate::input::ClientInputPlugin;
@@ -76,6 +77,7 @@ pub fn create_client_app(
     client_app.add_plugins(ClientNetworkPlugin);
     client_app.add_plugins(ClientInputPlugin);
     client_app.add_plugins(RenderPlugin);
+    client_app.add_plugins(DebugPlugin);
     client_app.add_plugins(ClientEntitiesPlugin);
     client_app.add_plugins(LocalMenuPlugin);
     client_app.add_plugins(ClientLobbyPlugin);

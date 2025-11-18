@@ -1,7 +1,9 @@
 pub mod entities;
+pub mod input;
 pub mod lobby;
 pub mod network;
 pub mod render;
+
 use bevy::MinimalPlugins;
 use bevy::prelude::{App, DefaultPlugins, PluginGroup, States, default};
 use bevy::state::app::AppExtStates;

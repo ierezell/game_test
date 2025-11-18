@@ -5,6 +5,15 @@ pub mod input;
 pub mod navigation;
 pub mod protocol;
 pub mod render;
+
+#[cfg(test)]
+mod tests {
+    mod health_tests;
+    mod input_tests;
+    mod navigation_tests;
+    mod protocol_tests;
+    mod weapon_tests;
+}
 use avian3d::prelude::PhysicsPlugins;
 
 use bevy::prelude::Plugin;

@@ -1,20 +1,17 @@
+use crate::input::server_player_movement;
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     ecs::schedule::IntoScheduleConfigs,
-    prelude::{
-        App, Commands, Entity, FixedUpdate, Name, Plugin, Query, Vec2, Vec3, With, debug, info,
-        warn,
-    },
+    prelude::{App, Commands, Entity, FixedUpdate, Name, Plugin, Query, Vec3, With, info, warn},
     state::{condition::in_state, state::OnEnter},
 };
-use leafwing_input_manager::prelude::ActionState;
+
 use lightyear::prelude::{
     ControlledBy, InterpolationTarget, NetworkTarget, PeerId, PredictionTarget, RemoteId,
     Replicate, server::ClientOf,
 };
 use shared::{
     entities::{NpcPhysicsBundle, PlayerPhysicsBundle, color_from_id},
-    input::{PlayerAction, shared_player_movement},
     navigation::{NavigationObstacle, setup_patrol, validate_spawn_position},
     protocol::{CharacterMarker, LobbyState, PlayerColor, PlayerId},
 };
@@ -244,30 +241,4 @@ fn spawn_patrolling_npc_entities(
     //     "✅ SERVER: Scout bot entity {:?} configured with perimeter patrol",
     //     scout
     // );
-}
-
-pub fn server_player_movement(
-    mut player_query: Query<
-        (
-            Entity,
-            &mut Rotation,
-            &mut LinearVelocity,
-            &ActionState<PlayerAction>,
-        ),
-        With<PlayerId>,
-    >,
-) {
-    for (entity, mut rotation, mut velocity, action_state) in player_query.iter_mut() {
-        let axis_pair = action_state.axis_pair(&PlayerAction::Move);
-        if axis_pair != Vec2::ZERO || !action_state.get_pressed().is_empty() {
-            debug!(
-                "🖥️ SERVER: Processing movement for entity {:?} with axis {:?} and actions {:?}",
-                entity,
-                axis_pair,
-                action_state.get_pressed()
-            );
-        }
-
-        shared_player_movement(action_state, &mut rotation, &mut velocity);
-    }
 }

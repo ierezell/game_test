@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use shared::navigation::{NavigationAgent, NavigationTarget, PatrolRoute, setup_patrol};
+use shared::navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent, setup_patrol};
 
 /// Test that navigation components can be created and accessed
 #[test]
@@ -15,54 +15,56 @@ fn test_navigation_components_basic() {
         .spawn((
             Name::new("Test_NPC"),
             Transform::from_xyz(0.0, 1.0, 0.0),
-            NavigationAgent::bot(2.0),
-            NavigationTarget::new(Vec3::new(10.0, 1.0, 0.0)),
+            SimpleNavigationAgent::bot(),
+            PatrolState::new(),
         ))
         .id();
 
     println!("✓ NPC created with entity ID: {:?}", npc_entity);
 
     // Verify components exist
-    let has_agent = app.world().get::<NavigationAgent>(npc_entity).is_some();
-    let has_target = app.world().get::<NavigationTarget>(npc_entity).is_some();
+    let has_agent = app
+        .world()
+        .get::<SimpleNavigationAgent>(npc_entity)
+        .is_some();
+    let has_patrol_state = app.world().get::<PatrolState>(npc_entity).is_some();
     let has_transform = app.world().get::<Transform>(npc_entity).is_some();
     let has_name = app.world().get::<Name>(npc_entity).is_some();
 
-    assert!(has_agent, "NavigationAgent component should exist");
-    assert!(has_target, "NavigationTarget component should exist");
+    assert!(has_agent, "SimpleNavigationAgent component should exist");
+    assert!(has_patrol_state, "PatrolState component should exist");
     assert!(has_transform, "Transform component should exist");
     assert!(has_name, "Name component should exist");
 
     println!("✓ All navigation components verified");
 
-    // Test NavigationAgent properties
-    let agent = app.world().get::<NavigationAgent>(npc_entity).unwrap();
-    assert_eq!(agent.speed, 2.0, "Agent speed should be 2.0");
+    // Test SimpleNavigationAgent properties
+    let agent = app
+        .world()
+        .get::<SimpleNavigationAgent>(npc_entity)
+        .unwrap();
+    assert_eq!(agent.speed, 3.0, "Agent speed should be 3.0 for bot()");
     assert_eq!(
-        agent.arrival_threshold, 1.0,
-        "Arrival threshold should be 1.0"
+        agent.arrival_threshold, 1.5,
+        "Arrival threshold should be 1.5 for bot()"
     );
-    assert!(
-        !agent.stop_at_destination,
-        "Bot should not stop at destination"
+    assert_eq!(
+        agent.current_target, None,
+        "Bot should start with no target"
     );
-    assert!(matches!(
-        agent.behavior,
-        shared::navigation::NavigationBehavior::Patrol
-    ));
 
-    // Test NavigationTarget properties
-    let target = app.world().get::<NavigationTarget>(npc_entity).unwrap();
+    // Test PatrolState properties
+    let patrol_state = app.world().get::<PatrolState>(npc_entity).unwrap();
     assert_eq!(
-        target.destination,
-        Vec3::new(10.0, 1.0, 0.0),
-        "Target destination should match"
+        patrol_state.current_target_index, 0,
+        "Should start at index 0"
     );
-    assert!(target.path.is_empty(), "Path should start empty");
-    assert!(
-        !target.pathfinding_in_progress,
-        "Pathfinding should not be in progress"
+    assert_eq!(patrol_state.wait_timer, 0.0, "Wait timer should start at 0");
+    assert_eq!(
+        patrol_state.wait_duration, 2.0,
+        "Default wait duration should be 2.0"
     );
+    assert!(patrol_state.forward, "Should start moving forward");
 
     println!("✓ Navigation component properties verified");
 
@@ -84,11 +86,9 @@ fn test_navigation_components_basic() {
     assert_eq!(patrol_route.points[0], Vec3::new(0.0, 1.0, 0.0));
     assert_eq!(patrol_route.points[1], Vec3::new(10.0, 1.0, 0.0));
     assert!(
-        !patrol_route.ping_pong,
-        "Should not be ping-pong patrol by default"
+        patrol_route.ping_pong,
+        "Should be ping-pong patrol by default"
     );
-    assert_eq!(patrol_route.current_index, 0, "Should start at index 0");
-    assert!(patrol_route.forward, "Should start moving forward");
 
     println!("✓ Patrol route configuration verified");
     println!("✓ Navigation components basic test passed!");
@@ -105,68 +105,31 @@ fn test_patrol_route_types() {
         Vec3::new(10.0, 1.0, 10.0),
     ];
 
-    // Test basic loop patrol (default)
-    let loop_route = PatrolRoute::new(waypoints.clone());
-    assert_eq!(loop_route.points.len(), 3, "Should have 3 waypoints");
-    assert!(!loop_route.ping_pong, "Should not be ping-pong by default");
-    assert_eq!(loop_route.wait_time, 2.0, "Default wait time should be 2.0");
-    assert!(loop_route.forward, "Should start moving forward");
-    assert_eq!(loop_route.current_index, 0, "Should start at index 0");
+    // Test basic patrol route (ping-pong by default)
+    let ping_pong_route = PatrolRoute::new(waypoints.clone());
+    assert_eq!(ping_pong_route.points.len(), 3, "Should have 3 waypoints");
+    assert!(ping_pong_route.ping_pong, "Should be ping-pong by default");
 
-    // Test ping-pong patrol
-    let mut pingpong_route = PatrolRoute::new(waypoints.clone()).ping_pong(3.0);
-    assert!(pingpong_route.ping_pong, "Should be ping-pong");
-    assert_eq!(pingpong_route.wait_time, 3.0, "Wait time should be 3.0");
+    // Test ping-pong behavior using get_next_target method
+    let mut forward = true;
+    if let Some((next_target, next_index)) = ping_pong_route.get_next_target(0, &mut forward) {
+        assert_eq!(next_target, waypoints[1], "Should target second waypoint");
+        assert_eq!(next_index, 1, "Should advance to index 1");
+        assert!(forward, "Should still be moving forward");
+    }
 
-    // Test route advancement for loop
-    let mut loop_route = PatrolRoute::new(waypoints.clone());
-    assert_eq!(loop_route.current_index, 0);
-
-    loop_route.advance();
-    assert_eq!(loop_route.current_index, 1, "Should advance to index 1");
-
-    loop_route.advance();
-    assert_eq!(loop_route.current_index, 2, "Should advance to index 2");
-
-    loop_route.advance();
-    assert_eq!(loop_route.current_index, 0, "Should loop back to index 0");
-
-    // Test route advancement for ping-pong
-    pingpong_route.current_index = 0;
-    pingpong_route.forward = true;
-
-    pingpong_route.advance();
-    assert_eq!(pingpong_route.current_index, 1, "Should advance to index 1");
-    assert!(pingpong_route.forward, "Should still be moving forward");
-
-    pingpong_route.advance();
-    assert_eq!(pingpong_route.current_index, 2, "Should advance to index 2");
-    assert!(!pingpong_route.forward, "Should now be moving backward");
-
-    pingpong_route.advance();
-    assert_eq!(
-        pingpong_route.current_index, 1,
-        "Should move back to index 1"
-    );
-    assert!(!pingpong_route.forward, "Should still be moving backward");
-
-    pingpong_route.advance();
-    assert_eq!(
-        pingpong_route.current_index, 0,
-        "Should move back to index 0"
-    );
-    assert!(pingpong_route.forward, "Should now be moving forward again");
+    // Test reaching end and reversing
+    let mut forward = true;
+    if let Some((next_target, next_index)) = ping_pong_route.get_next_target(2, &mut forward) {
+        assert_eq!(next_target, waypoints[1], "Should target previous waypoint");
+        assert_eq!(next_index, 1, "Should move back to index 1");
+        assert!(!forward, "Should now be moving backward");
+    }
 
     println!(
-        "✓ Loop patrol: {} waypoints, ping_pong={}",
-        loop_route.points.len(),
-        loop_route.ping_pong
-    );
-    println!(
-        "✓ Ping-pong patrol: {} waypoints, ping_pong={}, wait_time={}",
-        pingpong_route.points.len(),
-        pingpong_route.ping_pong,
-        pingpong_route.wait_time
+        "✓ Ping-pong patrol: {} waypoints, ping_pong={}",
+        ping_pong_route.points.len(),
+        ping_pong_route.ping_pong
     );
 
     println!("✓ Patrol route types test passed!");
@@ -200,8 +163,7 @@ fn test_setup_patrol_basic() {
         &mut app.world_mut().commands(),
         npc_entity,
         patrol_points.clone(),
-        3.0,   // speed
-        false, // ping_pong
+        3.0, // speed
     );
 
     // Apply commands by updating the app once
@@ -210,7 +172,7 @@ fn test_setup_patrol_basic() {
     // Verify setup_patrol added all components
     let nav_query = app
         .world_mut()
-        .query::<(&NavigationAgent, &NavigationTarget, &PatrolRoute)>()
+        .query::<(&SimpleNavigationAgent, &PatrolState, &PatrolRoute)>()
         .get(app.world(), npc_entity);
 
     assert!(
@@ -218,14 +180,15 @@ fn test_setup_patrol_basic() {
         "setup_patrol should add all navigation components"
     );
 
-    let (agent, target, patrol) = nav_query.unwrap();
+    let (agent, patrol_state, patrol) = nav_query.unwrap();
 
     // Verify agent configuration
     assert_eq!(agent.speed, 3.0, "Agent speed should be 3.0");
-    assert!(matches!(
-        agent.behavior,
-        shared::navigation::NavigationBehavior::Patrol
-    ));
+    assert_eq!(
+        agent.current_target,
+        Some(patrol_points[0]),
+        "Agent should have initial target set"
+    );
 
     // Verify patrol route
     assert_eq!(patrol.points.len(), 4, "Should have 4 patrol points");
@@ -233,16 +196,19 @@ fn test_setup_patrol_basic() {
         patrol.points, patrol_points,
         "Patrol points should match input"
     );
-    assert!(!patrol.ping_pong, "Should not be ping-pong");
+    assert!(patrol.ping_pong, "Should be ping-pong by default");
 
-    // Verify initial target is set to first patrol point
+    // Verify patrol state is initialized
     assert_eq!(
-        target.destination, patrol_points[0],
-        "Target should be first patrol point"
+        patrol_state.current_target_index, 0,
+        "Should start at first patrol point"
     );
 
     println!("✓ setup_patrol function configuration verified");
-    println!("✓ Agent: speed={}, behavior=Patrol", agent.speed);
+    println!(
+        "✓ Agent: speed={}, current_target={:?}",
+        agent.speed, agent.current_target
+    );
     println!(
         "✓ Route: {} points, ping_pong={}",
         patrol.points.len(),

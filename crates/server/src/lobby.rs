@@ -31,7 +31,6 @@ fn init_lobby(mut commands: Commands) {
         Replicate::to_clients(NetworkTarget::All),
         Name::from("LobbyState"),
     ));
-    info!("🎯 SERVER: Initialized LobbyState resource");
 }
 
 fn host_start_game_event(
@@ -52,7 +51,6 @@ fn host_start_game_event(
     }
 
     if trigger {
-        info!("🚀 SERVER: Received HostStartGameEvent from client");
         commands.spawn(GameSeed { seed: 42 });
         commands.set_state(ServerGameState::Loading);
         sender
@@ -66,7 +64,6 @@ fn host_start_game_event(
             });
 
         setup_static_level(commands.reborrow(), meshes, materials, None);
-        info!("🚀 SERVER: Going to playing state now.");
         commands.set_state(ServerGameState::Playing);
     }
 }

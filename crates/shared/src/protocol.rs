@@ -1,6 +1,6 @@
 use crate::{
     input::PlayerAction,
-    navigation::{SimpleNavigationAgent, PatrolRoute, PatrolState},
+    navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
 };
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{

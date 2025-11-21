@@ -66,7 +66,6 @@ pub fn run() {
 
             if let Some(stop_after_seconds) = cli.stop_after {
                 if stop_after_seconds > 0 {
-                    // Spawn a thread to stop the app after the specified time
                     std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
                         println!("Auto-stopping after {} seconds", stop_after_seconds);
@@ -82,7 +81,6 @@ pub fn run() {
 
             if let Some(stop_after_seconds) = cli.stop_after {
                 if stop_after_seconds > 0 {
-                    // Spawn a thread to stop the server after the specified time
                     std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
                         println!("Auto-stopping server after {} seconds", stop_after_seconds);

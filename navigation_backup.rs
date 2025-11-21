@@ -132,7 +132,7 @@ fn patrol_system(
         // If we've reached the target and waited long enough, move to next target
         if reached_target && patrol_state.wait_timer >= patrol_state.wait_duration {
             if let Some((next_target, next_index)) = patrol_route.get_next_target(patrol_state.current_target_index) {
-                info!("Entity {:?}: Moving to next patrol target: {:?} (index {})", 
+                debug!("Entity {:?}: Moving to next patrol target: {:?} (index {})", 
                     entity, next_target, next_index);
                 
                 // Set new target using vleue_navigator's NavMeshAgent

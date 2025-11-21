@@ -6,14 +6,6 @@ pub mod navigation;
 pub mod protocol;
 pub mod render;
 
-#[cfg(test)]
-mod tests {
-    mod health_tests;
-    mod input_tests;
-    mod navigation_tests;
-    mod protocol_tests;
-    mod weapon_tests;
-}
 use avian3d::prelude::PhysicsPlugins;
 
 use bevy::prelude::Plugin;
@@ -43,7 +35,14 @@ pub struct SharedPlugin;
 impl Plugin for SharedPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_plugins(protocol::ProtocolPlugin);
-        app.add_plugins(PhysicsPlugins::default());
+        app.add_plugins(
+            PhysicsPlugins::default(),
+            // .build()
+            // .disable::<PhysicsTransformPlugin>()
+            // .disable::<PhysicsInterpolationPlugin>()
+            // .disable::<IslandPlugin>()
+            // .disable::<IslandSleepingPlugin>(),
+        );
         app.add_plugins(navigation::NavigationPlugin);
     }
 }

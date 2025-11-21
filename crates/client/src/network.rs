@@ -28,15 +28,10 @@ fn start_connection(
     existing_clients: Query<Entity, With<Client>>,
 ) {
     if !existing_clients.is_empty() {
-        info!("🔄 Client already exists, skipping connection creation");
         for client_entity in existing_clients.iter() {
             commands.trigger(Connect {
                 entity: client_entity,
             });
-            info!(
-                "🚀 Re-triggering connection on existing client: {:?}",
-                client_entity
-            );
         }
         return;
     }
@@ -61,7 +56,6 @@ fn start_connection(
 
     match NetcodeClient::new(auth, netcode_config) {
         Ok(netcode_client) => {
-            debug!("✅ Netcode client created successfully");
             let client_entity = commands
                 .spawn((
                     Client::default(),
@@ -79,11 +73,6 @@ fn start_connection(
             commands.trigger(Connect {
                 entity: client_entity,
             });
-
-            debug!(
-                "🚀 Client connection initiated - entity: {:?}",
-                client_entity
-            );
         }
         Err(e) => {
             error!("❌ Failed to create Netcode client: {:?}", e);
@@ -97,7 +86,7 @@ fn start_connection(
 }
 
 fn handle_client_connected(trigger: On<Add, Connected>) {
-    debug!(
+    info!(
         "🎉 Client {:?} successfully connected to server!",
         trigger.entity
     );

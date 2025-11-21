@@ -1,7 +1,10 @@
-use bevy::prelude::{Add, App, Commands, Entity, Name, On, Plugin, PreStartup, Query, Single, With, info};
+use bevy::prelude::{
+    Add, App, Commands, Entity, Name, On, Plugin, PreStartup, Query, Single, With,
+};
 use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
-    Connected, ControlledBy, Disconnected, LinkOf, LocalAddr, RemoteId, ReplicationSender, SendUpdatesMode,
+    Connected, ControlledBy, Disconnected, LinkOf, LocalAddr, RemoteId, ReplicationSender,
+    SendUpdatesMode,
     server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start},
 };
 use shared::protocol::{LobbyState, PlayerId};
@@ -19,8 +22,6 @@ impl Plugin for ServerNetworkPlugin {
 }
 
 fn startup_server(mut commands: Commands) {
-    info!("Starting server");
-
     let netcode_config = NetcodeConfig {
         num_disconnect_packets: 10,
         keep_alive_send_rate: 1.0 / 10.0,
@@ -41,23 +42,16 @@ fn startup_server(mut commands: Commands) {
     commands.trigger(Start {
         entity: server_entity,
     });
-
-    info!(
-        "Server started on {} with protocol_id: {:x}",
-        SERVER_BIND_ADDR, SHARED_SETTINGS.protocol_id
-    );
 }
 
 fn handle_new_client(trigger: On<Add, LinkOf>, mut commands: Commands) {
-    info!("🎉 New client connected: {:?}", trigger.entity);
-
     commands
         .entity(trigger.entity)
-        .insert((ReplicationSender::new(
+        .insert(ReplicationSender::new(
             SEND_INTERVAL,
             SendUpdatesMode::SinceLastAck,
             false,
-        ),));
+        ));
 }
 
 fn handle_connected(
@@ -67,19 +61,10 @@ fn handle_connected(
     mut commands: Commands,
 ) {
     let Ok(client_id) = query.get(trigger.entity) else {
-        info!(
-            "❌ Failed to get RemoteId for connected entity {:?}",
-            trigger.entity
-        );
         return;
     };
 
     let client_id_bits = client_id.0.to_bits();
-
-    info!(
-        "✅ Client connected with remote-id {:?}. Adding to lobby.",
-        client_id
-    );
 
     commands
         .entity(trigger.entity)
@@ -89,14 +74,10 @@ fn handle_connected(
     if !lobby_state.players.contains(&client_id_bits) {
         lobby_state.players.push(client_id_bits);
 
-        // Set first player as host
         if lobby_state.players.len() == 1 {
             lobby_state.host_id = client_id_bits;
-            info!("👑 Player {} is now the host", client_id_bits);
         }
     }
-    info!("🎪 Lobby now has {} players", lobby_state.players.len());
-    info!("👥 Player added to lobby, waiting for game start to spawn entities");
 }
 
 fn handle_disconnected(
@@ -107,27 +88,13 @@ fn handle_disconnected(
     mut commands: Commands,
 ) {
     let Ok(client_id) = query.get(trigger.entity) else {
-        info!(
-            "❌ Failed to get RemoteId for disconnected entity {:?}",
-            trigger.entity
-        );
         return;
     };
 
     let client_id_bits = client_id.0.to_bits();
 
-    info!(
-        "❌ Client disconnected with remote-id {:?}. Removing from lobby.",
-        client_id
-    );
-
-    // Despawn all player entities controlled by this client
     for (player_entity, controlled_by) in player_query.iter() {
         if controlled_by.owner == trigger.entity {
-            info!(
-                "🗑️ Despawning player entity {:?} controlled by disconnected client",
-                player_entity
-            );
             commands.entity(player_entity).despawn();
         }
     }
@@ -139,16 +106,12 @@ fn handle_disconnected(
         .position(|&id| id == client_id_bits)
     {
         lobby_state.players.remove(pos);
-        info!("🎪 Lobby now has {} players", lobby_state.players.len());
 
-        // If the host disconnected, assign a new host
         if lobby_state.host_id == client_id_bits {
             if let Some(&new_host_id) = lobby_state.players.first() {
                 lobby_state.host_id = new_host_id;
-                info!("👑 Player {} is now the host", new_host_id);
             } else {
-                lobby_state.host_id = 0; // No host
-                info!("👑 No players left in the lobby");
+                lobby_state.host_id = 0;
             }
         }
     }

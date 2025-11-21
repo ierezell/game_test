@@ -39,11 +39,8 @@ impl Plugin for RenderPlugin {
         app.add_observer(spawn_camera_when_player_spawn);
         app.add_systems(
             PostUpdate,
-            update_camera_transform_from_player.run_if(in_state(ClientGameState::Playing)),
-        );
-        app.add_systems(
-            Update,
-            update_camera_pitch.run_if(in_state(ClientGameState::Playing)),
+            update_camera_transform_from_player_controller_rotation
+                .run_if(in_state(ClientGameState::Playing)),
         );
     }
 }
@@ -61,8 +58,6 @@ fn spawn_menu_and_debug_camera(mut commands: Commands) {
 }
 
 fn spawn_camera_when_player_spawn(
-    // This triggers when a Controlled component is added to any entity
-    // We need to check if this entity also has the required components for our local player
     trigger: On<Add, Controlled>,
     player_query: Query<
         (&PlayerId, &Position),
@@ -73,18 +68,11 @@ fn spawn_camera_when_player_spawn(
     local_player_id: Res<crate::LocalPlayerId>,
 ) {
     if !camera_query.is_empty() {
-        info!("🎥 Camera already exists, skipping spawn");
         return;
     }
 
     let entity = trigger.entity;
     if let Ok((player_id, position)) = player_query.get(entity) {
-        info!(
-            "🔍 Camera spawn check: player_id={:?} ({:?}), local_player_id={}",
-            player_id.0,
-            player_id.0.to_bits(),
-            local_player_id.0
-        );
         if player_id.0.to_bits() == local_player_id.0 {
             let camera_height = position.0.y + PLAYER_CAPSULE_HEIGHT + 0.6; // Player center + eye height offset
             let camera_position = position.0 + Vec3::new(0.0, camera_height, 0.0); // Eye height offset
@@ -100,60 +88,28 @@ fn spawn_camera_when_player_spawn(
                 Transform::from_translation(camera_position),
                 Name::new(format!("Client_{}_Camera", local_player_id.0)),
             ));
-            info!("🎥 ADDED Camera to LOCAL predicted player: {:?}", entity);
-        } else {
-            info!(
-                "Skipping camera spawn for non-local player: {:?}",
-                player_id
-            );
         }
     }
 }
 
-fn update_camera_pitch(
-    mut camera_query: Query<&mut CameraPitch, With<PlayerCamera>>,
-    action_query: Query<
-        &ActionState<PlayerAction>,
-        (With<PlayerId>, With<Predicted>, With<Controlled>),
-    >,
-) {
-    let Ok(action_state) = action_query.single() else {
-        return;
-    };
-
-    let mouse_delta = action_state.axis_pair(&PlayerAction::Look);
-    if mouse_delta.y.abs() < 0.001 {
-        return;
-    }
-
-    let pitch_delta = -mouse_delta.y * MOUSE_SENSITIVITY;
-
-    if let Ok(mut camera_pitch) = camera_query.single_mut() {
-        camera_pitch.0 =
-            (camera_pitch.0 + pitch_delta).clamp(-PITCH_LIMIT_RADIANS, PITCH_LIMIT_RADIANS);
-    }
-}
-
-fn update_camera_transform_from_player(
+fn update_camera_transform_from_player_controller_rotation(
     player_query: Query<
-        (&Position, &Rotation),
+        (&Position, &shared::input::FpsController),
         (
             With<PlayerId>,
             With<Predicted>,
             With<Controlled>,
-            Or<(Changed<Position>, Changed<Rotation>)>,
+            Or<(Changed<Position>, Changed<shared::input::FpsController>)>,
         ),
     >,
-    mut camera_query: Query<(&mut Transform, &CameraPitch), With<PlayerCamera>>,
+    mut camera_query: Query<&mut Transform, With<PlayerCamera>>,
 ) {
-    let Ok((mut camera_transform, camera_pitch)) = camera_query.single_mut() else {
-        debug!("No player camera found to update");
+    let Ok(mut camera_transform) = camera_query.single_mut() else {
         return;
     };
 
-    // Find local player and update camera position and rotation
-    let Ok((player_position, player_rotation)) = player_query.single() else {
-        return; // If unlocking cursor, no more changes, Or<(Changed<Position>, Changed<Rotation>)> will not trigger and this query will fail
+    let Ok((player_position, fps_controller)) = player_query.single() else {
+        return;
     };
 
     camera_transform.translation = Vec3::new(
@@ -162,7 +118,6 @@ fn update_camera_transform_from_player(
         player_position.0.z,
     );
 
-    let (player_yaw, _, _) = player_rotation.0.to_euler(EulerRot::YXZ);
-    let camera_quat = Quat::from_euler(EulerRot::YXZ, player_yaw, camera_pitch.0, 0.0);
-    camera_transform.rotation = camera_quat;
+    camera_transform.rotation =
+        Quat::from_euler(EulerRot::YXZ, fps_controller.yaw, fps_controller.pitch, 0.0);
 }

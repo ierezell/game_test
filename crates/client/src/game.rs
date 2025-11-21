@@ -1,5 +1,5 @@
 use bevy::prelude::{
-    App, Assets, Commands, Mesh, Plugin, ResMut, Single, StandardMaterial, Update, info,
+    App, Assets, Commands, Mesh, Plugin, ResMut, Single, StandardMaterial, Update,
 };
 use bevy::state::commands::CommandsStatesExt;
 use shared::create_static_level::setup_static_level;
@@ -27,8 +27,5 @@ fn handle_static_world(
         setup_static_level(commands.reborrow(), meshes, materials, None);
         receiver.receive().for_each(drop);
         commands.set_state(ClientGameState::Playing);
-        info!("🌍 Client Static world setup complete, Playing...");
-        // Now we wait for the server to create dynamic entities like players as
-        // all the other plugins await replicated entities to trigger.
     }
 }

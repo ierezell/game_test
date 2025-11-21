@@ -1,11 +1,11 @@
-use crate::ClientGameState;
 use crate::menu::{AutoHost, AutoJoin};
+use crate::ClientGameState;
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
-        AlignItems, App, BackgroundColor, Camera2d, Click, Commands, CommandsStatesExt, Component,
-        Entity, FlexDirection, JustifyContent, Name, Node, On, OnEnter, OnExit, Plugin, Pointer,
-        Query, Res, Text, TextFont, UiRect, Val, With, debug, default, info,
+        debug, default, info, AlignItems, App, BackgroundColor, Camera2d, Click, Commands,
+        CommandsStatesExt, Component, Entity, FlexDirection, JustifyContent, Name, Node, On,
+        OnEnter, OnExit, Plugin, Pointer, Query, Res, Text, TextFont, UiRect, Val, With,
     },
 };
 use server::create_server_app;
@@ -30,58 +30,37 @@ impl Plugin for LocalMenuPlugin {
     }
 }
 
-/// Check if we should auto-host when entering main menu
 fn conditional_auto_host(auto_host: Option<Res<AutoHost>>, mut commands: Commands) {
     if let Some(auto_host_res) = auto_host {
         if auto_host_res.0 {
-            info!("Auto-hosting enabled, starting host game sequence");
             commands.remove_resource::<AutoHost>();
             on_host_game(commands);
         }
     }
 }
 
-/// Check if we should auto-join when entering main menu
 fn conditional_auto_join(auto_join: Option<Res<AutoJoin>>, mut commands: Commands) {
     if let Some(auto_join_res) = auto_join {
         if auto_join_res.0 {
-            info!("Auto-join enabled, joining game sequence");
             commands.remove_resource::<AutoJoin>();
             on_join_game(commands);
         }
     }
 }
 
-/// System that handles hosting a game
-/// Spawns a server in a separate thread and then connects the client to it
 fn on_host_game(mut commands: Commands) {
-    info!("🏠 Starting to host a game...");
-
-    // Spawn server in a separate thread
     let server_handle = thread::spawn(move || {
-        info!("🖥️ Starting server thread...");
         let mut server_app = create_server_app(true);
         server_app.run();
-        info!("✅ Server started and running...");
     });
-
-    // Give the server more time to start up properly to avoid port conflicts
-    info!("⏳ Waiting for server to initialize...");
-    thread::sleep(std::time::Duration::from_millis(3000));
 
     commands.set_state(ClientGameState::Connecting);
 
-    info!("🚀 Hosting setup complete, connecting client to local server...");
-
-    // Store the server handle so we can clean it up later if needed
-    // For now we'll let it run detached
     std::mem::forget(server_handle);
     commands.set_state(ClientGameState::Lobby);
 }
 
-/// System that handles joining a game
 fn on_join_game(mut commands: Commands) {
-    info!("🔗 Joining a game...");
     commands.set_state(ClientGameState::Lobby);
 }
 

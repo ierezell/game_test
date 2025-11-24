@@ -3,7 +3,8 @@ use avian3d::prelude::{Collider, Position, RigidBody};
 use bevy::prelude::Color;
 use bevy::prelude::{
     AmbientLight, Assets, Commands, Component, Cuboid, Dir3, DirectionalLight, Mesh, Mesh3d,
-    MeshMaterial3d, Name, Plane3d, Quat, ResMut, StandardMaterial, Transform, Vec2, Vec3, default, info,
+    MeshMaterial3d, Name, Plane3d, Quat, ResMut, StandardMaterial, Transform, Vec2, Vec3, default,
+    info,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -31,14 +32,14 @@ pub fn setup_static_level(
     let mut _rng = StdRng::seed_from_u64(seed);
     if materials.is_some() {
         commands.insert_resource(AmbientLight {
-            color: Color::WHITE.into(),
+            color: Color::WHITE,
             brightness: 0.3,
             affects_lightmapped_meshes: true,
         });
 
         commands.spawn((
             DirectionalLight {
-                color: Color::WHITE.into(),
+                color: Color::WHITE,
                 illuminance: 1000.0,
                 ..default()
             },
@@ -108,10 +109,10 @@ pub fn setup_static_level(
     // Create some interior obstacles for more interesting pathfinding
     // Position them to be floor-to-ceiling barriers that NPCs cannot pass through
     let obstacle_positions = [
-        Vec3::new(15.0, 1.5, 10.0),    // Lowered Y position
-        Vec3::new(-10.0, 1.5, -15.0),  // Lowered Y position 
-        Vec3::new(20.0, 1.5, -20.0),   // Lowered Y position
-        Vec3::new(-15.0, 1.5, 15.0),   // Lowered Y position
+        Vec3::new(15.0, 1.5, 10.0),   // Lowered Y position
+        Vec3::new(-10.0, 1.5, -15.0), // Lowered Y position
+        Vec3::new(20.0, 1.5, -20.0),  // Lowered Y position
+        Vec3::new(-15.0, 1.5, 15.0),  // Lowered Y position
     ];
 
     for (i, pos) in obstacle_positions.iter().enumerate() {

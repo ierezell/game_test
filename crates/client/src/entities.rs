@@ -1,9 +1,9 @@
 use crate::input::get_player_input_map;
-use avian3d::prelude::Position;
+
 use bevy::app::Update;
 use bevy::prelude::{
     App, Assets, Capsule3d, Color, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d, Name, Plugin,
-    Query, Res, ResMut, StandardMaterial, With, Without, default, info,
+    Query, Res, ResMut, StandardMaterial, With, Without, default,
 };
 use leafwing_input_manager::prelude::ActionState;
 use shared::entities::{NpcPhysicsBundle, PlayerPhysicsBundle};

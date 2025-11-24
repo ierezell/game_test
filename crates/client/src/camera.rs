@@ -1,19 +1,19 @@
 use avian3d::prelude::Position;
-use avian3d::prelude::Rotation;
+
 use bevy::prelude::{
     Add, App, Camera, Camera2d, Camera3d, Changed, Commands, Component, Entity, EulerRot,
     IntoScheduleConfigs, Name, On, Or, Plugin, PostUpdate, Quat, Query, Res, Startup, Transform,
-    Update, Vec3, With, debug, default, in_state, info,
+    Vec3, With, default, in_state,
 };
 
 use bevy_inspector_egui::{
     bevy_egui::{EguiGlobalSettings, EguiPlugin, PrimaryEguiContext},
     quick::WorldInspectorPlugin,
 };
-use leafwing_input_manager::prelude::ActionState;
+
 use lightyear::prelude::{Controlled, Predicted};
 
-use shared::input::{MOUSE_SENSITIVITY, PITCH_LIMIT_RADIANS, PLAYER_CAPSULE_HEIGHT, PlayerAction};
+use shared::input::PLAYER_CAPSULE_HEIGHT;
 use shared::protocol::PlayerId;
 
 use crate::ClientGameState;

@@ -1,7 +1,7 @@
 use bevy::app::Startup;
 use bevy::prelude::{
     App, Assets, Commands, CommandsStatesExt, Mesh, Name, Plugin, Query, ResMut, Single,
-    StandardMaterial, Update, error, info,
+    StandardMaterial, Update, error,
 };
 
 use lightyear::prelude::{

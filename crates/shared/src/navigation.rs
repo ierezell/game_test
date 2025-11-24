@@ -50,8 +50,8 @@ pub struct PatrolState {
     pub forward: bool,
 }
 
-impl PatrolState {
-    pub fn new() -> Self {
+impl Default for PatrolState {
+    fn default() -> Self {
         Self {
             current_target_index: 0,
             wait_timer: 0.0,
@@ -198,7 +198,7 @@ pub fn setup_patrol(commands: &mut Commands, entity: Entity, patrol_points: Vec<
 
     commands.entity(entity).insert((
         nav_agent,
-        PatrolState::new(),
+        PatrolState::default(),
         patrol_route,
         Replicate::to_clients(NetworkTarget::All), // Ensure navigation components are replicated
     ));

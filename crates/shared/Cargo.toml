@@ -12,3 +12,6 @@ serde.workspace = true
 bevy.workspace = true
 bevy-inspector-egui.workspace = true
 vleue_navigator.workspace = true
+
+[lints]
+workspace = true

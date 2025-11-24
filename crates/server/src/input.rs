@@ -26,7 +26,7 @@ pub fn server_player_movement(
         player_query.iter_mut()
     {
         shared::input::shared_player_movement(
-            time.clone(),
+            *time,
             spatial_query.clone(),
             entity,
             action_state,

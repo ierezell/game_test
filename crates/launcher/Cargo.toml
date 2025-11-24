@@ -10,11 +10,13 @@ client = { path = "../client" }
 clap.workspace = true
 lightyear.workspace = true
 bevy.workspace = true
+avian3d.workspace = true
+leafwing-input-manager.workspace = true
 
 [[bin]]
 name = "launcher"
 path = "src/main.rs"
 
-[lib]
-name = "launcher"
-path = "src/lib.rs"
+
+[lints]
+workspace = true

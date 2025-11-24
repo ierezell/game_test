@@ -1,5 +1,6 @@
 use client::create_client_app;
-
+use crate::local_menu::LocalMenuPlugin;
+use crate::{AutoHost, AutoJoin};
 use clap::{Parser, ValueEnum};
 
 #[derive(Parser)]
@@ -56,13 +57,20 @@ pub fn run() {
 
     match cli.mode {
         Mode::Client => {
-            let mut client_app = create_client_app(
-                cli.client_id,
-                "../../assets".to_string(),
-                cli.auto_host,
-                cli.auto_join,
-                cli.auto_start,
-            );
+            let mut client_app = create_client_app(cli.client_id, "../../assets".to_string());
+            client_app.add_plugins(LocalMenuPlugin);
+
+            if cli.auto_host {
+                client_app.insert_resource(AutoHost(true));
+            }
+
+            if cli.auto_start {
+                client_app.insert_resource(client::lobby::AutoStart(true));
+            }
+
+            if cli.auto_join {
+                client_app.insert_resource(AutoJoin(true));
+            }
 
             if let Some(stop_after_seconds) = cli.stop_after {
                 if stop_after_seconds > 0 {

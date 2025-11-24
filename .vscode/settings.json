@@ -2,6 +2,7 @@
     "cSpell.words": [
         "aabb",
         "actionlike",
+        "clippy",
         "codegen",
         "cooldown",
         "DEADZONE",
@@ -52,4 +53,5 @@
         "node_modules": true
     },
     "rust-analyzer.cargo.autoreload": true,
+    "rust-analyzer.check.command": "clippy"
 }

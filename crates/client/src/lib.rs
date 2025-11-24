@@ -3,14 +3,14 @@ pub mod debug;
 pub mod entities;
 pub mod game;
 pub mod input;
-pub mod menu;
+pub mod lobby;
 pub mod network;
 use crate::camera::RenderPlugin;
 use crate::debug::DebugPlugin;
 use crate::entities::ClientEntitiesPlugin;
 use crate::game::GameClientPlugin;
 use crate::input::ClientInputPlugin;
-use crate::menu::{ClientLobbyPlugin, LocalMenuPlugin};
+use crate::lobby::ClientLobbyPlugin;
 use crate::network::ClientNetworkPlugin;
 use bevy::log::LogPlugin;
 use bevy::prelude::{App, AssetPlugin, DefaultPlugins, PluginGroup, Resource, States, default};
@@ -35,13 +35,7 @@ pub enum ClientGameState {
     Playing,
 }
 
-pub fn create_client_app(
-    client_id: u64,
-    asset_path: String,
-    auto_host: bool,
-    auto_join: bool,
-    auto_start: bool,
-) -> App {
+pub fn create_client_app(client_id: u64, asset_path: String) -> App {
     let mut client_app = App::new();
     let client_id = if client_id == 0 { 1 } else { client_id };
 
@@ -49,11 +43,7 @@ pub fn create_client_app(
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: if auto_host {
-                        format!("Game Test - Host {}", client_id)
-                    } else {
-                        format!("Game Test - Client {}", client_id)
-                    },
+                    title: format!("Game Test - Client {}", client_id),
                     resolution: (1280, 720).into(),
                     ..default()
                 }),
@@ -79,21 +69,8 @@ pub fn create_client_app(
     client_app.add_plugins(RenderPlugin);
     client_app.add_plugins(DebugPlugin);
     client_app.add_plugins(ClientEntitiesPlugin);
-    client_app.add_plugins(LocalMenuPlugin);
     client_app.add_plugins(ClientLobbyPlugin);
     client_app.add_plugins(GameClientPlugin);
-
-    if auto_host {
-        client_app.insert_resource(crate::menu::AutoHost(true));
-    }
-
-    if auto_start {
-        client_app.insert_resource(crate::menu::AutoStart(true));
-    }
-
-    if auto_join {
-        client_app.insert_resource(crate::menu::AutoJoin(true));
-    }
 
     client_app.init_state::<ClientGameState>();
     client_app.insert_state(ClientGameState::LocalMenu);

@@ -1,4 +1,3 @@
-use crate::menu::AutoStart;
 use crate::ClientGameState;
 use crate::LocalPlayerId;
 
@@ -6,14 +5,17 @@ use bevy::color::palettes::tailwind::{GREEN_500, SLATE_700, SLATE_800};
 
 use bevy::ecs::query::Changed;
 use bevy::prelude::{
-    in_state, info, AlignItems, App, BackgroundColor, Camera2d, Click, Commands, Component, Entity,
-    FlexDirection, IntoScheduleConfigs, JustifyContent, Name, Node, On, OnEnter, OnExit, Plugin,
-    Pointer, Query, Res, Single, Text, TextFont, UiRect, Update, Val, With,
+    AlignItems, App, BackgroundColor, Camera2d, Click, Commands, Component, Entity, FlexDirection,
+    IntoScheduleConfigs, JustifyContent, Name, Node, On, OnEnter, OnExit, Plugin, Pointer, Query,
+    Res, Resource, Single, Text, TextFont, UiRect, Update, Val, With, in_state,
 };
 
 use lightyear::prelude::MessageSender;
 use lightyear::prelude::MetadataChannel;
 use shared::protocol::{HostStartGameEvent, LobbyState};
+
+#[derive(Resource)]
+pub struct AutoStart(pub bool);
 
 pub struct ClientLobbyPlugin;
 impl Plugin for ClientLobbyPlugin {

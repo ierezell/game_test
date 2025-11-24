@@ -7,12 +7,29 @@ members = [
     # "crates/llm",
     # "crates/reinforcement_learning",
 ]
-resolver = "2"
+resolver = "3"
+
+[profile.test]
+incremental = true
+opt-level = 0
+lto = false
+debug = 0
+debug-assertions = true
+overflow-checks = true
+
+
+[profile.dev]
+incremental = true
+opt-level = 0
+lto = false
+debug = 0
+debug-assertions = true
+overflow-checks = true
 
 
 [workspace.dependencies]
 rand = "0.9.2"
-clap = { version = "4.5.52", features = ["derive"] }
+clap = { version = "4.5.53", features = ["derive"] }
 avian3d = { version = "0.4", default-features = true, features = ["serialize"] }
 bevy = { version = "0.17.3", default-features = true }
 bevy-inspector-egui = { version = "0.35.0", default-features = true }
@@ -31,20 +48,8 @@ leafwing-input-manager = { version = "0.19.0", default-features = true }
 vleue_navigator = { version = "0.14.0", default-features = false, features = [
     "avian3d",
 ] }
-ndarray = "0.16.1"
-tokenizers = "0.21.4"
+# ndarray = "0.16.1"
+# tokenizers = "0.21.4"
 
-[profile.dev]
-opt-level = 1
-
-[profile.dev.package."*"]
-opt-level = 3
-
-[profile.release]
-codegen-units = 1
-lto = "thin"
-
-[profile.wasm-release]
-inherits = "release"
-opt-level = "s"
-strip = "debuginfo"
+[workspace.lints.clippy]
+type-complexity = "allow"

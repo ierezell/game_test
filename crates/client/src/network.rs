@@ -1,5 +1,5 @@
 use crate::{ClientGameState, LocalPlayerId};
-use bevy::log::debug;
+
 use bevy::prelude::{
     Add, App, Commands, CommandsStatesExt, Entity, Name, On, OnEnter, Plugin, Query, Remove, Res,
     State, With, error, info,

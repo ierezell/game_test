@@ -1,13 +1,14 @@
-use crate::menu::{AutoHost, AutoJoin};
-use crate::ClientGameState;
+use crate::{AutoHost, AutoJoin};
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
-        debug, default, info, AlignItems, App, BackgroundColor, Camera2d, Click, Commands,
-        CommandsStatesExt, Component, Entity, FlexDirection, JustifyContent, Name, Node, On,
-        OnEnter, OnExit, Plugin, Pointer, Query, Res, Text, TextFont, UiRect, Val, With,
+        AlignItems, App, BackgroundColor, Camera2d, Click, Commands, CommandsStatesExt, Component,
+        Entity, FlexDirection, JustifyContent, Name, Node, On, OnEnter, OnExit, Plugin, Pointer,
+        Query, Res, Text, TextFont, UiRect, Val, With, debug, default,
     },
 };
+use client::ClientGameState;
+
 use server::create_server_app;
 use std::thread;
 

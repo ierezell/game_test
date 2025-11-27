@@ -10,7 +10,7 @@ use bevy::{
 
 use lightyear::prelude::{
     AppComponentExt, AppMessageExt, InterpolationRegistrationExt, NetworkDirection, PeerId,
-    input::leafwing::InputPlugin, PredictionRegistrationExt,
+    PredictionRegistrationExt, input::leafwing::InputPlugin,
 };
 
 use lightyear::input::config::InputConfig;

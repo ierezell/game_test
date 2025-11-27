@@ -81,8 +81,8 @@ impl PatrolRoute {
         current_index: usize,
         forward: &mut bool,
     ) -> Option<(Vec3, usize)> {
-        if self.points.is_empty() {
-            return None;
+        if self.points.is_empty() || self.points.len() == 1 {
+            return None; // No movement possible with 0 or 1 points
         }
 
         let mut next_index = current_index;

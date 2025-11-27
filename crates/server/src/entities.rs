@@ -2,7 +2,7 @@ use crate::input::server_player_movement;
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     ecs::schedule::IntoScheduleConfigs,
-    prelude::{App, Commands, Entity, FixedUpdate, Name, Plugin, Query, Vec3, With, info},
+    prelude::{App, Commands, Entity, FixedUpdate, Name, Plugin, Query, Vec3, With},
     state::{condition::in_state, state::OnEnter},
 };
 

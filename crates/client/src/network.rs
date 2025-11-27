@@ -2,8 +2,11 @@ use crate::{ClientGameState, LocalPlayerId};
 
 use bevy::prelude::{
     Add, App, Commands, CommandsStatesExt, Entity, Name, On, OnEnter, Plugin, Query, Remove, Res,
-    State, With, error, info,
+    Resource, State, With, error, info,
 };
+
+#[derive(Resource)]
+pub struct ServerAddr(pub std::net::SocketAddr);
 use lightyear::prelude::{
     Authentication, Client, Connect, Connected, Link, LocalAddr, PeerAddr, PredictionManager,
     ReplicationReceiver, UdpIo,
@@ -26,6 +29,7 @@ fn start_connection(
     mut commands: Commands,
     client_id: Res<LocalPlayerId>,
     existing_clients: Query<Entity, With<Client>>,
+    test_server_addr: Option<Res<ServerAddr>>,
 ) {
     if !existing_clients.is_empty() {
         for client_entity in existing_clients.iter() {
@@ -40,8 +44,15 @@ fn start_connection(
     let client_port = 5000 + client_id.0 as u16;
     let client_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), client_port);
 
+    // Use dynamic server address for testing if available, otherwise use default
+    let server_addr = if let Some(test_addr) = test_server_addr {
+        test_addr.0
+    } else {
+        SERVER_ADDR
+    };
+
     let auth = Authentication::Manual {
-        server_addr: SERVER_ADDR,
+        server_addr,
         client_id: client_id.0,
         private_key: SHARED_SETTINGS.private_key,
         protocol_id: SHARED_SETTINGS.protocol_id,
@@ -60,7 +71,7 @@ fn start_connection(
                 .spawn((
                     Client::default(),
                     LocalAddr(client_addr),
-                    PeerAddr(SERVER_ADDR),
+                    PeerAddr(server_addr),
                     Link::new(None),
                     ReplicationReceiver::default(),
                     netcode_client,

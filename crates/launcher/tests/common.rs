@@ -1,5 +1,3 @@
-#![allow(dead_code)] // Allow unused functions in test utilities
-
 use avian3d::collision::CollisionDiagnostics;
 use avian3d::dynamics::solver::SolverDiagnostics;
 use avian3d::prelude::Position;
@@ -8,149 +6,64 @@ use bevy::prelude::*;
 use client::lobby::AutoStart;
 use launcher::{AutoHost, AutoJoin};
 use leafwing_input_manager::prelude::ActionState;
-use lightyear::prelude::{MessageSender, MetadataChannel};
 use server::{ServerGameState, create_server_app};
 use shared::{
     input::PlayerAction,
-    protocol::{CharacterMarker, HostStartGameEvent, PlayerId},
+    protocol::{CharacterMarker, PlayerId},
 };
 use std::{thread, time::Duration};
 
-// Headless version of ClientInputPlugin that doesn't depend on window events
-struct HeadlessClientInputPlugin;
-
-impl Plugin for HeadlessClientInputPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, headless_client_player_movement);
-        // Skip window-dependent systems like handle_focus_change and toggle_cursor_grab
-        app.add_observer(headless_grab_cursor);
-    }
-}
-
-// Headless version of ClientEntitiesPlugin that doesn't depend on rendering assets
-struct HeadlessClientEntitiesPlugin;
-
-impl Plugin for HeadlessClientEntitiesPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(Update, headless_handle_local_player_setup);
-        // Skip visual setup systems that depend on Mesh/Materials
-    }
-}
-
-// Headless version that only sets up gameplay components, not visual ones
-fn headless_handle_local_player_setup(
-    mut commands: Commands,
-    player_query: Query<
-        (Entity, &shared::protocol::PlayerId),
-        (
-            With<lightyear::prelude::Predicted>,
-            With<lightyear::prelude::Controlled>,
-            With<shared::protocol::PlayerId>,
-            Without<shared::input::FpsController>, // Use FpsController as a marker that it's already set up
-        ),
-    >,
-    local_player_id: Res<client::LocalPlayerId>,
-) {
-    for (entity, player_id) in player_query.iter() {
-        if player_id.0.to_bits() == local_player_id.0 {
-            let input_map = client::input::get_player_input_map();
-            let mut action_state = ActionState::<shared::input::PlayerAction>::default();
-            action_state.enable();
-            commands.entity(entity).insert((
-                input_map,
-                action_state,
-                shared::input::FpsController::default(),
-                shared::entities::PlayerPhysicsBundle::default(),
-            ));
-        }
-    }
-}
-
-// Copy of client_player_movement but available in headless context
-fn headless_client_player_movement(
-    time: Res<Time>,
-    spatial_query: Res<avian3d::prelude::SpatialQueryPipeline>,
-    mut player_query: Query<
-        (
-            Entity,
-            &ActionState<shared::input::PlayerAction>,
-            &mut shared::input::FpsController,
-            &mut Transform,
-            &mut avian3d::prelude::LinearVelocity,
-            &avian3d::prelude::Collider,
-        ),
-        (
-            With<shared::protocol::PlayerId>,
-            With<lightyear::prelude::Predicted>,
-            With<lightyear::prelude::Controlled>,
-        ),
-    >,
-) {
-    if let Ok((entity, action_state, mut controller, mut transform, mut velocity, collider)) =
-        player_query.single_mut()
-    {
-        shared::input::shared_player_movement(
-            time.clone(),
-            spatial_query.clone(),
-            entity,
-            action_state,
-            &mut controller,
-            &mut transform,
-            &mut velocity,
-            collider,
-        );
-    }
-}
-
-// Headless version that doesn't deal with cursor/window
-fn headless_grab_cursor(
-    trigger: On<Add, lightyear::prelude::Controlled>,
-    mut commands: Commands,
-    mut action_query: Query<
-        &mut ActionState<shared::input::PlayerAction>,
-        (
-            With<shared::protocol::PlayerId>,
-            With<lightyear::prelude::Predicted>,
-            With<lightyear::prelude::Controlled>,
-        ),
-    >,
-) {
-    let controlled_entity = trigger.entity;
-
-    match action_query.get_mut(controlled_entity) {
-        Ok(mut action_state) => {
-            action_state.enable();
-        }
-        Err(_) => {
-            let input_map = client::input::get_player_input_map();
-            let mut action_state = ActionState::<shared::input::PlayerAction>::default();
-            action_state.enable();
-            commands
-                .entity(controlled_entity)
-                .insert((input_map, action_state));
-        }
-    }
-}
-
+/// Creates a test server app configured for headless testing
 pub fn create_test_server() -> App {
     let mut server_app = create_server_app(true);
-
+    
     // Add missing Avian3D diagnostics resources for headless testing
     server_app.insert_resource(CollisionDiagnostics::default());
     server_app.insert_resource(SolverDiagnostics::default());
     server_app.insert_resource(SpatialQueryDiagnostics::default());
-    server_app.insert_resource(SolverDiagnostics::default());
 
     server_app
 }
 
+/// Creates a test client app configured for headless testing without winit
 pub fn create_test_client(
     client_id: u64,
     auto_start: bool,
     auto_host: bool,
     auto_join: bool,
 ) -> App {
-    let mut client_app = create_headless_client_app(client_id);
+    // For tests, we need to create a minimal client app without winit
+    let mut client_app = App::new();
+    let client_id = if client_id == 0 { 1 } else { client_id };
+
+    // Use MinimalPlugins and add required plugins for headless testing
+    client_app.add_plugins(MinimalPlugins);
+    client_app.add_plugins(bevy::state::app::StatesPlugin);
+    client_app.add_plugins(bevy::asset::AssetPlugin::default()); // Required for assets
+    client_app.add_plugins(bevy::scene::ScenePlugin); // Required for Avian3D
+    client_app.add_plugins(bevy::mesh::MeshPlugin); // Required for Avian3D mesh events
+    client_app.add_plugins(bevy::animation::AnimationPlugin); // Additional asset support
+    
+    // CRITICAL: Add shared plugin and networking for message system to work
+    client_app.add_plugins(shared::SharedPlugin);
+    client_app.add_plugins(lightyear::prelude::client::ClientPlugins {
+        tick_duration: std::time::Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
+    });
+    
+    // Add client-specific plugins
+    client_app.add_plugins(client::network::ClientNetworkPlugin);
+    client_app.add_plugins(client::lobby::ClientLobbyPlugin);
+    client_app.add_plugins(client::game::GameClientPlugin);
+    
+    // Add Avian3D diagnostics resources for headless testing
+    client_app.insert_resource(CollisionDiagnostics::default());
+    client_app.insert_resource(SolverDiagnostics::default());
+    client_app.insert_resource(SpatialQueryDiagnostics::default());
+    
+    // Add only the essential client plugins without rendering/winit
+    client_app.insert_resource(client::LocalPlayerId(client_id));
+    client_app.init_state::<client::ClientGameState>();
+    
     if auto_start {
         client_app.insert_resource(AutoStart(true));
     }
@@ -159,79 +72,13 @@ pub fn create_test_client(
     }
     if auto_join {
         client_app.insert_resource(AutoJoin(true));
+        // Set initial state to Lobby for auto-joining clients
+        // This triggers start_connection on the first update
+        client_app.insert_state(client::ClientGameState::Lobby);
+    } else {
+        // Ensure clients without auto_join stay in LocalMenu
+        client_app.insert_state(client::ClientGameState::LocalMenu);
     }
-
-    client_app
-}
-
-pub fn create_headless_client_app(client_id: u64) -> App {
-    // TODO :
-
-    // Modify for something cleaner and easier that re-use client app like :
-    //     pub fn create_headless_client_app(client_id: u64) -> App {
-    //     use bevy::window::WindowPlugin;
-    //     use client::create_client_app;
-
-    //     // Mirror create_client_app() but with WindowPlugin disabled for headless testing
-    //     let mut client_app = create_client_app(client_id, "../../assets".to_string());
-    //     client_app.add_plugins(
-    //         DefaultPlugins
-    //             .build()
-    //             .disable::<WindowPlugin>() // Remove window creation for headless testing
-    //             .disable::<bevy::log::LogPlugin>(), // Disable LogPlugin to avoid conflict with lightyear logging
-    //     );
-    //     client_app.insert_resource(avian3d::collision::broad_phase::CollisionDiagnostics::default());
-
-    //     client_app
-    // }
-    // Implement the user's conceptual approach: create_client_app() + disable WindowPlugin
-    // Since plugins can't be modified after adding, we recreate the same setup but headless
-
-    let mut client_app = App::new();
-    let client_id = if client_id == 0 { 1 } else { client_id };
-
-    // Use MinimalPlugins for headless testing (following Lightyear examples pattern)
-    // This avoids all rendering-related systems that cause WindowResized message errors
-    client_app.add_plugins((
-        bevy::MinimalPlugins,
-        bevy::log::LogPlugin::default(),
-        bevy::state::app::StatesPlugin,
-        bevy::diagnostic::DiagnosticsPlugin,
-        bevy::asset::AssetPlugin {
-            file_path: "../../assets".to_string(),
-            ..Default::default()
-        },
-        bevy::scene::ScenePlugin,
-        bevy::mesh::MeshPlugin,
-        bevy::animation::AnimationPlugin,
-    ));
-
-    // Add the same plugins as create_client_app() in the same order
-    client_app.add_plugins(shared::SharedPlugin);
-    client_app.add_plugins(lightyear::prelude::client::ClientPlugins {
-        tick_duration: std::time::Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
-    });
-
-    client_app.insert_resource(client::LocalPlayerId(client_id));
-    client_app.add_plugins(client::network::ClientNetworkPlugin);
-
-    // Add headless-compatible input plugin
-    client_app.add_plugins(HeadlessClientInputPlugin);
-
-    // Skip RenderPlugin and DebugPlugin for headless mode - they require rendering systems
-    // client_app.add_plugins(client::debug::DebugPlugin);  // Skip - uses Gizmos
-
-    client_app.add_plugins(HeadlessClientEntitiesPlugin);
-    client_app.add_plugins(client::lobby::ClientLobbyPlugin);
-    client_app.add_plugins(client::game::GameClientPlugin);
-
-    client_app.init_state::<client::ClientGameState>();
-    client_app.insert_state(client::ClientGameState::LocalMenu);
-
-    // Add Avian3D diagnostics resources for testing
-    client_app.insert_resource(CollisionDiagnostics::default());
-    client_app.insert_resource(SolverDiagnostics::default());
-    client_app.insert_resource(SpatialQueryDiagnostics::default());
 
     client_app
 }
@@ -379,22 +226,17 @@ pub fn setup_two_player_game() -> (App, App, App) {
         server_app.update();
     }
 
-    let mut client1 = create_test_client(1, false, false, true);
+    let mut client1 = create_test_client(1, true, false, true);
     let mut client2 = create_test_client(2, false, false, true);
 
-    for _ in 0..100 {
+    // Run many cycles to ensure connection and LobbyState replication
+    for _ in 0..300 {
         server_app.update();
         client1.update();
         client2.update();
     }
 
-    let mut sender_query = client1
-        .world_mut()
-        .query::<&mut MessageSender<HostStartGameEvent>>();
-    if let Ok(mut sender) = sender_query.single_mut(client1.world_mut()) {
-        let _ = sender.send::<MetadataChannel>(HostStartGameEvent);
-    }
-
+    // AutoStart should trigger game start automatically
     for _ in 0..500 {
         server_app.update();
         client1.update();

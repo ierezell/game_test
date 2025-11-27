@@ -29,7 +29,8 @@ pub fn create_server_app(headless: bool) -> App {
     if headless {
         app.add_plugins((
             MinimalPlugins,
-            bevy::log::LogPlugin::default(),
+            // LogPlugin disabled for tests to avoid "Could not set global logger" error
+            // bevy::log::LogPlugin::default(),
             bevy::state::app::StatesPlugin,
             bevy::diagnostic::DiagnosticsPlugin,
             bevy::asset::AssetPlugin::default(),

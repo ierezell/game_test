@@ -1,6 +1,7 @@
 use bevy::prelude::{
     Add, App, Commands, Entity, Name, On, Plugin, PreStartup, Query, Single, With,
 };
+
 use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
     Connected, ControlledBy, Disconnected, LinkOf, LocalAddr, RemoteId, ReplicationSender,

@@ -5,6 +5,8 @@ use bevy::{
     prelude::{App, Commands, Entity, FixedUpdate, Name, Plugin, Query, Vec3, With},
     state::{condition::in_state, state::OnEnter},
 };
+use leafwing_input_manager::prelude::ActionState;
+use shared::input::PlayerAction;
 
 use lightyear::prelude::{
     ControlledBy, InterpolationTarget, NetworkTarget, PeerId, PredictionTarget, RemoteId,
@@ -71,6 +73,8 @@ fn spawn_player_entities(
                     InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(remote_id.0)),
                     CharacterMarker,
                     PlayerPhysicsBundle::default(),
+                    ActionState::<PlayerAction>::default(),
+                    leafwing_input_manager::prelude::InputMap::<PlayerAction>::default(),
                 ))
                 .id();
         }

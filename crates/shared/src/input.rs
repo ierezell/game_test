@@ -32,14 +32,14 @@ pub enum PlayerAction {
 
 pub const PLAYER_CAPSULE_RADIUS: f32 = 0.5;
 pub const PLAYER_CAPSULE_HEIGHT: f32 = 1.5;
-pub const MAX_SPEED: f32 = 5.0;
+pub const MAX_SPEED: f32 = 2.0;
 pub const JUMP_HEIGHT: f32 = 1.5;
 const LOOK_DEADZONE_SQUARED: f32 = 0.000001; // 0.001^2
-pub const MOUSE_SENSITIVITY: f32 = 0.0025;
+pub const MOUSE_SENSITIVITY: f32 = 0.00025;
 const MOVEMENT_DEADZONE_SQUARED: f32 = 0.000001;
 pub const PITCH_LIMIT_RADIANS: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
 pub const ROTATION_SMOOTHING_RATE: f32 = 25.0; // Higher = more responsive
-pub const MOVEMENT_SPEED: f32 = 10.0;
+pub const MOVEMENT_SPEED: f32 = 1.0;
 pub const FLOAT_HEIGHT: f32 = 1.5; // Must be greater than distance from center to bottom of collider
 #[derive(Component, Reflect, Serialize, Deserialize)]
 pub struct FpsController {

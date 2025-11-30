@@ -42,8 +42,12 @@ fn client_player_movement(
     if let Ok((entity, action_state, mut controller, mut transform, mut velocity, collider)) =
         player_query.single_mut()
     {
+        let move_input = action_state.axis_pair(&PlayerAction::Move);
+        if move_input.length_squared() > 0.0 {
+            println!("Client sending move input: {:?}", move_input);
+        }
         shared::input::shared_player_movement(
-            time.clone(),
+            *time,
             spatial_query.clone(),
             entity,
             action_state,

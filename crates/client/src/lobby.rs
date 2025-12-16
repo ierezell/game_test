@@ -20,17 +20,29 @@ pub struct AutoStart(pub bool);
 pub struct ClientLobbyPlugin;
 impl Plugin for ClientLobbyPlugin {
     fn build(&self, app: &mut App) {
+        // Only spawn/despawn UI and camera if NOT headless
+        // We can check the resource existence or value. Since we insert Headless(true) or Headless(false),
+        // we should check the value.
+        // Actually, simpler: just don't add the systems if headless.
+        // But the plugin build happens once. We need run conditions.
+        
+        use crate::Headless;
+        fn is_not_headless(headless: Option<Res<Headless>>) -> bool {
+            !headless.map(|h| h.0).unwrap_or(false)
+        }
+
         app.add_systems(
             OnEnter(ClientGameState::Lobby),
-            (spawn_lobby_ui, spawn_lobby_camera),
+            (spawn_lobby_ui, spawn_lobby_camera).run_if(is_not_headless),
         );
         app.add_systems(
             OnExit(ClientGameState::Lobby),
-            (despawn_lobby_ui, despawn_lobby_camera),
+            (despawn_lobby_ui, despawn_lobby_camera).run_if(is_not_headless),
         );
         app.add_systems(
             Update,
-            (handle_auto_start, update_lobby_text).run_if(in_state(ClientGameState::Lobby)),
+            (handle_auto_start, update_lobby_text.run_if(is_not_headless))
+                .run_if(in_state(ClientGameState::Lobby)),
         );
     }
 }
@@ -45,10 +57,14 @@ fn handle_auto_start(
     if let Some(auto_start_res) = auto_start {
         if auto_start_res.0 {
             if let Ok(lobby_data) = lobby_state.single() {
+                println!("DEBUG: handle_auto_start running. Host: {}, Local: {}, Players: {}", lobby_data.host_id, local_player_id.0, lobby_data.players.len());
                 if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
+                    println!("DEBUG: handle_auto_start sending HostStartGameEvent");
                     sender.send::<MetadataChannel>(HostStartGameEvent);
                     commands.remove_resource::<AutoStart>();
                 }
+            } else {
+                // println!("DEBUG: handle_auto_start - No LobbyState found");
             }
         }
     }

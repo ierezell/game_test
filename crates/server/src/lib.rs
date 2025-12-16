@@ -15,7 +15,7 @@ use crate::entities::ServerEntitiesPlugin;
 use crate::lobby::ServerLobbyPlugin;
 use crate::network::ServerNetworkPlugin;
 use crate::render::RenderPlugin;
-use shared::SharedPlugin;
+use shared::{SharedPlugin, NetworkMode};
 #[derive(States, Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub enum ServerGameState {
     #[default]
@@ -24,7 +24,7 @@ pub enum ServerGameState {
     Playing,
 }
 
-pub fn create_server_app(headless: bool) -> App {
+pub fn create_server_app(headless: bool, network_mode: NetworkMode) -> App {
     let mut app = App::new();
     if headless {
         app.add_plugins((
@@ -57,6 +57,7 @@ pub fn create_server_app(headless: bool) -> App {
         .add_plugins(RenderPlugin);
     }
 
+    app.insert_resource(network_mode);
     app.add_plugins(SharedPlugin);
     app.add_plugins(ServerNetworkPlugin);
     app.add_plugins(ServerPlugins {

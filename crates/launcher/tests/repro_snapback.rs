@@ -17,7 +17,7 @@ mod test {
     fn test_movement_replication() {
         // 1. Setup server and client
         let mut server_app = create_test_server();
-        let mut client_app = create_test_client(1, false, false, true); // Auto-join
+        let mut client_app = create_test_client(1, false, false, true, true); // Auto-join, headless
 
         // 2. Run updates to establish connection
         for _ in 0..100 {

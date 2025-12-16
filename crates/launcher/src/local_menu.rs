@@ -51,7 +51,7 @@ fn conditional_auto_join(auto_join: Option<Res<AutoJoin>>, mut commands: Command
 
 fn on_host_game(mut commands: Commands) {
     let server_handle = thread::spawn(move || {
-        let mut server_app = create_server_app(true);
+        let mut server_app = create_server_app(true, shared::NetworkMode::Udp);
         server_app.run();
     });
 

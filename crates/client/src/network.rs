@@ -16,13 +16,64 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use shared::{SERVER_ADDR, SHARED_SETTINGS};
 
+#[derive(Resource)]
+pub struct CrossbeamClientEndpoint(pub lightyear::crossbeam::CrossbeamIo);
+
 pub struct ClientNetworkPlugin;
 impl Plugin for ClientNetworkPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(ClientGameState::Lobby), start_connection);
+        use shared::NetworkMode;
+
+        let network_mode = app.world().get_resource::<NetworkMode>().copied().unwrap_or_default();
+        match network_mode {
+            NetworkMode::Udp => {
+                app.add_systems(OnEnter(ClientGameState::Lobby), start_connection);
+            }
+            NetworkMode::Crossbeam => {
+                app.add_plugins(lightyear::crossbeam::CrossbeamPlugin);
+                app.add_systems(OnEnter(ClientGameState::Lobby), start_connection_crossbeam);
+            }
+        }
+
         app.add_observer(handle_client_connected);
         app.add_observer(handle_client_disconnected);
     }
+}
+
+fn start_connection_crossbeam(
+    mut commands: Commands,
+    client_id: Res<LocalPlayerId>,
+    existing_clients: Query<Entity, With<Client>>,
+    endpoint: Res<CrossbeamClientEndpoint>, 
+) {
+    if !existing_clients.is_empty() {
+        for client_entity in existing_clients.iter() {
+            commands.trigger(Connect {
+                entity: client_entity,
+            });
+        }
+        return;
+    }
+
+    println!("DEBUG: start_connection_crossbeam called for client {}", client_id.0);
+
+    // Clone the endpoint because we might need it again if we reconnect (though Res is borrowed)
+    // CrossbeamIo should be cloneable (channels are).
+    let io = endpoint.0.clone();
+
+    let client_entity = commands
+        .spawn((
+            Client::default(),
+            io, 
+            ReplicationReceiver::default(),
+            PredictionManager::default(),
+        ))
+        .insert(Name::from(format!("Client {}", client_id.0)))
+        .id();
+
+    commands.trigger(Connect {
+        entity: client_entity,
+    });
 }
 
 fn start_connection(
@@ -40,6 +91,8 @@ fn start_connection(
         return;
     }
 
+    println!("DEBUG: start_connection called for client {}", client_id.0);
+
     // Use a different port range to avoid conflicts with server
     let client_port = 5000 + client_id.0 as u16;
     let client_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), client_port);
@@ -50,6 +103,7 @@ fn start_connection(
     } else {
         SERVER_ADDR
     };
+    println!("DEBUG: Client {} connecting to server at {}", client_id.0, server_addr);
 
     let auth = Authentication::Manual {
         server_addr,
@@ -67,6 +121,7 @@ fn start_connection(
 
     match NetcodeClient::new(auth, netcode_config) {
         Ok(netcode_client) => {
+            println!("DEBUG: NetcodeClient created successfully for client {}", client_id.0);
             let client_entity = commands
                 .spawn((
                     Client::default(),

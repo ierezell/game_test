@@ -31,6 +31,13 @@ pub const SERVER_ADDR: SocketAddr = SocketAddr::new(
 );
 pub const FIXED_TIMESTEP_HZ: f64 = 60.0;
 
+#[derive(bevy::prelude::Resource, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum NetworkMode {
+    #[default]
+    Udp,
+    Crossbeam,
+}
+
 pub struct SharedPlugin;
 impl Plugin for SharedPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {

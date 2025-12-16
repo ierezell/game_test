@@ -56,6 +56,8 @@ fn spawn_player_entities(
             let spawn_position =
                 Vec3::new(spawn_radius * angle.cos(), 3.5, spawn_radius * angle.sin());
 
+            println!("DEBUG: Spawning player entity for ID: {} at {:?}", player_id, spawn_position);
+
             let _player = commands
                 .spawn((
                     Name::new(format!("Player_{}", player_id)),
@@ -77,6 +79,12 @@ fn spawn_player_entities(
                     leafwing_input_manager::prelude::InputMap::<PlayerAction>::default(),
                 ))
                 .id();
+        } else {
+             println!("DEBUG: Could not find client entity for player ID: {}", player_id);
+             // Dump available clients
+             for (e, r) in client_query.iter() {
+                 println!("DEBUG: Available Client: {:?} with RemoteId: {:?}", e, r);
+             }
         }
     }
 }

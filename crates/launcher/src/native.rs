@@ -57,7 +57,7 @@ pub fn run() {
 
     match cli.mode {
         Mode::Client => {
-            let mut client_app = create_client_app(cli.client_id, "../../assets".to_string());
+            let mut client_app = create_client_app(cli.client_id, "../../assets".to_string(), cli.headless, shared::NetworkMode::Udp);
             client_app.add_plugins(LocalMenuPlugin);
 
             if cli.auto_host {
@@ -85,7 +85,7 @@ pub fn run() {
             client_app.run();
         }
         Mode::Server => {
-            let mut server_app = server::create_server_app(cli.headless);
+            let mut server_app = server::create_server_app(cli.headless, shared::NetworkMode::Udp);
 
             if let Some(stop_after_seconds) = cli.stop_after {
                 if stop_after_seconds > 0 {

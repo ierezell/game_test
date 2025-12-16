@@ -10,7 +10,7 @@ mod test {
     #[test]
     fn test_player_movement() {
         // Create a test client app
-        let mut app = create_test_client(1, false, false, false);
+        let mut app = create_test_client(1, false, false, false, true);
 
         // Manually spawn a player entity for testing movement
         let player_entity = app

@@ -70,6 +70,7 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<Name>();
         app.register_component::<PlayerColor>();
         app.register_component::<GameSeed>();
+        app.register_component::<CharacterMarker>();
 
         app.register_component::<Rotation>()
             .add_prediction()
@@ -86,8 +87,7 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<PatrolRoute>();
         app.register_component::<PatrolState>();
 
-        app.register_component::<LobbyState>()
-            .add_component_map_entities();
+        app.register_component::<LobbyState>();
 
         app.register_message::<ClientWorldCreatedEvent>()
             .add_direction(NetworkDirection::ClientToServer);

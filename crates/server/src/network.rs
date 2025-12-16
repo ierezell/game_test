@@ -15,11 +15,35 @@ pub struct ServerNetworkPlugin;
 
 impl Plugin for ServerNetworkPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreStartup, startup_server);
+        use shared::NetworkMode;
+        
+        let network_mode = app.world().get_resource::<NetworkMode>().copied().unwrap_or_default();
+        
+        match network_mode {
+            NetworkMode::Udp => {
+                app.add_systems(PreStartup, startup_server);
+            }
+            NetworkMode::Crossbeam => {
+                app.add_plugins(lightyear::crossbeam::CrossbeamPlugin);
+                app.add_systems(PreStartup, startup_server_crossbeam);
+            }
+        }
+        
         app.add_observer(handle_new_client);
         app.add_observer(handle_disconnected);
         app.add_observer(handle_connected);
     }
+}
+
+fn startup_server_crossbeam(mut commands: Commands) {
+    // In Crossbeam mode, connections are manually managed via LinkOf entities.
+    // We just need a Server entity to exist to satisfy queries/Start event.
+    let server_entity = commands.spawn((
+        Name::new("Server"),
+    )).id(); 
+    commands.trigger(Start {
+        entity: server_entity,
+    });
 }
 
 fn startup_server(mut commands: Commands) {
@@ -45,14 +69,8 @@ fn startup_server(mut commands: Commands) {
     });
 }
 
-fn handle_new_client(trigger: On<Add, LinkOf>, mut commands: Commands) {
-    commands
-        .entity(trigger.entity)
-        .insert(ReplicationSender::new(
-            SEND_INTERVAL,
-            SendUpdatesMode::SinceLastAck,
-            false,
-        ));
+fn handle_new_client(trigger: On<Add, LinkOf>, _commands: Commands) {
+    println!("DEBUG: handle_new_client triggered for entity {:?}", trigger.entity);
 }
 
 fn handle_connected(
@@ -69,15 +87,24 @@ fn handle_connected(
 
     commands
         .entity(trigger.entity)
-        .insert(Name::from(format!("Client_{}", client_id_bits)));
+        .insert(Name::from(format!("Client_{}", client_id_bits)))
+        .insert(ReplicationSender::new(
+            SEND_INTERVAL,
+            SendUpdatesMode::SinceLastAck,
+            true,
+        ));
 
     let mut lobby_state = lobby_query;
     if !lobby_state.players.contains(&client_id_bits) {
+        println!("DEBUG: Server accepted connection from Client_{}", client_id_bits);
         lobby_state.players.push(client_id_bits);
 
         if lobby_state.players.len() == 1 {
+            println!("DEBUG: Client_{} became host", client_id_bits);
             lobby_state.host_id = client_id_bits;
         }
+    } else {
+        println!("DEBUG: Client_{} already in lobby", client_id_bits);
     }
 }
 

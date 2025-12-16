@@ -28,7 +28,7 @@ mod test {
 
     #[test]
     fn test_client_stability() {
-        let mut client_app = create_test_client(1, false, false, false);
+        let mut client_app = create_test_client(1, false, false, false, true);
         for _ in 0..100 {
             client_app.update();
         }
@@ -40,7 +40,7 @@ mod test {
     #[test]
     fn test_basic_app_creation() {
         let mut server_app = create_test_server();
-        let mut client_app = create_test_client(1, false, false, false);
+        let mut client_app = create_test_client(1, false, false, false, true);
 
         let server_state = server_app.world().resource::<State<ServerGameState>>();
         assert_eq!(
@@ -65,9 +65,9 @@ mod test {
     #[test]
     fn test_multiple_client_creation() {
         let mut server_app = create_test_server();
-        let mut client1 = create_test_client(1, false, false, false);
-        let mut client2 = create_test_client(1, false, false, false);
-        let mut client3 = create_test_client(1, false, false, false);
+        let mut client1 = create_test_client(1, false, false, false, true);
+        let mut client2 = create_test_client(1, false, false, false, true);
+        let mut client3 = create_test_client(1, false, false, false, true);
 
         for _ in 0..20 {
             server_app.update();
@@ -108,7 +108,7 @@ mod test {
             server_app.update();
         }
 
-        let mut client_app = create_test_client(1, false, false, true);
+        let mut client_app = create_test_client(1, false, false, true, true);
         for _ in 0..100 {
             client_app.update();
             server_app.update();
@@ -141,9 +141,9 @@ mod test {
             server_app.update();
         }
 
-        let mut client1 = create_test_client(1, false, false, true);
-        let mut client2 = create_test_client(2, false, false, true);
-        let mut client3 = create_test_client(3, false, false, true);
+        let mut client1 = create_test_client(1, false, false, true, true);
+        let mut client2 = create_test_client(2, false, false, true, true);
+        let mut client3 = create_test_client(3, false, false, true, true);
 
         for _ in 0..100 {
             server_app.update();
@@ -181,7 +181,7 @@ mod test {
             server_app.update();
         }
 
-        let mut client_app = create_test_client(1, false, false, true);
+        let mut client_app = create_test_client(1, false, false, true, true);
         for _ in 0..100 {
             client_app.update();
             server_app.update();
@@ -263,9 +263,9 @@ mod test {
             server_app.update();
         }
 
-        let mut client1 = create_test_client(1, false, false, true);
-        let mut client2 = create_test_client(2, false, false, true);
-        let mut client3 = create_test_client(3, false, false, true);
+        let mut client1 = create_test_client(1, false, false, true, true);
+        let mut client2 = create_test_client(2, false, false, true, true);
+        let mut client3 = create_test_client(3, false, false, true, true);
 
         for _ in 0..100 {
             server_app.update();

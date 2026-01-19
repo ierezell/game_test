@@ -6,7 +6,7 @@ use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
     Connected, ControlledBy, Disconnected, LinkOf, LocalAddr, RemoteId, ReplicationSender,
     SendUpdatesMode,
-    server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start},
+    server::{NetcodeConfig, NetcodeServer, Server, ServerUdpIo, Start},
 };
 use shared::protocol::{LobbyState, PlayerId};
 use shared::{SEND_INTERVAL, SERVER_BIND_ADDR, SHARED_SETTINGS};
@@ -16,19 +16,26 @@ pub struct ServerNetworkPlugin;
 impl Plugin for ServerNetworkPlugin {
     fn build(&self, app: &mut App) {
         use shared::NetworkMode;
-        
-        let network_mode = app.world().get_resource::<NetworkMode>().copied().unwrap_or_default();
-        
+
+        let network_mode = app
+            .world()
+            .get_resource::<NetworkMode>()
+            .copied()
+            .unwrap_or_default();
+        println!(
+            "🔧 ServerNetworkPlugin: building with mode {:?}",
+            network_mode
+        );
+
         match network_mode {
             NetworkMode::Udp => {
                 app.add_systems(PreStartup, startup_server);
             }
             NetworkMode::Crossbeam => {
-                app.add_plugins(lightyear::crossbeam::CrossbeamPlugin);
                 app.add_systems(PreStartup, startup_server_crossbeam);
             }
         }
-        
+
         app.add_observer(handle_new_client);
         app.add_observer(handle_disconnected);
         app.add_observer(handle_connected);
@@ -38,9 +45,13 @@ impl Plugin for ServerNetworkPlugin {
 fn startup_server_crossbeam(mut commands: Commands) {
     // In Crossbeam mode, connections are manually managed via LinkOf entities.
     // We just need a Server entity to exist to satisfy queries/Start event.
-    let server_entity = commands.spawn((
-        Name::new("Server"),
-    )).id(); 
+    let server_entity = commands
+        .spawn((Name::new("Server"), Server::default()))
+        .id();
+    println!(
+        "🔧 ServerNetworkPlugin: spawned Server entity {:?}",
+        server_entity
+    );
     commands.trigger(Start {
         entity: server_entity,
     });
@@ -70,7 +81,10 @@ fn startup_server(mut commands: Commands) {
 }
 
 fn handle_new_client(trigger: On<Add, LinkOf>, _commands: Commands) {
-    println!("DEBUG: handle_new_client triggered for entity {:?}", trigger.entity);
+    println!(
+        "DEBUG: handle_new_client triggered for entity {:?}",
+        trigger.entity
+    );
 }
 
 fn handle_connected(
@@ -96,7 +110,10 @@ fn handle_connected(
 
     let mut lobby_state = lobby_query;
     if !lobby_state.players.contains(&client_id_bits) {
-        println!("DEBUG: Server accepted connection from Client_{}", client_id_bits);
+        println!(
+            "DEBUG: Server accepted connection from Client_{}",
+            client_id_bits
+        );
         lobby_state.players.push(client_id_bits);
 
         if lobby_state.players.len() == 1 {

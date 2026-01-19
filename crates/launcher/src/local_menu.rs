@@ -32,32 +32,45 @@ impl Plugin for LocalMenuPlugin {
 }
 
 fn conditional_auto_host(auto_host: Option<Res<AutoHost>>, mut commands: Commands) {
-    if let Some(auto_host_res) = auto_host {
-        if auto_host_res.0 {
-            commands.remove_resource::<AutoHost>();
-            on_host_game(commands);
-        }
+    let Some(auto_host_res) = auto_host else {
+        return;
+    };
+
+    if auto_host_res.0 {
+        commands.remove_resource::<AutoHost>();
+        on_host_game(commands);
     }
 }
 
 fn conditional_auto_join(auto_join: Option<Res<AutoJoin>>, mut commands: Commands) {
-    if let Some(auto_join_res) = auto_join {
-        if auto_join_res.0 {
-            commands.remove_resource::<AutoJoin>();
-            on_join_game(commands);
-        }
+    let Some(auto_join_res) = auto_join else {
+        return;
+    };
+
+    if auto_join_res.0 {
+        commands.remove_resource::<AutoJoin>();
+        on_join_game(commands);
     }
 }
 
 fn on_host_game(mut commands: Commands) {
+    println!("🎮 on_host_game: Spawning server thread...");
     let server_handle = thread::spawn(move || {
+        println!("🖥️  Server thread: Starting server app...");
         let mut server_app = create_server_app(true, shared::NetworkMode::Udp);
+        println!("🖥️  Server thread: Running server app...");
         server_app.run();
     });
 
+    println!("🎮 on_host_game: Transitioning to Connecting state...");
     commands.set_state(ClientGameState::Connecting);
 
+    // Give server time to start listening on the socket
+    println!("🎮 on_host_game: Waiting 2 seconds for server to initialize...");
+    thread::sleep(std::time::Duration::from_millis(2000));
+
     std::mem::forget(server_handle);
+    println!("🎮 on_host_game: Transitioning to Lobby state...");
     commands.set_state(ClientGameState::Lobby);
 }
 

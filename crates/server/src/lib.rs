@@ -15,7 +15,7 @@ use crate::entities::ServerEntitiesPlugin;
 use crate::lobby::ServerLobbyPlugin;
 use crate::network::ServerNetworkPlugin;
 use crate::render::RenderPlugin;
-use shared::{SharedPlugin, NetworkMode};
+use shared::{NetworkMode, SharedPlugin};
 #[derive(States, Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub enum ServerGameState {
     #[default]
@@ -59,10 +59,10 @@ pub fn create_server_app(headless: bool, network_mode: NetworkMode) -> App {
 
     app.insert_resource(network_mode);
     app.add_plugins(SharedPlugin);
-    app.add_plugins(ServerNetworkPlugin);
     app.add_plugins(ServerPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
+    app.add_plugins(ServerNetworkPlugin);
     app.add_plugins(ServerLobbyPlugin);
     app.add_plugins(ServerEntitiesPlugin);
     app.init_state::<ServerGameState>();

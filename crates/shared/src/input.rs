@@ -41,7 +41,7 @@ pub const PITCH_LIMIT_RADIANS: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
 pub const ROTATION_SMOOTHING_RATE: f32 = 25.0; // Higher = more responsive
 pub const MOVEMENT_SPEED: f32 = 1.0;
 pub const FLOAT_HEIGHT: f32 = 1.5; // Must be greater than distance from center to bottom of collider
-#[derive(Component, Reflect, Serialize, Deserialize)]
+#[derive(Component, Reflect, Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct FpsController {
     pub gravity: f32,
     pub walk_speed: f32,
@@ -121,6 +121,7 @@ pub fn update_look(controller: &mut FpsController, action_state: &ActionState<Pl
         .clamp(-PITCH_LIMIT_RADIANS, PITCH_LIMIT_RADIANS);
 }
 /// Shared player movement function for compatibility
+#[allow(clippy::too_many_arguments)]
 pub fn shared_player_movement(
     time: Time,
     spatial_query: SpatialQueryPipeline,
@@ -142,7 +143,11 @@ pub fn shared_player_movement(
 
     // Create movement direction in world space
     // move_input.x = A/D (left/right), move_input.y = W/S (forward/backward)
-    let forward = Vec3::new(0.0, 0.0, -move_input.y); // W = forward (-Z), S = backward (+Z)
+    // Create movement direction in world space
+    // move_input.x = A/D (left/right), move_input.y = W/S (forward/backward)
+    // Standard mapping: W (+y) -> Forward (-z), S (-y) -> Backward (+z)
+    // So if input.y is positive (W), we want -Z.
+    let forward = Vec3::new(0.0, 0.0, -move_input.y); // Correct for typical -Z forward
     let right = Vec3::new(move_input.x, 0.0, 0.0); // D = right (+X), A = left (-X)
 
     let move_to_world = Mat3::from_rotation_y(controller.yaw);

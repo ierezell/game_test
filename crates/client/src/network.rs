@@ -24,13 +24,16 @@ impl Plugin for ClientNetworkPlugin {
     fn build(&self, app: &mut App) {
         use shared::NetworkMode;
 
-        let network_mode = app.world().get_resource::<NetworkMode>().copied().unwrap_or_default();
+        let network_mode = app
+            .world()
+            .get_resource::<NetworkMode>()
+            .copied()
+            .unwrap_or_default();
         match network_mode {
             NetworkMode::Udp => {
                 app.add_systems(OnEnter(ClientGameState::Lobby), start_connection);
             }
             NetworkMode::Crossbeam => {
-                app.add_plugins(lightyear::crossbeam::CrossbeamPlugin);
                 app.add_systems(OnEnter(ClientGameState::Lobby), start_connection_crossbeam);
             }
         }
@@ -44,7 +47,7 @@ fn start_connection_crossbeam(
     mut commands: Commands,
     client_id: Res<LocalPlayerId>,
     existing_clients: Query<Entity, With<Client>>,
-    endpoint: Res<CrossbeamClientEndpoint>, 
+    endpoint: Res<CrossbeamClientEndpoint>,
 ) {
     if !existing_clients.is_empty() {
         for client_entity in existing_clients.iter() {
@@ -55,7 +58,10 @@ fn start_connection_crossbeam(
         return;
     }
 
-    println!("DEBUG: start_connection_crossbeam called for client {}", client_id.0);
+    println!(
+        "DEBUG: start_connection_crossbeam called for client {}",
+        client_id.0
+    );
 
     // Clone the endpoint because we might need it again if we reconnect (though Res is borrowed)
     // CrossbeamIo should be cloneable (channels are).
@@ -64,7 +70,7 @@ fn start_connection_crossbeam(
     let client_entity = commands
         .spawn((
             Client::default(),
-            io, 
+            io,
             ReplicationReceiver::default(),
             PredictionManager::default(),
         ))
@@ -103,7 +109,10 @@ fn start_connection(
     } else {
         SERVER_ADDR
     };
-    println!("DEBUG: Client {} connecting to server at {}", client_id.0, server_addr);
+    println!(
+        "DEBUG: Client {} connecting to server at {}",
+        client_id.0, server_addr
+    );
 
     let auth = Authentication::Manual {
         server_addr,
@@ -121,7 +130,10 @@ fn start_connection(
 
     match NetcodeClient::new(auth, netcode_config) {
         Ok(netcode_client) => {
-            println!("DEBUG: NetcodeClient created successfully for client {}", client_id.0);
+            println!(
+                "DEBUG: NetcodeClient created successfully for client {}",
+                client_id.0
+            );
             let client_entity = commands
                 .spawn((
                     Client::default(),

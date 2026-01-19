@@ -12,7 +12,7 @@ pub struct DebugPlugin;
 
 impl Plugin for DebugPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(PhysicsDebugPlugin::default());
+        app.add_plugins(PhysicsDebugPlugin);
         app.add_systems(Update, debug_navigation_paths);
         app.add_systems(Update, debug_player_position);
     }
@@ -37,16 +37,18 @@ fn debug_navigation_paths(
         }
 
         if let Some(route) = patrol_route {
-            if route.points.len() > 1 {
-                for window in route.points.windows(2) {
-                    gizmos.line(window[0], window[1], Color::srgb(0.5, 0.5, 1.0));
-                }
+            if route.points.len() <= 1 {
+                continue;
+            }
 
-                if let Some(state) = patrol_state {
-                    if let Some(current_point) = route.points.get(state.current_target_index) {
-                        gizmos.sphere(*current_point, 0.3, Color::srgb(0.0, 1.0, 0.0));
-                    }
-                }
+            for window in route.points.windows(2) {
+                gizmos.line(window[0], window[1], Color::srgb(0.5, 0.5, 1.0));
+            }
+
+            if let Some(current_point) =
+                patrol_state.and_then(|state| route.points.get(state.current_target_index))
+            {
+                gizmos.sphere(*current_point, 0.3, Color::srgb(0.0, 1.0, 0.0));
             }
         }
     }

@@ -1,7 +1,6 @@
-mod common;
 #[cfg(test)]
 mod test {
-    use crate::common::test::create_test_client;
+    use crate::tests::common::test::ClientServerStepper;
     use avian3d::prelude::*;
     use bevy::prelude::*;
     use shared::entities::PlayerPhysicsBundle;
@@ -9,12 +8,22 @@ mod test {
 
     #[test]
     fn test_player_movement() {
-        // Create a test client app
-        let mut app = create_test_client(1, false, false, false, true);
+        // Create Stepper with 1 client
+        let mut stepper = ClientServerStepper::new(1, true);
+        stepper.init();
+
+        // Access client world manually to spawn a test entity purely for physics test
+        // NOTE: The stepper creates a "connected" client.
+        // If we want to test pure local movement without server replication interfering,
+        // we can still spawn a local entity.
+        // However, the stepper's client app has plugins that might predict/rollback.
+        // For this basic test, we just want to see if setting velocity moves the thing.
+
+        let client_idx = 0;
+        let client_world = stepper.client_world_mut(client_idx);
 
         // Manually spawn a player entity for testing movement
-        let player_entity = app
-            .world_mut()
+        let player_entity = client_world
             .spawn((
                 Name::new("TestPlayer"),
                 Transform::from_xyz(0.0, 0.0, 0.0),
@@ -32,31 +41,29 @@ mod test {
             .id();
 
         // Run initial updates to initialize physics
-        for _ in 0..10 {
-            app.update();
-        }
+        stepper.loop_step(10);
 
         // Record initial position
-        let initial_pos = app
-            .world()
+        let initial_pos = stepper
+            .client_world(client_idx)
             .get::<Transform>(player_entity)
             .expect("Player should have transform")
             .translation;
 
         // Apply movement by modifying velocity directly (simulating input processing)
-        if let Some(mut velocity) = app.world_mut().get_mut::<LinearVelocity>(player_entity) {
+        if let Some(mut velocity) = stepper
+            .client_world_mut(client_idx)
+            .get_mut::<LinearVelocity>(player_entity)
+        {
             velocity.0 = Vec3::new(5.0, 0.0, 0.0); // Move in X direction
         }
 
         // Run physics updates to process movement
-        for _ in 0..60 {
-            // Run for 1 second at 60fps
-            app.update();
-        }
+        stepper.loop_step(60);
 
         // Get final position
-        let final_pos = app
-            .world()
+        let final_pos = stepper
+            .client_world(client_idx)
             .get::<Transform>(player_entity)
             .expect("Player should have transform")
             .translation;
@@ -78,16 +85,17 @@ mod test {
         );
 
         // Verify the test system is working by checking entity exists
+        let world = stepper.client_world(client_idx);
         assert!(
-            app.world().get::<PlayerId>(player_entity).is_some(),
+            world.get::<PlayerId>(player_entity).is_some(),
             "PlayerId component should exist"
         );
         assert!(
-            app.world().get::<Transform>(player_entity).is_some(),
+            world.get::<Transform>(player_entity).is_some(),
             "Transform component should exist"
         );
         assert!(
-            app.world().get::<LinearVelocity>(player_entity).is_some(),
+            world.get::<LinearVelocity>(player_entity).is_some(),
             "LinearVelocity component should exist"
         );
     }

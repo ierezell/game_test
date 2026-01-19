@@ -1,5 +1,5 @@
 use crate::{
-    input::PlayerAction,
+    input::{FpsController, PlayerAction},
     navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
 };
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
@@ -81,6 +81,7 @@ impl Plugin for ProtocolPlugin {
             .add_linear_interpolation();
 
         app.register_component::<LinearVelocity>().add_prediction();
+        app.register_component::<FpsController>().add_prediction();
 
         // Navigation components for debug visualization on client
         app.register_component::<SimpleNavigationAgent>();

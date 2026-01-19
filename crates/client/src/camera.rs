@@ -51,7 +51,7 @@ fn spawn_menu_and_debug_camera(mut commands: Commands) {
             order: 100,
             ..default()
         },
-        Camera2d::default(),
+        Camera2d,
         DebugCamera,
         PrimaryEguiContext,
     ));
@@ -72,23 +72,25 @@ fn spawn_camera_when_player_spawn(
     }
 
     let entity = trigger.entity;
-    if let Ok((player_id, position)) = player_query.get(entity) {
-        if player_id.0.to_bits() == local_player_id.0 {
-            let camera_height = position.0.y + PLAYER_CAPSULE_HEIGHT + 0.6; // Player center + eye height offset
-            let camera_position = position.0 + Vec3::new(0.0, camera_height, 0.0); // Eye height offset
+    let Ok((player_id, position)) = player_query.get(entity) else {
+        return;
+    };
 
-            commands.spawn((
-                PlayerCamera,
-                CameraPitch::default(),
-                Camera {
-                    order: 0,
-                    ..default()
-                },
-                Camera3d::default(),
-                Transform::from_translation(camera_position),
-                Name::new(format!("Client_{}_Camera", local_player_id.0)),
-            ));
-        }
+    if player_id.0.to_bits() == local_player_id.0 {
+        let camera_height = position.0.y + PLAYER_CAPSULE_HEIGHT + 0.6; // Player center + eye height offset
+        let camera_position = position.0 + Vec3::new(0.0, camera_height, 0.0); // Eye height offset
+
+        commands.spawn((
+            PlayerCamera,
+            CameraPitch::default(),
+            Camera {
+                order: 0,
+                ..default()
+            },
+            Camera3d::default(),
+            Transform::from_translation(camera_position),
+            Name::new(format!("Client_{}_Camera", local_player_id.0)),
+        ));
     }
 }
 

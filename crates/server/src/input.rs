@@ -22,13 +22,12 @@ pub fn server_player_movement(
         With<PlayerId>,
     >,
 ) {
+    // Confirm count without consuming mut iterator (iter() is read-only)
+    // println!("DEBUG: Server movement query match count: {}", player_query.iter().count());
+
     for (entity, action_state, mut controller, mut transform, mut velocity, collider) in
         player_query.iter_mut()
     {
-        let move_input = action_state.axis_pair(&PlayerAction::Move);
-        if move_input.length_squared() > 0.0 {
-            println!("Server received move input: {:?}", move_input);
-        }
         shared::input::shared_player_movement(
             *time,
             spatial_query.clone(),

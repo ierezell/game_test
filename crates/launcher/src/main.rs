@@ -1,3 +1,4 @@
+mod tests;
 fn main() {
     #[cfg(target_family = "wasm")]
     launcher::wasm::run();

@@ -1,7 +1,6 @@
-mod common;
 #[cfg(test)]
 mod test {
-    use crate::common::test::{
+    use crate::tests::common::test::{
         assert_entity_moved, get_entity_position, get_spawned_npcs, run_apps_updates,
         setup_two_player_game,
     };

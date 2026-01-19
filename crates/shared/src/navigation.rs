@@ -94,13 +94,11 @@ impl PatrolRoute {
                     next_index = self.points.len().saturating_sub(2);
                     *forward = false;
                 }
+            } else if next_index > 0 {
+                next_index -= 1;
             } else {
-                if next_index > 0 {
-                    next_index -= 1;
-                } else {
-                    next_index = 1.min(self.points.len() - 1);
-                    *forward = true;
-                }
+                next_index = 1.min(self.points.len() - 1);
+                *forward = true;
             }
         } else {
             next_index = (next_index + 1) % self.points.len();

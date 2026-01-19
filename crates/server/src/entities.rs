@@ -6,7 +6,7 @@ use bevy::{
     state::{condition::in_state, state::OnEnter},
 };
 use leafwing_input_manager::prelude::ActionState;
-use shared::input::PlayerAction;
+use shared::input::{FpsController, PlayerAction};
 
 use lightyear::prelude::{
     ControlledBy, InterpolationTarget, NetworkTarget, PeerId, PredictionTarget, RemoteId,
@@ -56,8 +56,6 @@ fn spawn_player_entities(
             let spawn_position =
                 Vec3::new(spawn_radius * angle.cos(), 3.5, spawn_radius * angle.sin());
 
-            println!("DEBUG: Spawning player entity for ID: {} at {:?}", player_id, spawn_position);
-
             let _player = commands
                 .spawn((
                     Name::new(format!("Player_{}", player_id)),
@@ -75,16 +73,13 @@ fn spawn_player_entities(
                     InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(remote_id.0)),
                     CharacterMarker,
                     PlayerPhysicsBundle::default(),
+                    FpsController::default(),
                     ActionState::<PlayerAction>::default(),
                     leafwing_input_manager::prelude::InputMap::<PlayerAction>::default(),
                 ))
                 .id();
         } else {
-             println!("DEBUG: Could not find client entity for player ID: {}", player_id);
-             // Dump available clients
-             for (e, r) in client_query.iter() {
-                 println!("DEBUG: Available Client: {:?} with RemoteId: {:?}", e, r);
-             }
+            // Check why client not found? (Maybe disconnected during load)
         }
     }
 }
@@ -109,7 +104,7 @@ fn spawn_patrolling_npc_entities(
         ))
         .id();
 
-    let original_patrol_points = vec![
+    let original_patrol_points = [
         Vec3::new(-20.0, 1.0, -10.0),
         Vec3::new(-5.0, 1.0, -10.0),
         Vec3::new(-5.0, 1.0, 5.0),

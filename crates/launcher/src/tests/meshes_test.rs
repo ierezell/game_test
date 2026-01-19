@@ -1,8 +1,6 @@
-mod common;
-
 #[cfg(test)]
 mod test {
-    use crate::common::test::setup_two_player_game;
+    use crate::tests::common::test::setup_two_player_game;
     use bevy::prelude::*;
     use shared::protocol::PlayerId;
 

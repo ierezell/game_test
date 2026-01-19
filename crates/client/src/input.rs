@@ -42,10 +42,22 @@ fn client_player_movement(
     if let Ok((entity, action_state, mut controller, mut transform, mut velocity, collider)) =
         player_query.single_mut()
     {
+        // Debug: Check ActionState status
+        if action_state.disabled() {
+            println!(
+                "⚠️  CLIENT: ActionState is DISABLED for entity {:?}",
+                entity
+            );
+        }
+
         let move_input = action_state.axis_pair(&PlayerAction::Move);
         if move_input.length_squared() > 0.0 {
-            println!("Client sending move input: {:?}", move_input);
+            println!(
+                "✓ CLIENT: Sending move input: {:?} for entity {:?}",
+                move_input, entity
+            );
         }
+
         shared::input::shared_player_movement(
             *time,
             spatial_query.clone(),
@@ -60,24 +72,20 @@ fn client_player_movement(
 }
 
 pub fn get_player_input_map() -> InputMap<PlayerAction> {
-    let input_map = InputMap::<PlayerAction>::default()
+    InputMap::<PlayerAction>::default()
         .with(PlayerAction::Jump, KeyCode::Space)
         .with(PlayerAction::Shoot, MouseButton::Left)
         .with(PlayerAction::Aim, MouseButton::Right)
         .with(PlayerAction::Sprint, KeyCode::ShiftLeft)
         .with_dual_axis(PlayerAction::Move, VirtualDPad::wasd())
         .with_dual_axis(PlayerAction::Move, VirtualDPad::arrow_keys())
-        .with_dual_axis(PlayerAction::Look, MouseMove::default());
-
-    input_map
+        .with_dual_axis(PlayerAction::Look, MouseMove::default())
 }
 
 pub fn is_cursor_locked(cursor_options_query: &Query<&CursorOptions, With<PrimaryWindow>>) -> bool {
     cursor_options_query
         .single()
-        .map_or(false, |cursor_options| {
-            cursor_options.grab_mode == CursorGrabMode::Locked
-        })
+        .is_ok_and(|cursor_options| cursor_options.grab_mode == CursorGrabMode::Locked)
 }
 
 fn toggle_cursor_grab(
@@ -88,24 +96,26 @@ fn toggle_cursor_grab(
     >,
     mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
-    if keys.just_pressed(KeyCode::Escape) {
-        if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
-            match cursor_options.grab_mode {
-                CursorGrabMode::None => {
-                    cursor_options.grab_mode = CursorGrabMode::Locked;
-                    cursor_options.visible = false;
-                    if let Ok(mut action_state) = action_query.single_mut() {
-                        action_state.reset_all();
-                        action_state.enable();
-                    }
+    if !keys.just_pressed(KeyCode::Escape) {
+        return;
+    }
+
+    if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
+        match cursor_options.grab_mode {
+            CursorGrabMode::None => {
+                cursor_options.grab_mode = CursorGrabMode::Locked;
+                cursor_options.visible = false;
+                if let Ok(mut action_state) = action_query.single_mut() {
+                    action_state.reset_all();
+                    action_state.enable();
                 }
-                _ => {
-                    cursor_options.grab_mode = CursorGrabMode::None;
-                    cursor_options.visible = true;
-                    if let Ok(mut action_state) = action_query.single_mut() {
-                        action_state.reset_all();
-                        action_state.disable();
-                    }
+            }
+            _ => {
+                cursor_options.grab_mode = CursorGrabMode::None;
+                cursor_options.visible = true;
+                if let Ok(mut action_state) = action_query.single_mut() {
+                    action_state.reset_all();
+                    action_state.disable();
                 }
             }
         }

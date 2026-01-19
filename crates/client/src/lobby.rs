@@ -1,7 +1,7 @@
 use crate::ClientGameState;
 use crate::LocalPlayerId;
-
 use bevy::color::palettes::tailwind::{GREEN_500, SLATE_700, SLATE_800};
+use bevy::ecs::system::SystemParam;
 
 use bevy::ecs::query::Changed;
 use bevy::prelude::{
@@ -25,7 +25,7 @@ impl Plugin for ClientLobbyPlugin {
         // we should check the value.
         // Actually, simpler: just don't add the systems if headless.
         // But the plugin build happens once. We need run conditions.
-        
+
         use crate::Headless;
         fn is_not_headless(headless: Option<Res<Headless>>) -> bool {
             !headless.map(|h| h.0).unwrap_or(false)
@@ -54,18 +54,25 @@ fn handle_auto_start(
     mut sender: Single<&mut MessageSender<HostStartGameEvent>>,
     mut commands: Commands,
 ) {
-    if let Some(auto_start_res) = auto_start {
-        if auto_start_res.0 {
-            if let Ok(lobby_data) = lobby_state.single() {
-                println!("DEBUG: handle_auto_start running. Host: {}, Local: {}, Players: {}", lobby_data.host_id, local_player_id.0, lobby_data.players.len());
-                if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
-                    println!("DEBUG: handle_auto_start sending HostStartGameEvent");
-                    sender.send::<MetadataChannel>(HostStartGameEvent);
-                    commands.remove_resource::<AutoStart>();
-                }
-            } else {
-                // println!("DEBUG: handle_auto_start - No LobbyState found");
-            }
+    let Some(auto_start_res) = auto_start else {
+        return;
+    };
+
+    if !auto_start_res.0 {
+        return;
+    }
+
+    if let Ok(lobby_data) = lobby_state.single() {
+        println!(
+            "DEBUG: handle_auto_start running. Host: {}, Local: {}, Players: {}",
+            lobby_data.host_id,
+            local_player_id.0,
+            lobby_data.players.len()
+        );
+        if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
+            println!("DEBUG: handle_auto_start sending HostStartGameEvent");
+            sender.send::<MetadataChannel>(HostStartGameEvent);
+            commands.remove_resource::<AutoStart>();
         }
     }
 }
@@ -172,20 +179,25 @@ fn despawn_lobby_ui(mut commands: Commands, lobby_ui_query: Query<Entity, With<L
     }
 }
 
+#[derive(SystemParam)]
+pub struct LobbyUiQueries<'w, 's> {
+    pub status_text: Query<'w, 's, &'static mut Text, With<LobbyStatusText>>,
+    pub player_list_container: Query<'w, 's, Entity, With<PlayerListContainer>>,
+    pub player_text: Query<'w, 's, Entity, With<PlayerText>>,
+    pub play_button: Query<'w, 's, Entity, With<PlayButton>>,
+    pub lobby_ui: Query<'w, 's, Entity, With<LobbyUI>>,
+}
+
 fn update_lobby_text(
     lobby_state: Query<&LobbyState, Changed<LobbyState>>,
     local_player_id: Res<LocalPlayerId>,
-    mut status_text_query: Query<&mut Text, With<LobbyStatusText>>,
-    player_list_container: Query<Entity, With<PlayerListContainer>>,
-    player_text_entities: Query<Entity, With<PlayerText>>,
-    play_button_entities: Query<Entity, With<PlayButton>>,
-    lobby_ui: Query<Entity, With<LobbyUI>>,
+    mut ui_queries: LobbyUiQueries,
     mut commands: Commands,
 ) {
     if let Ok(lobby_data) = lobby_state.single() {
         let is_host_player = lobby_data.host_id == local_player_id.0;
 
-        for mut status_text in status_text_query.iter_mut() {
+        for mut status_text in ui_queries.status_text.iter_mut() {
             **status_text = if is_host_player {
                 "You are the host - You can start the game.".to_string()
             } else {
@@ -193,21 +205,23 @@ fn update_lobby_text(
             };
         }
 
-        if is_host_player && play_button_entities.is_empty() {
-            if let Ok(lobby_entity) = lobby_ui.single() {
-                commands.entity(lobby_entity).with_children(|parent| {
-                    parent
-                        .spawn((
-                            Node {
-                                padding: UiRect::all(Val::Px(15.0)),
-                                margin: UiRect::top(Val::Px(30.0)),
-                                ..Default::default()
-                            },
-                            BackgroundColor(GREEN_500.into()),
-                            PlayButton,
-                        ))
-                        .with_children(|button_parent| {
-                            button_parent
+        if is_host_player
+            && ui_queries.play_button.is_empty()
+            && let Ok(lobby_entity) = ui_queries.lobby_ui.single()
+        {
+            commands.entity(lobby_entity).with_children(|parent| {
+                parent
+                    .spawn((
+                        Node {
+                            padding: UiRect::all(Val::Px(15.0)),
+                            margin: UiRect::top(Val::Px(30.0)),
+                            ..Default::default()
+                        },
+                        BackgroundColor(GREEN_500.into()),
+                        PlayButton,
+                    ))
+                    .with_children(|button_parent| {
+                        button_parent
                                 .spawn((
                                     Text::new("PLAY"),
                                     TextFont {
@@ -215,20 +229,23 @@ fn update_lobby_text(
                                         ..Default::default()
                                     },
                                 ))
-                                .observe(|_click: On<Pointer<Click>>,mut commands: Commands , mut sender: Single<&mut MessageSender<HostStartGameEvent>>| {
-                                    sender.send::<MetadataChannel>(HostStartGameEvent);
-                                    commands.remove_resource::<AutoStart>();
-                                });
-                        });
-                });
-            }
+                                .observe(
+                                    |_click: On<Pointer<Click>>,
+                                     mut commands: Commands,
+                                     mut sender: Single<&mut MessageSender<HostStartGameEvent>>| {
+                                        sender.send::<MetadataChannel>(HostStartGameEvent);
+                                        commands.remove_resource::<AutoStart>();
+                                    },
+                                );
+                    });
+            });
         }
 
-        for entity in player_text_entities.iter() {
+        for entity in ui_queries.player_text.iter() {
             commands.entity(entity).despawn();
         }
 
-        for container_entity in player_list_container.iter() {
+        for container_entity in ui_queries.player_list_container.iter() {
             commands.entity(container_entity).with_children(|parent| {
                 for (i, player_id) in lobby_data.players.iter().enumerate() {
                     let is_host_marker = if *player_id == lobby_data.host_id {

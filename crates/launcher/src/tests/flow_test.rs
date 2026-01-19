@@ -1,8 +1,6 @@
-mod common;
-
 #[cfg(test)]
 mod test {
-    use crate::common::test::{
+    use crate::tests::common::test::{
         create_test_client, create_test_server, get_spawned_players, setup_two_player_game,
     };
     use bevy::prelude::*;

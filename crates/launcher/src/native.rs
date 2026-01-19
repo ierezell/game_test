@@ -1,7 +1,7 @@
-use client::create_client_app;
 use crate::local_menu::LocalMenuPlugin;
 use crate::{AutoHost, AutoJoin};
 use clap::{Parser, ValueEnum};
+use client::create_client_app;
 
 #[derive(Parser)]
 #[command(name = "yolo-game")]
@@ -57,7 +57,12 @@ pub fn run() {
 
     match cli.mode {
         Mode::Client => {
-            let mut client_app = create_client_app(cli.client_id, "../../assets".to_string(), cli.headless, shared::NetworkMode::Udp);
+            let mut client_app = create_client_app(
+                cli.client_id,
+                "../../assets".to_string(),
+                cli.headless,
+                shared::NetworkMode::Udp,
+            );
             client_app.add_plugins(LocalMenuPlugin);
 
             if cli.auto_host {
@@ -72,14 +77,12 @@ pub fn run() {
                 client_app.insert_resource(AutoJoin(true));
             }
 
-            if let Some(stop_after_seconds) = cli.stop_after {
-                if stop_after_seconds > 0 {
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
-                        println!("Auto-stopping after {} seconds", stop_after_seconds);
-                        std::process::exit(0);
-                    });
-                }
+            if let Some(stop_after_seconds) = cli.stop_after.filter(|&s| s > 0) {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
+                    println!("Auto-stopping after {} seconds", stop_after_seconds);
+                    std::process::exit(0);
+                });
             }
 
             client_app.run();
@@ -87,14 +90,12 @@ pub fn run() {
         Mode::Server => {
             let mut server_app = server::create_server_app(cli.headless, shared::NetworkMode::Udp);
 
-            if let Some(stop_after_seconds) = cli.stop_after {
-                if stop_after_seconds > 0 {
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
-                        println!("Auto-stopping server after {} seconds", stop_after_seconds);
-                        std::process::exit(0);
-                    });
-                }
+            if let Some(stop_after_seconds) = cli.stop_after.filter(|&s| s > 0) {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
+                    println!("Auto-stopping server after {} seconds", stop_after_seconds);
+                    std::process::exit(0);
+                });
             }
 
             server_app.run();

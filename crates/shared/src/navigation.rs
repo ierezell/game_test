@@ -1,6 +1,6 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use lightyear::prelude::{NetworkTarget, Replicate};
+use lightyear::prelude::{InterpolationTarget, NetworkTarget, Replicate};
 use serde::{Deserialize, Serialize};
 
 /// Component for entities that should block navigation (obstacles)
@@ -198,7 +198,9 @@ pub fn setup_patrol(commands: &mut Commands, entity: Entity, patrol_points: Vec<
         nav_agent,
         PatrolState::default(),
         patrol_route,
-        Replicate::to_clients(NetworkTarget::All), // Ensure navigation components are replicated
+        Replicate::to_clients(NetworkTarget::All),
+        // Add interpolation for smooth NPC movement on clients
+        InterpolationTarget::to_clients(NetworkTarget::All),
     ));
 
     info!(

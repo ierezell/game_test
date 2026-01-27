@@ -8,6 +8,9 @@ description: Useful Rust commands to use in this project
 ## Instructions
 Use this commands to interact with the project.
 
+## Checks/lint
+use `cargo check` and `cargo clippy` to ensure your code is correct and clean.
+
 ## Running the game, with auto hosting, auto start the game and kill it after 15 seconds
 `cargo run --bin launcher -- client --auto-host --auto-start --stop-after 15`
 

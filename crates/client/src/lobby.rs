@@ -54,25 +54,23 @@ fn handle_auto_start(
     mut sender: Single<&mut MessageSender<HostStartGameEvent>>,
     mut commands: Commands,
 ) {
-    let Some(auto_start_res) = auto_start else {
-        return;
-    };
-
-    if !auto_start_res.0 {
-        return;
-    }
-
-    if let Ok(lobby_data) = lobby_state.single() {
-        println!(
-            "DEBUG: handle_auto_start running. Host: {}, Local: {}, Players: {}",
-            lobby_data.host_id,
-            local_player_id.0,
-            lobby_data.players.len()
-        );
-        if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
-            println!("DEBUG: handle_auto_start sending HostStartGameEvent");
-            sender.send::<MetadataChannel>(HostStartGameEvent);
-            commands.remove_resource::<AutoStart>();
+    if let Some(auto_start_res) = auto_start
+        && auto_start_res.0
+    {
+        if let Ok(lobby_data) = lobby_state.single() {
+            println!(
+                "DEBUG: handle_auto_start running. Host: {}, Local: {}, Players: {}",
+                lobby_data.host_id,
+                local_player_id.0,
+                lobby_data.players.len()
+            );
+            if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
+                println!("DEBUG: handle_auto_start sending HostStartGameEvent");
+                sender.send::<MetadataChannel>(HostStartGameEvent);
+                commands.remove_resource::<AutoStart>();
+            }
+        } else {
+            // println!("DEBUG: handle_auto_start - No LobbyState found");
         }
     }
 }
@@ -188,6 +186,7 @@ pub struct LobbyUiQueries<'w, 's> {
     pub lobby_ui: Query<'w, 's, Entity, With<LobbyUI>>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_lobby_text(
     lobby_state: Query<&LobbyState, Changed<LobbyState>>,
     local_player_id: Res<LocalPlayerId>,
@@ -210,18 +209,18 @@ fn update_lobby_text(
             && let Ok(lobby_entity) = ui_queries.lobby_ui.single()
         {
             commands.entity(lobby_entity).with_children(|parent| {
-                parent
-                    .spawn((
-                        Node {
-                            padding: UiRect::all(Val::Px(15.0)),
-                            margin: UiRect::top(Val::Px(30.0)),
-                            ..Default::default()
-                        },
-                        BackgroundColor(GREEN_500.into()),
-                        PlayButton,
-                    ))
-                    .with_children(|button_parent| {
-                        button_parent
+                    parent
+                        .spawn((
+                            Node {
+                                padding: UiRect::all(Val::Px(15.0)),
+                                margin: UiRect::top(Val::Px(30.0)),
+                                ..Default::default()
+                            },
+                            BackgroundColor(GREEN_500.into()),
+                            PlayButton,
+                        ))
+                        .with_children(|button_parent| {
+                            button_parent
                                 .spawn((
                                     Text::new("PLAY"),
                                     TextFont {
@@ -229,16 +228,12 @@ fn update_lobby_text(
                                         ..Default::default()
                                     },
                                 ))
-                                .observe(
-                                    |_click: On<Pointer<Click>>,
-                                     mut commands: Commands,
-                                     mut sender: Single<&mut MessageSender<HostStartGameEvent>>| {
-                                        sender.send::<MetadataChannel>(HostStartGameEvent);
-                                        commands.remove_resource::<AutoStart>();
-                                    },
-                                );
-                    });
-            });
+                                .observe(|_click: On<Pointer<Click>>,mut commands: Commands , mut sender: Single<&mut MessageSender<HostStartGameEvent>>| {
+                                    sender.send::<MetadataChannel>(HostStartGameEvent);
+                                    commands.remove_resource::<AutoStart>();
+                                });
+                        });
+                });
         }
 
         for entity in ui_queries.player_text.iter() {

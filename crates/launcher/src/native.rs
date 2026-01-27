@@ -77,7 +77,9 @@ pub fn run() {
                 client_app.insert_resource(AutoJoin(true));
             }
 
-            if let Some(stop_after_seconds) = cli.stop_after.filter(|&s| s > 0) {
+            if let Some(stop_after_seconds) = cli.stop_after
+                && stop_after_seconds > 0
+            {
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
                     println!("Auto-stopping after {} seconds", stop_after_seconds);
@@ -90,7 +92,9 @@ pub fn run() {
         Mode::Server => {
             let mut server_app = server::create_server_app(cli.headless, shared::NetworkMode::Udp);
 
-            if let Some(stop_after_seconds) = cli.stop_after.filter(|&s| s > 0) {
+            if let Some(stop_after_seconds) = cli.stop_after
+                && stop_after_seconds > 0
+            {
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
                     println!("Auto-stopping server after {} seconds", stop_after_seconds);

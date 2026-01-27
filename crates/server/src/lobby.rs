@@ -46,7 +46,7 @@ fn host_start_game_event(
         // There is one message receiver per connected client...
         if message_receiver.has_messages() {
             trigger = true;
-            message_receiver.receive().for_each(drop); // Clean the queue
+            message_receiver.receive().for_each(drop);
         }
     }
 

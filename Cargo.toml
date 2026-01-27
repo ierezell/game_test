@@ -33,7 +33,7 @@ clap = { version = "4.5.54", features = ["derive"] }
 avian3d = { version = "0.4", default-features = true, features = ["serialize"] }
 bevy = { version = "0.17.3", default-features = true }
 bevy-inspector-egui = { version = "0.35.0", default-features = true }
-bevy_egui = { version = "0.37.0", default-features = true }
+bevy_egui = { version = "0.38.1", default-features = true }
 serde = { version = "1.0.228", default-features = true, features = ["derive"] }
 lightyear = { version = "0.25.5", default-features = true, features = [
     "netcode",
@@ -53,3 +53,4 @@ vleue_navigator = { version = "0.14.0", default-features = false, features = [
 
 [workspace.lints.clippy]
 type-complexity = "allow"
+default-constructed-unit-structs = "allow"

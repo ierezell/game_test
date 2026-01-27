@@ -36,17 +36,15 @@ fn debug_navigation_paths(
             gizmos.sphere(target, 0.2, Color::srgb(1.0, 0.0, 0.0));
         }
 
-        if let Some(route) = patrol_route {
-            if route.points.len() <= 1 {
-                continue;
-            }
-
+        if let Some(route) = patrol_route
+            && route.points.len() > 1
+        {
             for window in route.points.windows(2) {
                 gizmos.line(window[0], window[1], Color::srgb(0.5, 0.5, 1.0));
             }
 
-            if let Some(current_point) =
-                patrol_state.and_then(|state| route.points.get(state.current_target_index))
+            if let Some(state) = patrol_state
+                && let Some(current_point) = route.points.get(state.current_target_index)
             {
                 gizmos.sphere(*current_point, 0.3, Color::srgb(0.0, 1.0, 0.0));
             }

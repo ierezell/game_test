@@ -1,72 +1,58 @@
 use bevy::prelude::{
-    Add, App, Commands, Entity, FixedUpdate, KeyCode, MouseButton, On, Plugin, Query, Res, Time,
-    Transform, With,
+    Add, App, ButtonInput, Commands, FixedUpdate, IntoScheduleConfigs, KeyCode, MessageReader, MouseButton, On, Plugin, Query, Res,
+    Update, With,
 };
 
-use avian3d::prelude::{Collider, LinearVelocity, SpatialQueryPipeline};
-use bevy::prelude::{ButtonInput, MessageReader, Update};
+use avian3d::prelude::{Rotation};
 use bevy::window::WindowFocused;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use leafwing_input_manager::prelude::{ActionState, InputMap, MouseMove, VirtualDPad};
 
 use lightyear::prelude::{Controlled, Predicted};
 
-use shared::input::{FpsController, PlayerAction};
+use shared::input::PlayerAction;
+use shared::movement::{PhysicsConfig, update_ground_detection, apply_movement};
+use shared::camera::{FpsCamera, update_camera_from_input};
 use shared::protocol::PlayerId;
 
 pub struct ClientInputPlugin;
 
 impl Plugin for ClientInputPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, client_player_movement);
-        app.add_systems(Update, (toggle_cursor_grab, handle_focus_change));
+        app.init_resource::<PhysicsConfig>();
+        
+        // Movement systems (FixedUpdate for physics)
+        app.add_systems(FixedUpdate, (
+            update_ground_detection,
+            apply_movement,
+            update_camera_rotation_client,
+        ).chain());
+        
+        // Camera and input management (Update for responsiveness)
+        app.add_systems(Update, (
+            update_camera_from_input,
+            toggle_cursor_grab,
+            handle_focus_change,
+            detect_stuck_inputs,
+        ));
+        
         app.add_observer(grab_cursor);
     }
 }
 
-fn client_player_movement(
-    time: Res<Time>,
-    spatial_query: Res<SpatialQueryPipeline>,
-    mut player_query: Query<
-        (
-            Entity,
-            &ActionState<PlayerAction>,
-            &mut FpsController,
-            &mut Transform,
-            &mut LinearVelocity,
-            &Collider,
-        ),
+/// Client system: Update entity Rotation from FpsCamera
+fn update_camera_rotation_client(
+    mut query: Query<
+        (&FpsCamera, &mut Rotation),
         (With<PlayerId>, With<Predicted>, With<Controlled>),
     >,
 ) {
-    if let Ok((entity, action_state, mut controller, mut transform, mut velocity, collider)) =
-        player_query.single_mut()
-    {
-        // Debug: Check ActionState status
-        if action_state.disabled() {
-            println!(
-                "⚠️  CLIENT: ActionState is DISABLED for entity {:?}",
-                entity
-            );
-        }
-
-        let move_input = action_state.axis_pair(&PlayerAction::Move);
-        if move_input.length_squared() > 0.0 {
-            println!(
-                "✓ CLIENT: Sending move input: {:?} for entity {:?}",
-                move_input, entity
-            );
-        }
-
-        shared::input::shared_player_movement(
-            *time,
-            spatial_query.clone(),
-            entity,
-            action_state,
-            &mut controller,
-            &mut transform,
-            &mut velocity,
-            collider,
+    for (camera, mut rotation) in query.iter_mut() {
+        rotation.0 = bevy::prelude::Quat::from_euler(
+            bevy::prelude::EulerRot::YXZ,
+            camera.yaw,
+            0.0,
+            0.0,
         );
     }
 }
@@ -96,17 +82,20 @@ fn toggle_cursor_grab(
     >,
     mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
-    if !keys.just_pressed(KeyCode::Escape) {
-        return;
-    }
-
-    if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
+    if keys.just_pressed(KeyCode::Escape)
+        && let Ok(mut cursor_options) = cursor_options_query.single_mut()
+    {
         match cursor_options.grab_mode {
             CursorGrabMode::None => {
                 cursor_options.grab_mode = CursorGrabMode::Locked;
                 cursor_options.visible = false;
                 if let Ok(mut action_state) = action_query.single_mut() {
-                    action_state.reset_all();
+                    // Only reset movement inputs, preserve camera look to avoid camera jump
+                    action_state.set_axis_pair(&PlayerAction::Move, bevy::math::Vec2::ZERO);
+                    action_state.release(&PlayerAction::Jump);
+                    action_state.release(&PlayerAction::Sprint);
+                    action_state.release(&PlayerAction::Shoot);
+                    action_state.release(&PlayerAction::Aim);
                     action_state.enable();
                 }
             }
@@ -114,7 +103,12 @@ fn toggle_cursor_grab(
                 cursor_options.grab_mode = CursorGrabMode::None;
                 cursor_options.visible = true;
                 if let Ok(mut action_state) = action_query.single_mut() {
-                    action_state.reset_all();
+                    // Only reset movement inputs, preserve camera look to avoid camera jump
+                    action_state.set_axis_pair(&PlayerAction::Move, bevy::math::Vec2::ZERO);
+                    action_state.release(&PlayerAction::Jump);
+                    action_state.release(&PlayerAction::Sprint);
+                    action_state.release(&PlayerAction::Shoot);
+                    action_state.release(&PlayerAction::Aim);
                     action_state.disable();
                 }
             }
@@ -139,6 +133,14 @@ fn handle_focus_change(
         };
 
         if event.focused {
+            // Reset movement inputs before re-enabling to prevent stuck keys
+            // Preserve Look action to avoid camera jump on focus regain
+            action_state.set_axis_pair(&PlayerAction::Move, bevy::math::Vec2::ZERO);
+            action_state.release(&PlayerAction::Jump);
+            action_state.release(&PlayerAction::Sprint);
+            action_state.release(&PlayerAction::Shoot);
+            action_state.release(&PlayerAction::Aim);
+            
             if cursor_options.grab_mode != CursorGrabMode::Locked {
                 cursor_options.grab_mode = CursorGrabMode::Locked;
                 cursor_options.visible = false;
@@ -146,6 +148,14 @@ fn handle_focus_change(
             if action_state.disabled() {
                 action_state.enable();
             }
+        } else {
+            // Window lost focus - reset movement inputs to prevent stuck keys
+            // Preserve Look action to avoid camera jump on focus loss
+            action_state.set_axis_pair(&PlayerAction::Move, bevy::math::Vec2::ZERO);
+            action_state.release(&PlayerAction::Jump);
+            action_state.release(&PlayerAction::Sprint);
+            action_state.release(&PlayerAction::Shoot);
+            action_state.release(&PlayerAction::Aim);
         }
     }
 }
@@ -177,6 +187,38 @@ fn grab_cursor(
             commands
                 .entity(controlled_entity)
                 .insert((input_map, action_state));
+        }
+    }
+}
+
+/// Detects and clears stuck inputs that might occur from network lag, 
+/// focus changes, or input system edge cases
+fn detect_stuck_inputs(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut action_query: Query<
+        &mut ActionState<PlayerAction>,
+        (With<PlayerId>, With<Predicted>, With<Controlled>),
+    >,
+) {
+    let Ok(mut action_state) = action_query.single_mut() else {
+        return;
+    };
+
+    // If ActionState shows movement but no movement keys are actually pressed, clear it
+    let move_input = action_state.axis_pair(&PlayerAction::Move);
+    if move_input.length_squared() > 0.0 {
+        let wasd_pressed = keyboard.pressed(KeyCode::KeyW)
+            || keyboard.pressed(KeyCode::KeyA)
+            || keyboard.pressed(KeyCode::KeyS)
+            || keyboard.pressed(KeyCode::KeyD);
+        let arrows_pressed = keyboard.pressed(KeyCode::ArrowUp)
+            || keyboard.pressed(KeyCode::ArrowDown)
+            || keyboard.pressed(KeyCode::ArrowLeft)
+            || keyboard.pressed(KeyCode::ArrowRight);
+
+        if !wasd_pressed && !arrows_pressed {
+            // Input is stuck - clear it
+            action_state.set_axis_pair(&PlayerAction::Move, bevy::math::Vec2::ZERO);
         }
     }
 }

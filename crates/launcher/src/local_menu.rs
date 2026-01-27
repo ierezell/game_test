@@ -32,22 +32,18 @@ impl Plugin for LocalMenuPlugin {
 }
 
 fn conditional_auto_host(auto_host: Option<Res<AutoHost>>, mut commands: Commands) {
-    let Some(auto_host_res) = auto_host else {
-        return;
-    };
-
-    if auto_host_res.0 {
+    if let Some(auto_host_res) = auto_host
+        && auto_host_res.0
+    {
         commands.remove_resource::<AutoHost>();
         on_host_game(commands);
     }
 }
 
 fn conditional_auto_join(auto_join: Option<Res<AutoJoin>>, mut commands: Commands) {
-    let Some(auto_join_res) = auto_join else {
-        return;
-    };
-
-    if auto_join_res.0 {
+    if let Some(auto_join_res) = auto_join
+        && auto_join_res.0
+    {
         commands.remove_resource::<AutoJoin>();
         on_join_game(commands);
     }

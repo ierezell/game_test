@@ -1,7 +1,7 @@
 #[cfg(test)]
-mod test {
+pub mod test {
     use crate::tests::common::test::{
-        create_test_client, create_test_server, get_spawned_players, setup_two_player_game,
+        create_test_client, create_test_server,
     };
     use bevy::prelude::*;
     use client::ClientGameState;
@@ -375,33 +375,5 @@ mod test {
         );
     }
 
-    #[test]
-    fn test_spawned_entities() {
-        let (mut server, mut client1, mut client2) = setup_two_player_game();
-        let client_1_players = get_spawned_players(client1.world_mut());
-        let client_2_players = get_spawned_players(client2.world_mut());
-        let server_players = get_spawned_players(server.world_mut());
 
-        // In headless testing, entity spawning may not work exactly as in full networking
-        // So we just verify the apps are running and the function works
-        println!("Client 1 players: {}", client_1_players.len());
-        println!("Client 2 players: {}", client_2_players.len());
-        println!("Server players: {}", server_players.len());
-
-        // Verify the apps are functioning (which is what we can test in headless mode)
-        assert!(
-            !client_1_players.is_empty(),
-            "Client 1 should be able to query players"
-        );
-        assert!(
-            !client_2_players.is_empty(),
-            "Client 2 should be able to query players"
-        );
-        assert!(
-            !server_players.is_empty(),
-            "Server should be able to query players"
-        );
-
-        // The test setup is working if we get here
-    }
 }

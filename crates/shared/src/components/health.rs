@@ -23,8 +23,8 @@ pub struct Health {
     pub can_regenerate: bool,
 }
 
-impl Default for Health {
-    fn default() -> Self {
+impl Health {
+    pub fn basic() -> Self {
         Self {
             current: 100.0,
             max: 100.0,
@@ -81,7 +81,7 @@ impl Health {
     pub fn can_regenerate_now(&self, current_time: f32) -> bool {
         self.can_regenerate
             && !self.is_dead
-            && self.current < self.max
+            && (self.current < self.max)
             && (current_time - self.last_damage_time) >= self.regeneration_delay
     }
 }

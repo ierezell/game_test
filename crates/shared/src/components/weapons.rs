@@ -5,22 +5,21 @@ use avian3d::prelude::{
     SpatialQueryPipeline,
 };
 use bevy::prelude::{
-    info, Commands, Component, Dir3, Entity, MessageWriter, Query, Res, Time, Timer, TimerMode,
-    Vec3,
+    Commands, Component, Dir3, Entity, MessageWriter, Query, Res, Time, Timer, TimerMode, Vec3,
+    info,
 };
 use leafwing_input_manager::prelude::ActionState;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 pub struct WeaponsPlugin;
 
 impl bevy::prelude::Plugin for WeaponsPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_systems(
-            bevy::prelude::Update,
+            bevy::prelude::FixedUpdate,
             (
-                fire_gun,
-                fire_projectile_gun,
+                fire_gun_system,
+                fire_projectile_gun_system,
                 update_simple_projectiles,
                 process_hit_events,
             ),
@@ -54,15 +53,21 @@ pub struct HitEvent {
 }
 
 // Gun use raycast to detect hits. ProjectileGun spawns projectile entities.
-pub fn fire_gun(
+pub fn fire_gun_system(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut Gun, &Position, &Rotation)>,
-    action_state: Res<ActionState<PlayerAction>>,
+    mut query: Query<(
+        Entity,
+        &mut Gun,
+        &Position,
+        &Rotation,
+        &ActionState<PlayerAction>,
+    )>,
     spatial_query: Res<SpatialQueryPipeline>,
     mut damage_writer: MessageWriter<DamageEvent>,
+    time: Res<Time>,
 ) {
-    for (shooter_entity, mut gun, pos, rot) in query.iter_mut() {
-        gun.cooldown.tick(Duration::from_secs_f32(1.0 / 60.0));
+    for (shooter_entity, mut gun, pos, rot, action_state) in query.iter_mut() {
+        gun.cooldown.tick(time.delta());
         if action_state.pressed(&PlayerAction::Shoot) && gun.cooldown.is_finished() {
             let direction = rot.0 * Vec3::NEG_Z; // Forward direction
 
@@ -127,15 +132,21 @@ pub struct Projectile {
     pub has_hit: bool,
 }
 
-pub fn fire_projectile_gun(
+pub fn fire_projectile_gun_system(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut ProjectileGun, &Position, &Rotation)>,
-    action_state: Res<ActionState<PlayerAction>>,
+    mut query: Query<(
+        Entity,
+        &mut ProjectileGun,
+        &Position,
+        &Rotation,
+        &ActionState<PlayerAction>,
+    )>,
+    time: Res<Time>,
 ) {
-    for (entity, mut gun, pos, rot) in query.iter_mut() {
-        gun.cooldown.tick(Duration::from_secs_f32(1.0 / 60.0));
+    for (entity, mut gun, pos, rot, action_state) in query.iter_mut() {
+        gun.cooldown.tick(time.delta());
         if action_state.pressed(&PlayerAction::Shoot) && gun.cooldown.is_finished() {
-            let direction = rot.0 * Vec3::Z;
+            let direction = rot.0 * Vec3::NEG_Z;
             commands.spawn((
                 Position(pos.0),
                 LinearVelocity(direction * 20.0),
@@ -175,10 +186,6 @@ pub fn process_hit_events(mut commands: Commands, hit_events: Query<(Entity, &Hi
             hit_event.damage, hit_event.hit_entity, hit_event.shooter, hit_event.hit_point
         );
 
-        // TODO: Add particle effects, sound effects, etc.
-        // For now, just log and clean up the event
-
-        // Clean up the hit event after processing
         commands.entity(event_entity).despawn();
     }
 }

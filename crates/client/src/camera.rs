@@ -51,7 +51,7 @@ fn spawn_menu_and_debug_camera(mut commands: Commands) {
             order: 100,
             ..default()
         },
-        Camera2d,
+        Camera2d::default(),
         DebugCamera,
         PrimaryEguiContext,
     ));
@@ -68,17 +68,20 @@ fn spawn_camera_when_player_spawn(
     local_player_id: Res<crate::LocalPlayerId>,
 ) {
     if !camera_query.is_empty() {
+        bevy::log::info!("🎥 Camera already exists, skipping spawn");
         return;
     }
 
     let entity = trigger.entity;
-    let Ok((player_id, position)) = player_query.get(entity) else {
-        return;
-    };
+    bevy::log::info!("🔍 Attempting to spawn camera for entity {:?}", entity);
+    
+    if let Ok((player_id, position)) = player_query.get(entity)
+        && player_id.0.to_bits() == local_player_id.0
+    {
+        let camera_height = PLAYER_CAPSULE_HEIGHT + 0.6;
+        let camera_position = position.0 + Vec3::new(0.0, camera_height, 0.0);
 
-    if player_id.0.to_bits() == local_player_id.0 {
-        let camera_height = position.0.y + PLAYER_CAPSULE_HEIGHT + 0.6; // Player center + eye height offset
-        let camera_position = position.0 + Vec3::new(0.0, camera_height, 0.0); // Eye height offset
+        bevy::log::info!("🎥 Spawning camera at {:?} for player {}", camera_position, local_player_id.0);
 
         commands.spawn((
             PlayerCamera,
@@ -91,17 +94,19 @@ fn spawn_camera_when_player_spawn(
             Transform::from_translation(camera_position),
             Name::new(format!("Client_{}_Camera", local_player_id.0)),
         ));
+    } else {
+        bevy::log::warn!("⚠️ Failed to get player data for camera spawn. Player ID mismatch or entity not found.");
     }
 }
 
 fn update_camera_transform_from_player_controller_rotation(
     player_query: Query<
-        (&Position, &shared::input::FpsController),
+        (&Position, &shared::camera::FpsCamera),
         (
             With<PlayerId>,
             With<Predicted>,
             With<Controlled>,
-            Or<(Changed<Position>, Changed<shared::input::FpsController>)>,
+            Or<(Changed<Position>, Changed<shared::camera::FpsCamera>)>,
         ),
     >,
     mut camera_query: Query<&mut Transform, With<PlayerCamera>>,
@@ -110,7 +115,7 @@ fn update_camera_transform_from_player_controller_rotation(
         return;
     };
 
-    let Ok((player_position, fps_controller)) = player_query.single() else {
+    let Ok((player_position, fps_camera)) = player_query.single() else {
         return;
     };
 
@@ -121,5 +126,5 @@ fn update_camera_transform_from_player_controller_rotation(
     );
 
     camera_transform.rotation =
-        Quat::from_euler(EulerRot::YXZ, fps_controller.yaw, fps_controller.pitch, 0.0);
+        Quat::from_euler(EulerRot::YXZ, fps_camera.yaw, fps_camera.pitch, 0.0);
 }

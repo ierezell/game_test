@@ -1,7 +1,13 @@
+pub mod bulkhead_door;
+pub mod camera;
 pub mod components;
 pub mod create_static_level;
+pub mod culling;
 pub mod entities;
 pub mod input;
+pub mod level_generation;
+pub mod level_visuals;
+pub mod movement;
 pub mod navigation;
 pub mod protocol;
 pub mod render;
@@ -51,5 +57,11 @@ impl Plugin for SharedPlugin {
             // .disable::<IslandSleepingPlugin>(),
         );
         app.add_plugins(navigation::NavigationPlugin);
+        app.add_plugins(components::health::HealthPlugin);
+        app.add_plugins(components::weapons::WeaponsPlugin);
+        app.add_plugins(level_generation::LevelGenerationPlugin);
+        app.add_plugins(bulkhead_door::BulkheadDoorPlugin);
+        app.add_plugins(level_visuals::LevelVisualsPlugin);
+        app.add_plugins(culling::CullingPlugin);
     }
 }

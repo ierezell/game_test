@@ -1,42 +1,35 @@
-use avian3d::prelude::{Collider, LinearVelocity, SpatialQueryPipeline};
-use bevy::prelude::{Entity, Query, Res, Time, Transform, With};
-use leafwing_input_manager::prelude::ActionState;
+use avian3d::prelude::Rotation;
+use bevy::prelude::{FixedUpdate, IntoScheduleConfigs, Plugin, Query, With};
 
 use shared::{
-    input::{FpsController, PlayerAction},
+    movement::{PhysicsConfig, update_ground_detection, apply_movement},
+    camera::FpsCamera,
     protocol::PlayerId,
 };
 
-pub fn server_player_movement(
-    time: Res<Time>,
-    spatial_query: Res<SpatialQueryPipeline>,
-    mut player_query: Query<
-        (
-            Entity,
-            &ActionState<PlayerAction>,
-            &mut FpsController,
-            &mut Transform,
-            &mut LinearVelocity,
-            &Collider,
-        ),
-        With<PlayerId>,
-    >,
-) {
-    // Confirm count without consuming mut iterator (iter() is read-only)
-    // println!("DEBUG: Server movement query match count: {}", player_query.iter().count());
+pub struct ServerInputPlugin;
 
-    for (entity, action_state, mut controller, mut transform, mut velocity, collider) in
-        player_query.iter_mut()
-    {
-        shared::input::shared_player_movement(
-            *time,
-            spatial_query.clone(),
-            entity,
-            action_state,
-            &mut controller,
-            &mut transform,
-            &mut velocity,
-            collider,
+impl Plugin for ServerInputPlugin {
+    fn build(&self, app: &mut bevy::prelude::App) {
+        app.init_resource::<PhysicsConfig>();
+        app.add_systems(FixedUpdate, (
+            update_ground_detection,  // Detect ground first
+            apply_movement,            // Then apply movement
+            update_camera_rotation_server,  // Update rotation from camera
+        ).chain());
+    }
+}
+
+/// Server system: Update entity Rotation from FpsCamera yaw
+fn update_camera_rotation_server(
+    mut query: Query<(&FpsCamera, &mut Rotation), With<PlayerId>>,
+) {
+    for (camera, mut rotation) in query.iter_mut() {
+        rotation.0 = bevy::prelude::Quat::from_euler(
+            bevy::prelude::EulerRot::YXZ,
+            camera.yaw,
+            0.0,
+            0.0,
         );
     }
 }

@@ -1,5 +1,12 @@
 use crate::{
-    input::{FpsController, PlayerAction},
+    bulkhead_door,
+    camera::FpsCamera,
+    components::{
+        health::{Health, Respawnable},
+        weapons::{Gun, Projectile, ProjectileGun},
+    },
+    input::PlayerAction,
+    movement::{GroundState, MovementConfig},
     navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
 };
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
@@ -28,6 +35,13 @@ pub struct CharacterMarker;
 
 #[derive(Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GameSeed {
+    pub seed: u64,
+}
+
+/// LevelSeed component - replicated from server to clients
+/// Used to synchronize procedural level generation across the network
+#[derive(Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LevelSeed {
     pub seed: u64,
 }
 
@@ -70,6 +84,7 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<Name>();
         app.register_component::<PlayerColor>();
         app.register_component::<GameSeed>();
+        app.register_component::<LevelSeed>();
         app.register_component::<CharacterMarker>();
 
         app.register_component::<Rotation>()
@@ -81,7 +96,21 @@ impl Plugin for ProtocolPlugin {
             .add_linear_interpolation();
 
         app.register_component::<LinearVelocity>().add_prediction();
-        app.register_component::<FpsController>().add_prediction();
+
+        // Refactored movement components (modular, testable)
+        app.register_component::<MovementConfig>().add_prediction();
+        // FpsCamera: Replicated without prediction to avoid authority conflicts
+        // Only the owning client (PredictionTarget) should control their camera
+        // Other clients don't need camera data - they use Rotation component for head direction
+        app.register_component::<FpsCamera>();
+        app.register_component::<GroundState>(); // Server authoritative
+
+        // Health and weapon components
+        app.register_component::<Health>().add_prediction();
+        app.register_component::<Respawnable>();
+        app.register_component::<Gun>().add_prediction();
+        app.register_component::<ProjectileGun>().add_prediction();
+        app.register_component::<Projectile>().add_prediction();
 
         // Navigation components for debug visualization on client
         app.register_component::<SimpleNavigationAgent>();
@@ -99,6 +128,9 @@ impl Plugin for ProtocolPlugin {
         app.register_message::<StartLoadingGameEvent>()
             .add_direction(NetworkDirection::ServerToClient);
 
-        debug!("✅ Protocol plugin initialized with components, messages, inputs, and events");
+        // Register bulkhead door networking
+        bulkhead_door::register_bulkhead_networking(app);
+
+        debug!("Protocol plugin initialized with components, messages, inputs, and events");
     }
 }

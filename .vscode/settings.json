@@ -54,5 +54,11 @@
         "node_modules": true
     },
     "rust-analyzer.cargo.autoreload": true,
-    "rust-analyzer.check.command": "clippy"
+    "rust-analyzer.check.command": "clippy",
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.pythonProjects": [],
+    "chat.tools.terminal.autoApprove": {
+        "cargo fix": true,
+        "cargo clippy": true
+    }
 }

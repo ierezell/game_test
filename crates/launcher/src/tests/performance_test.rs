@@ -203,12 +203,9 @@ pub mod test {
         use crate::tests::common::test::{
             create_test_client, create_test_server, get_spawned_players, run_apps_updates,
         };
-        use avian3d::prelude::Position;
         use bevy::prelude::{Entity, NextState, With};
-        use lightyear::prelude::PeerId;
         use server::ServerGameState;
-        use shared::components::{health::Health, weapons::Gun};
-        use shared::movement::MovementConfig;
+        use shared::components::health::Health;
         use shared::protocol::PlayerId;
 
         println!("\n========================================");
@@ -241,14 +238,14 @@ pub mod test {
         let players = get_spawned_players(server.world_mut());
         println!("Players spawned: {}", players.len());
 
-        if players.len() == 0 {
+        if players.is_empty() {
             // Try querying with Component filter instead
-            let count_with_playerId = server
+            let count_with_player_id = server
                 .world_mut()
                 .query_filtered::<Entity, With<PlayerId>>()
                 .iter(server.world())
                 .count();
-            println!("Entities with PlayerId: {}", count_with_playerId);
+            println!("Entities with PlayerId: {}", count_with_player_id);
 
             let count_with_health = server
                 .world_mut()
@@ -404,7 +401,7 @@ pub mod test {
         let mut npc_found = false;
         let mut has_interpolation = false;
 
-        for (entity, nav_agent, interpolation_target) in npc_query.iter(client.world_mut()) {
+        if let Some((entity, nav_agent, interpolation_target)) = npc_query.iter(client.world_mut()).next() {
             npc_found = true;
 
             println!("  Found NPC entity {:?} with navigation agent", entity);
@@ -417,8 +414,6 @@ pub mod test {
             } else {
                 println!("  - Missing InterpolationTarget: ✗ (WILL CAUSE JITTER)");
             }
-
-            break; // Check first NPC
         }
 
         if !npc_found {

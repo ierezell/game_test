@@ -2,11 +2,13 @@ use crate::input::get_player_input_map;
 
 use bevy::app::Update;
 use bevy::prelude::{
-    App, Assets, Capsule3d, Color, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d, Name, OnEnter,
-    Plugin, Query, Res, ResMut, StandardMaterial, With, Without, default,
+    AmbientLight, App, Assets, Capsule3d, Color, Commands, Entity, Mesh, Mesh3d,
+    MeshMaterial3d, Name, OnEnter, Plugin, Query, Res, ResMut, StandardMaterial, With, Without,
+    default,
 };
 use leafwing_input_manager::prelude::ActionState;
-use shared::entities::{KinematicDisplayBundle, PlayerPhysicsBundle};
+use shared::camera::FpsCamera;
+use shared::entities::{NpcPhysicsBundle, PlayerPhysicsBundle};
 use shared::input::PlayerAction;
 use shared::level_generation::{LevelConfig, generate_level};
 use shared::level_visuals::build_level_visuals;
@@ -27,9 +29,23 @@ impl Plugin for ClientEntitiesPlugin {
         app.add_systems(Update, handle_interpolated_players_setup);
         app.add_systems(
             OnEnter(ClientGameState::Playing),
-            client_generate_level_on_enter,
+            (client_generate_level_on_enter, setup_client_lighting),
         );
     }
+}
+
+/// Setup client-side lighting (ambient + scene lights)
+/// Pure darkness - flashlight is the ONLY light source
+fn setup_client_lighting(mut commands: Commands) {
+    // NO lights at all - complete darkness
+    // Flashlight is spawned per-player in flashlight.rs
+    commands.insert_resource(AmbientLight {
+        color: Color::BLACK,
+        brightness: 0.0,
+        affects_lightmapped_meshes: false,
+    });
+
+    bevy::log::info!("💡 Pure darkness - flashlight ONLY");
 }
 
 /// System that runs on state transition to generate the level
@@ -89,6 +105,8 @@ fn handle_local_player_setup(
                 input_map,
                 action_state,
                 PlayerPhysicsBundle::default(),
+                // FpsCamera is CLIENT-ONLY (mouse input)
+                FpsCamera::default(),
             ));
         }
     }
@@ -104,12 +122,12 @@ fn handle_interpolated_players_setup(
     >,
 ) {
     for (entity, color) in player_query.iter() {
-        // Interpolated players use Kinematic rigidbody (no physics simulation)
-        // This allows Position → Transform sync for rendering without physics conflicts
+        // Interpolated players now use FULL physics simulation
+        // This prevents them from going through walls on remote clients
         commands.entity(entity).insert((
             Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
             MeshMaterial3d(materials.add(color.0)),
-            KinematicDisplayBundle::default(),
+            PlayerPhysicsBundle::default(), // Full physics instead of Kinematic
         ));
     }
 }
@@ -133,16 +151,16 @@ fn handle_interpolated_npcs_setup(
             Color::srgb(0.5, 0.5, 0.5)
         };
 
-        // Interpolated NPCs use Kinematic rigidbody (no physics simulation)
-        // This allows Position → Transform sync for rendering without physics conflicts
+        // Interpolated NPCs now use FULL physics simulation
+        // This prevents them from going through walls on clients
         commands.entity(entity).insert((
             Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: color,
-                emissive: color.to_linear() * 0.5,
+                unlit: false,  // PBR lighting - only visible when lit
                 ..default()
             })),
-            KinematicDisplayBundle::default(),
+            NpcPhysicsBundle::default(), // Full physics instead of Kinematic
         ));
     }
 }

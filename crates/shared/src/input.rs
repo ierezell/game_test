@@ -24,6 +24,9 @@ pub enum PlayerAction {
 
     #[actionlike(Button)]
     Aim,
+
+    #[actionlike(Button)]
+    ToggleFlashlight,
 }
 
 /// Constants for player physics and input

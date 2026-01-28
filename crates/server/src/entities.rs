@@ -3,16 +3,16 @@ use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     ecs::schedule::IntoScheduleConfigs,
     prelude::{
-        AmbientLight, App, Assets, Color, Commands, Cuboid, default, DirectionalLight, Entity,
-        EulerRot, FixedUpdate, Mesh, Mesh3d, MeshMaterial3d, Name, Plane3d, Plugin, Quat, Query,
+        AmbientLight, App, Assets, Color, Commands, Cuboid, default, Entity,
+        FixedUpdate, Mesh, Mesh3d, MeshMaterial3d, Name, Plane3d, Plugin, Query,
         ResMut, StandardMaterial, Transform, Vec2, Vec3, With, info,
     },
     state::{condition::in_state, state::OnEnter},
 };
 use leafwing_input_manager::prelude::ActionState;
-use shared::camera::FpsCamera;
 use shared::input::PlayerAction;
 use shared::movement::{GroundState, MovementConfig};
+use shared::camera::FpsCamera;
 
 use lightyear::prelude::{
     Connected, ControlledBy, InterpolationTarget, NetworkTarget, PeerId, PredictionTarget,
@@ -26,6 +26,7 @@ use shared::{
     entities::{NpcPhysicsBundle, PlayerPhysicsBundle, color_from_id},
     navigation::{NavigationObstacle, setup_patrol, validate_spawn_position},
     protocol::{CharacterMarker, LobbyState, PlayerColor, PlayerId},
+    components::flashlight::PlayerFlashlight,
 };
 
 use crate::ServerGameState;
@@ -84,6 +85,7 @@ fn generate_and_build_level(
             Mesh3d(meshes.add(Mesh::from(Cuboid::new(2.0, 2.0, 2.0)))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::srgb(0.8, 0.2, 0.2),
+                unlit: false,  // PBR lighting - only visible when lit
                 ..default()
             })),
             Transform::from_xyz(5.0, 1.0, 5.0),
@@ -91,26 +93,14 @@ fn generate_and_build_level(
             Name::new("Test Cube"),
         ));
 
-        // Single directional light - NO SHADOWS
-        commands.spawn((
-            DirectionalLight {
-                illuminance: 5000.0,
-                shadows_enabled: false,
-                ..default()
-            },
-            Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.5, 0.5, 0.0)),
-            Replicate::to_clients(NetworkTarget::All),
-            Name::new("Sun"),
-        ));
-        
-        // Add ambient light so scene isn't pitch black
+        // NO LIGHTS - Pure darkness except for player flashlights
         commands.insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 300.0,
+            color: Color::BLACK,
+            brightness: 0.0,
             affects_lightmapped_meshes: false,
         });
 
-        info!("✅ Simple test environment ready with visuals");
+        info!("✅ Simple test environment ready with visuals (flashlight-only lighting)");
     } else {
         info!("✅ Simple test environment ready (headless mode)");
     }
@@ -159,6 +149,7 @@ fn spawn_player_entities(
                     Health::basic(),
                     Respawnable::new(3.0), // 3 second respawn delay
                     Gun::default(),
+                    PlayerFlashlight::new(), // Add flashlight to player
                     ControlledBy {
                         owner: client_entity,
                         lifetime: Default::default(),
@@ -170,6 +161,8 @@ fn spawn_player_entities(
                 .insert((
                     // Refactored modular movement components
                     MovementConfig::default(),
+                    // FpsCamera: Server spawns default, client replicates actual values
+                    // Server needs this for apply_movement system to calculate wish direction
                     FpsCamera::default(),
                     GroundState::default(),
                 ))
@@ -287,6 +280,7 @@ fn spawn_late_joining_players(
                     Health::basic(),
                     Respawnable::new(3.0),
                     Gun::default(),
+                    PlayerFlashlight::new(), // Add flashlight to late-joining player
                     ControlledBy {
                         owner: client_entity,
                         lifetime: Default::default(),
@@ -298,6 +292,7 @@ fn spawn_late_joining_players(
                 .insert((
                     // Refactored modular movement components
                     MovementConfig::default(),
+                    // FpsCamera: Server spawns default, client replicates actual values
                     FpsCamera::default(),
                     GroundState::default(),
                 ))

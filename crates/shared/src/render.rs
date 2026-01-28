@@ -22,6 +22,7 @@ pub fn add_player_visuals(
         Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: color.0,
+            unlit: false,  // PBR lighting - only visible when lit
             ..default()
         })),
     ));

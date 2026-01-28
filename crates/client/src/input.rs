@@ -63,6 +63,7 @@ pub fn get_player_input_map() -> InputMap<PlayerAction> {
         .with(PlayerAction::Shoot, MouseButton::Left)
         .with(PlayerAction::Aim, MouseButton::Right)
         .with(PlayerAction::Sprint, KeyCode::ShiftLeft)
+        .with(PlayerAction::ToggleFlashlight, KeyCode::KeyF)
         .with_dual_axis(PlayerAction::Move, VirtualDPad::wasd())
         .with_dual_axis(PlayerAction::Move, VirtualDPad::arrow_keys())
         .with_dual_axis(PlayerAction::Look, MouseMove::default())
@@ -76,15 +77,19 @@ pub fn is_cursor_locked(cursor_options_query: &Query<&CursorOptions, With<Primar
 
 fn toggle_cursor_grab(
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut action_query: Query<
         &mut ActionState<PlayerAction>,
         (With<PlayerId>, With<Predicted>, With<Controlled>),
     >,
     mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
-    if keys.just_pressed(KeyCode::Escape)
-        && let Ok(mut cursor_options) = cursor_options_query.single_mut()
-    {
+    let Ok(mut cursor_options) = cursor_options_query.single_mut() else {
+        return;
+    };
+
+    // Toggle with Escape key
+    if keys.just_pressed(KeyCode::Escape) {
         match cursor_options.grab_mode {
             CursorGrabMode::None => {
                 cursor_options.grab_mode = CursorGrabMode::Locked;
@@ -114,6 +119,22 @@ fn toggle_cursor_grab(
             }
         }
     }
+
+    // Re-lock cursor on mouse click when unlocked
+    if cursor_options.grab_mode == CursorGrabMode::None 
+        && mouse.just_pressed(MouseButton::Left) 
+    {
+        cursor_options.grab_mode = CursorGrabMode::Locked;
+        cursor_options.visible = false;
+        if let Ok(mut action_state) = action_query.single_mut() {
+            action_state.set_axis_pair(&PlayerAction::Move, bevy::math::Vec2::ZERO);
+            action_state.release(&PlayerAction::Jump);
+            action_state.release(&PlayerAction::Sprint);
+            action_state.release(&PlayerAction::Shoot);
+            action_state.release(&PlayerAction::Aim);
+            action_state.enable();
+        }
+    }
 }
 
 fn handle_focus_change(
@@ -122,12 +143,8 @@ fn handle_focus_change(
         &mut ActionState<PlayerAction>,
         (With<PlayerId>, With<Predicted>, With<Controlled>),
     >,
-    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     for event in focus_events.read() {
-        let Ok(mut cursor_options) = cursor_options_query.single_mut() else {
-            continue;
-        };
         let Ok(mut action_state) = action_query.single_mut() else {
             continue;
         };
@@ -141,10 +158,9 @@ fn handle_focus_change(
             action_state.release(&PlayerAction::Shoot);
             action_state.release(&PlayerAction::Aim);
             
-            if cursor_options.grab_mode != CursorGrabMode::Locked {
-                cursor_options.grab_mode = CursorGrabMode::Locked;
-                cursor_options.visible = false;
-            }
+            // DON'T auto-lock cursor on focus - let user press Escape to toggle manually
+            // This prevents cursor from being stuck when alt-tabbing or clicking away
+            
             if action_state.disabled() {
                 action_state.enable();
             }

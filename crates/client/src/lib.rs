@@ -1,15 +1,22 @@
 pub mod camera;
 pub mod debug;
 pub mod entities;
+pub mod flashlight;
 pub mod game;
+pub mod gun_effects;
 pub mod input;
 pub mod input_manager;
 pub mod lobby;
 pub mod network;
+
+#[cfg(test)]
+mod tests;
 use crate::camera::RenderPlugin;
 use crate::debug::DebugPlugin;
 use crate::entities::ClientEntitiesPlugin;
+use crate::flashlight::FlashlightPlugin;
 use crate::game::GameClientPlugin;
+use crate::gun_effects::GunEffectsPlugin;
 use crate::input::ClientInputPlugin;
 use crate::lobby::ClientLobbyPlugin;
 use crate::network::ClientNetworkPlugin;
@@ -135,6 +142,8 @@ pub fn create_client_app(
     client_app.add_plugins(ClientInputPlugin);
     if !headless {
         client_app.add_plugins(DebugPlugin);
+        client_app.add_plugins(FlashlightPlugin); // Add flashlight only for non-headless
+        client_app.add_plugins(GunEffectsPlugin); // Add gun visual effects
     }
     client_app.add_plugins(ClientEntitiesPlugin);
     client_app.add_plugins(ClientLobbyPlugin);

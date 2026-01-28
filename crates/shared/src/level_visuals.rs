@@ -33,22 +33,22 @@ pub struct DoorVisual {
 // ============================================================================
 
 /// Setup atmospheric lighting for GTFO aesthetic
-/// - Low ambient light
-/// - Dim point lights in rooms
-/// - Optional fog for depth
+/// PURE DARKNESS - flashlight only
 pub fn setup_atmosphere(mut commands: Commands) {
+    // Pure black - no ambient light at all
     commands.insert_resource(AmbientLight {
-        color: Color::srgb(0.4, 0.5, 0.6),
-        brightness: 150.0,
+        color: Color::BLACK,
+        brightness: 0.0,
         ..default()
     });
 
-    commands.insert_resource(ClearColor(Color::srgb(0.02, 0.02, 0.03)));
+    commands.insert_resource(ClearColor(Color::BLACK));  // Black background
 
-    info!("GTFO-style atmosphere configured");
+    info!("Pure darkness atmosphere - flashlight only");
 }
 
 /// Spawn emergency lights in a zone
+#[allow(dead_code)]
 fn spawn_zone_lighting(commands: &mut Commands, zone: &Zone) {
     let light_color = match zone.zone_type {
         ZoneType::Hub => Color::srgb(0.9, 0.9, 0.7),
@@ -106,27 +106,13 @@ pub fn build_zone_visual(
     materials: &mut Assets<StandardMaterial>,
     zone: &Zone,
 ) {
-    let zone_color = match zone.zone_type {
-        ZoneType::Hub => Color::srgb(0.3, 0.3, 0.35),
-        ZoneType::Corridor => Color::srgb(0.25, 0.25, 0.28),
-        ZoneType::Utility => Color::srgb(0.28, 0.3, 0.25),
-        ZoneType::Industrial => Color::srgb(0.32, 0.28, 0.25),
-        ZoneType::Objective => Color::srgb(0.25, 0.35, 0.28),
-        ZoneType::Storage => Color::srgb(0.3, 0.28, 0.28),
-    };
-
     // Floor
     let floor_thickness = 0.5;
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(zone.size.x, floor_thickness, zone.size.z))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(
-                zone_color.to_linear().red * 0.5,
-                zone_color.to_linear().green * 0.5,
-                zone_color.to_linear().blue * 0.5,
-            ),
-            metallic: 0.1,
-            perceptual_roughness: 0.9,
+            base_color: Color::srgb(0.01, 0.01, 0.01),  // Nearly black - invisible without light
+            unlit: false,  // PBR lighting - only visible when lit by flashlight
             ..default()
         })),
         Transform::from_translation(zone.position + Vec3::new(0.0, -floor_thickness / 2.0, 0.0)),
@@ -140,13 +126,8 @@ pub fn build_zone_visual(
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(zone.size.x, 0.3, zone.size.z))),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(
-                zone_color.to_linear().red * 0.3,
-                zone_color.to_linear().green * 0.3,
-                zone_color.to_linear().blue * 0.3,
-            ),
-            metallic: 0.3,
-            perceptual_roughness: 0.7,
+            base_color: Color::srgb(0.01, 0.01, 0.01),  // Nearly black - invisible without light
+            unlit: false,  // PBR lighting - only visible when lit by flashlight
             ..default()
         })),
         Transform::from_translation(zone.position + Vec3::new(0.0, zone.size.y, 0.0)),
@@ -178,9 +159,8 @@ pub fn build_zone_visual(
         commands.spawn((
             Mesh3d(meshes.add(Cuboid::from_size(*wall_size))),
             MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: zone_color,
-                metallic: 0.2,
-                perceptual_roughness: 0.8,
+                base_color: Color::srgb(0.01, 0.01, 0.01),  // Nearly black - invisible without light
+                unlit: false,  // PBR lighting - only visible when lit by flashlight
                 ..default()
             })),
             Transform::from_translation(zone.position + *offset),
@@ -193,7 +173,7 @@ pub fn build_zone_visual(
     }
 
     // Spawn lighting for this zone
-    spawn_zone_lighting(commands, zone);
+    // spawn_zone_lighting(commands, zone); // DISABLED: Only flashlight lighting
 
     info!("Built visual for zone {} ({:?})", zone.id.0, zone.zone_type);
 }
@@ -216,10 +196,8 @@ pub fn build_door_visual(
         .spawn((
             Mesh3d(meshes.add(Cuboid::from_size(door_size))),
             MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.6, 0.6, 0.65),
-                metallic: 0.9,
-                perceptual_roughness: 0.3,
-                emissive: LinearRgba::rgb(0.1, 0.3, 0.5),
+                base_color: Color::srgb(0.01, 0.01, 0.01),  // Nearly black - invisible without light
+                unlit: false,  // PBR lighting - only visible when lit by flashlight
                 ..default()
             })),
             Transform::from_translation(door_position).with_rotation(door_rotation),

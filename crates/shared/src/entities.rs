@@ -63,9 +63,13 @@ impl Default for NpcPhysicsBundle {
     }
 }
 
-/// Kinematic bundle for interpolated entities (remote players/NPCs on client)
+/// Kinematic bundle for display-only entities (e.g., cosmetic effects)
 /// These entities don't simulate physics - they only display replicated Position
 /// Kinematic RigidBody allows Position → Transform sync without physics simulation
+/// 
+/// NOTE: This is NOT used for interpolated players/NPCs anymore.
+/// We use full physics (PlayerPhysicsBundle/NpcPhysicsBundle) on interpolated
+/// entities to prevent them from going through walls on remote clients.
 #[derive(Bundle)]
 pub struct KinematicDisplayBundle {
     pub rigid_body: RigidBody,

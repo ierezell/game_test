@@ -4,6 +4,7 @@ use crate::{
     components::{
         health::{Health, Respawnable},
         weapons::{Gun, Projectile, ProjectileGun},
+        flashlight::PlayerFlashlight,
     },
     input::PlayerAction,
     movement::{GroundState, MovementConfig},
@@ -99,9 +100,8 @@ impl Plugin for ProtocolPlugin {
 
         // Refactored movement components (modular, testable)
         app.register_component::<MovementConfig>().add_prediction();
-        // FpsCamera: Replicated without prediction to avoid authority conflicts
-        // Only the owning client (PredictionTarget) should control their camera
-        // Other clients don't need camera data - they use Rotation component for head direction
+        // FpsCamera: Client-authoritative component
+        // Registered for serialization but replication is handled manually
         app.register_component::<FpsCamera>();
         app.register_component::<GroundState>(); // Server authoritative
 
@@ -111,6 +111,9 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<Gun>().add_prediction();
         app.register_component::<ProjectileGun>().add_prediction();
         app.register_component::<Projectile>().add_prediction();
+
+        // Flashlight component - replicated with prediction
+        app.register_component::<PlayerFlashlight>().add_prediction();
 
         // Navigation components for debug visualization on client
         app.register_component::<SimpleNavigationAgent>();

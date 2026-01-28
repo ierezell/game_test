@@ -25,7 +25,7 @@ impl Default for FpsCamera {
         Self {
             pitch: 0.0,
             yaw: 0.0,
-            sensitivity: 0.001,
+            sensitivity: 0.0005,  // Reduced from 0.001 for less sensitive movement
         }
     }
 }

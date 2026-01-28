@@ -2,9 +2,8 @@ use crate::navigation::NavigationObstacle;
 use avian3d::prelude::{Collider, Position, RigidBody};
 use bevy::prelude::Color;
 use bevy::prelude::{
-    AmbientLight, Assets, Commands, Component, Cuboid, Dir3, DirectionalLight, Mesh, Mesh3d,
-    MeshMaterial3d, Name, Plane3d, Quat, ResMut, StandardMaterial, Transform, Vec2, Vec3, default,
-    info,
+    AmbientLight, Assets, Commands, Component, Cuboid, Dir3, Mesh, Mesh3d, MeshMaterial3d, Name,
+    Plane3d, Quat, ResMut, StandardMaterial, Transform, Vec2, Vec3, default, info,
 };
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -31,22 +30,14 @@ pub fn setup_static_level(
     // Use seed for procedural generation
     let mut _rng = StdRng::seed_from_u64(seed);
     if materials.is_some() {
+        // Pure darkness - flashlight only
         commands.insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 0.3,
-            affects_lightmapped_meshes: true,
+            color: Color::BLACK,
+            brightness: 0.0,
+            affects_lightmapped_meshes: false,
         });
 
-        commands.spawn((
-            DirectionalLight {
-                color: Color::WHITE,
-                illuminance: 1000.0,
-                ..default()
-            },
-            Transform::from_translation(Vec3::new(10.0, 10.0, 10.0))
-                .looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
-            Name::new("Sun"),
-        ));
+        // NO DIRECTIONAL LIGHT - removed for pure darkness
     }
 
     // Floor with physics collision
@@ -63,6 +54,22 @@ pub fn setup_static_level(
 
     if let Some(ref mut mats) = materials {
         floor_entity.insert(MeshMaterial3d(mats.add(StandardMaterial { ..default() })));
+    }
+
+    // Ceiling with physics collision
+    let mut ceiling_entity = commands.spawn((
+        Name::new("Ceiling"),
+        Position::from(Vec3::new(0.0, WALL_HEIGHT + FLOOR_THICKNESS / 2.0, 0.0)),
+        Mesh3d(meshes.add(Plane3d {
+            normal: Dir3::NEG_Y,
+            half_size: Vec2::splat(ROOM_SIZE),
+        })),
+        RigidBody::Static,
+        Collider::cuboid(ROOM_SIZE * 2.0, FLOOR_THICKNESS, ROOM_SIZE * 2.0),
+    ));
+
+    if let Some(ref mut mats) = materials {
+        ceiling_entity.insert(MeshMaterial3d(mats.add(StandardMaterial { ..default() })));
     }
 
     // Walls - could be procedurally varied based on seed

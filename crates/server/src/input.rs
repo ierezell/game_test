@@ -1,9 +1,9 @@
 use avian3d::prelude::Rotation;
-use bevy::prelude::{FixedUpdate, IntoScheduleConfigs, Plugin, Query, With};
+use bevy::prelude::{FixedUpdate, IntoScheduleConfigs, Plugin, Query, Update, With};
 
 use shared::{
     movement::{PhysicsConfig, update_ground_detection, apply_movement},
-    camera::FpsCamera,
+    camera::{FpsCamera, update_camera_from_input},
     protocol::PlayerId,
 };
 
@@ -12,6 +12,11 @@ pub struct ServerInputPlugin;
 impl Plugin for ServerInputPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.init_resource::<PhysicsConfig>();
+        
+        // Camera input (Update for responsiveness, same as client)
+        app.add_systems(Update, update_camera_from_input);
+        
+        // Movement systems (FixedUpdate for physics)
         app.add_systems(FixedUpdate, (
             update_ground_detection,  // Detect ground first
             apply_movement,            // Then apply movement

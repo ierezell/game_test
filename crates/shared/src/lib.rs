@@ -12,6 +12,9 @@ pub mod navigation;
 pub mod protocol;
 pub mod render;
 
+#[cfg(test)]
+mod tests;
+
 use avian3d::prelude::PhysicsPlugins;
 
 use bevy::prelude::Plugin;

@@ -28,12 +28,12 @@ pub struct MovementConfig {
 impl Default for MovementConfig {
     fn default() -> Self {
         Self {
-            walk_speed: 100.0,
-            run_speed: 150.0,
-            air_speed_cap: 20.0,
-            air_acceleration: 20.0,
-            max_air_speed: 60.0,
-            acceleration: 10.0,
+            walk_speed: 60.0,      // Reduced from 100.0
+            run_speed: 100.0,      // Reduced from 150.0
+            air_speed_cap: 15.0,   // Reduced from 20.0
+            air_acceleration: 15.0,// Reduced from 20.0
+            max_air_speed: 50.0,   // Reduced from 60.0
+            acceleration: 8.0,     // Reduced from 10.0
             friction: 10.0,
             jump_speed: 8.5,
         }
@@ -240,6 +240,14 @@ pub fn apply_movement(
     for (action_state, camera, config, ground_state, mut velocity) in query.iter_mut() {
         // Get input
         let move_input = action_state.axis_pair(&PlayerAction::Move);
+        
+        // DEBUG: Log when movement is applied
+        if move_input.length() > 0.1 {
+            bevy::log::debug!(
+                "apply_movement: input={:?}, camera.yaw={:.2}, grounded={}, velocity={:?}",
+                move_input, camera.yaw, ground_state.is_grounded, velocity.0
+            );
+        }
         let is_sprinting = action_state.pressed(&PlayerAction::Sprint);
         let is_jumping = action_state.pressed(&PlayerAction::Jump);
 

@@ -1,11 +1,12 @@
 use crate::components::health::DamageEvent;
 use crate::input::PlayerAction;
+use crate::camera::FpsCamera;
 use avian3d::prelude::{
     Collider, LinearVelocity, Position, RigidBody, Rotation, SpatialQueryFilter,
     SpatialQueryPipeline,
 };
 use bevy::prelude::{
-    Commands, Component, Dir3, Entity, MessageWriter, Query, Res, Time, Timer, TimerMode, Vec3,
+    Commands, Component, Dir3, Entity, MessageWriter, Quat, Query, Res, Time, Timer, TimerMode, Vec3,
     info,
 };
 use leafwing_input_manager::prelude::ActionState;
@@ -59,34 +60,41 @@ pub fn fire_gun_system(
         Entity,
         &mut Gun,
         &Position,
-        &Rotation,
+        &FpsCamera,
         &ActionState<PlayerAction>,
     )>,
     spatial_query: Res<SpatialQueryPipeline>,
     mut damage_writer: MessageWriter<DamageEvent>,
     time: Res<Time>,
 ) {
-    for (shooter_entity, mut gun, pos, rot, action_state) in query.iter_mut() {
+    for (shooter_entity, mut gun, pos, camera, action_state) in query.iter_mut() {
         gun.cooldown.tick(time.delta());
         if action_state.pressed(&PlayerAction::Shoot) && gun.cooldown.is_finished() {
-            let direction = rot.0 * Vec3::NEG_Z; // Forward direction
+            // Calculate shooting direction from camera orientation
+            let yaw_rotation = Quat::from_rotation_y(camera.yaw);
+            let pitch_rotation = Quat::from_rotation_x(camera.pitch);
+            let direction = yaw_rotation * pitch_rotation * Vec3::NEG_Z;
 
             // Create raycast filter to exclude the shooter
             let filter = SpatialQueryFilter::default().with_excluded_entities([shooter_entity]);
 
+            // Perform raycast from camera position (eye level)
+            let eye_height = 1.5; // Approximate player eye height
+            let shoot_origin = pos.0 + Vec3::new(0.0, eye_height, 0.0);
+
             // Perform raycast
             if let Some(hit) = spatial_query.cast_ray(
-                pos.0,
+                shoot_origin,
                 Dir3::new(direction).unwrap_or(Dir3::NEG_Z),
                 gun.range,
                 true, // solid hits only
                 &filter,
             ) {
                 let hit_entity = hit.entity;
-                let hit_point = pos.0 + direction.normalize() * hit.distance;
+                let hit_point = shoot_origin + direction.normalize() * hit.distance;
 
                 info!(
-                    "Gun hit entity {:?} at distance {} point {:?}",
+                    "🔫 Gun hit entity {:?} at distance {:.2}m point {:?}",
                     hit_entity, hit.distance, hit_point
                 );
 
@@ -104,6 +112,8 @@ pub fn fire_gun_system(
                     shooter: shooter_entity,
                     hit_point,
                 });
+            } else {
+                info!("🔫 Gun fired but missed (no hit detected)");
             }
 
             gun.cooldown.reset();

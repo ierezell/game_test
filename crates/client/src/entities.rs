@@ -1,22 +1,19 @@
-use crate::input::get_player_input_map;
+use crate::inputs::input::get_player_input_map;
 
 use bevy::app::Update;
 use bevy::prelude::{
-    AmbientLight, App, Assets, Capsule3d, Color, Commands, Entity, Mesh, Mesh3d,
-    MeshMaterial3d, Name, OnEnter, Plugin, Query, Res, ResMut, StandardMaterial, With, Without,
-    default,
+    App, Assets, Capsule3d, Color, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d, Plugin, Query,
+    Res, ResMut, StandardMaterial, With, Without, default,
 };
 use leafwing_input_manager::prelude::ActionState;
-use shared::camera::FpsCamera;
-use shared::entities::{NpcPhysicsBundle, PlayerPhysicsBundle};
-use shared::input::PlayerAction;
-use shared::level_generation::{LevelConfig, generate_level};
-use shared::level_visuals::build_level_visuals;
-use shared::protocol::LevelSeed;
 
-use crate::{ClientGameState, LocalPlayerId};
+use shared::entities::{NpcPhysicsBundle, PlayerPhysicsBundle};
+
+use shared::inputs::input::PlayerAction;
+
+use crate::LocalPlayerId;
 use lightyear::prelude::{Controlled, Interpolated, Predicted};
-use shared::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
+use shared::inputs::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
 
 use shared::protocol::{CharacterMarker, PlayerColor, PlayerId};
 
@@ -27,54 +24,6 @@ impl Plugin for ClientEntitiesPlugin {
         app.add_systems(Update, handle_interpolated_npcs_setup);
         app.add_systems(Update, handle_local_player_setup);
         app.add_systems(Update, handle_interpolated_players_setup);
-        app.add_systems(
-            OnEnter(ClientGameState::Playing),
-            (client_generate_level_on_enter, setup_client_lighting),
-        );
-    }
-}
-
-/// Setup client-side lighting (ambient + scene lights)
-/// Pure darkness - flashlight is the ONLY light source
-fn setup_client_lighting(mut commands: Commands) {
-    // NO lights at all - complete darkness
-    // Flashlight is spawned per-player in flashlight.rs
-    commands.insert_resource(AmbientLight {
-        color: Color::BLACK,
-        brightness: 0.0,
-        affects_lightmapped_meshes: false,
-    });
-
-    bevy::log::info!("💡 Pure darkness - flashlight ONLY");
-}
-
-/// System that runs on state transition to generate the level
-///
-/// This runs when entering the Playing state and generates the level from the replicated seed
-fn client_generate_level_on_enter(
-    commands: Commands,
-    meshes: ResMut<Assets<Mesh>>,
-    materials: ResMut<Assets<StandardMaterial>>,
-    level_seed_query: Query<&LevelSeed>,
-) {
-    // Check if we have a level seed already
-    if let Some(level_seed) = level_seed_query.iter().next() {
-        bevy::log::info!(
-            "🌱 Client generating level on state enter with seed: {}",
-            level_seed.seed
-        );
-
-        let config = LevelConfig {
-            seed: level_seed.seed,
-            target_zone_count: 12,
-            min_zone_spacing: 35.0,
-            max_depth: 8,
-        };
-
-        let level_graph = generate_level(config);
-        build_level_visuals(commands, meshes, materials, level_graph);
-
-        bevy::log::info!("✅ Client level built on Playing state enter");
     }
 }
 
@@ -105,8 +54,6 @@ fn handle_local_player_setup(
                 input_map,
                 action_state,
                 PlayerPhysicsBundle::default(),
-                // FpsCamera is CLIENT-ONLY (mouse input)
-                FpsCamera::default(),
             ));
         }
     }
@@ -122,12 +69,10 @@ fn handle_interpolated_players_setup(
     >,
 ) {
     for (entity, color) in player_query.iter() {
-        // Interpolated players now use FULL physics simulation
-        // This prevents them from going through walls on remote clients
         commands.entity(entity).insert((
             Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
             MeshMaterial3d(materials.add(color.0)),
-            PlayerPhysicsBundle::default(), // Full physics instead of Kinematic
+            PlayerPhysicsBundle::default(),
         ));
     }
 }
@@ -136,31 +81,18 @@ fn handle_interpolated_npcs_setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    npc_query: Query<(Entity, &Name), (With<Interpolated>, Without<PlayerId>, Without<Mesh3d>)>,
+    npc_query: Query<Entity, (With<Interpolated>, Without<PlayerId>, Without<Mesh3d>)>,
 ) {
-    for (entity, name) in npc_query.iter() {
-        let color = if name.as_str().contains("Enemy") {
-            Color::srgb(0.8, 0.2, 0.2)
-        } else if name.as_str().contains("Guard") {
-            Color::srgb(0.9, 0.4, 0.1)
-        } else if name.as_str().contains("Bot") {
-            Color::srgb(0.2, 0.2, 0.8)
-        } else if name.as_str().contains("Scout") {
-            Color::srgb(0.1, 0.7, 0.3)
-        } else {
-            Color::srgb(0.5, 0.5, 0.5)
-        };
-
-        // Interpolated NPCs now use FULL physics simulation
-        // This prevents them from going through walls on clients
+    for entity in npc_query.iter() {
+        let color = Color::srgb(0.5, 0.5, 0.5);
         commands.entity(entity).insert((
             Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: color,
-                unlit: false,  // PBR lighting - only visible when lit
+                unlit: false,
                 ..default()
             })),
-            NpcPhysicsBundle::default(), // Full physics instead of Kinematic
+            NpcPhysicsBundle::default(),
         ));
     }
 }

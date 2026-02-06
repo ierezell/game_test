@@ -5,14 +5,13 @@ use bevy::prelude::{
 use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
     Connected, ControlledBy, Disconnected, LinkOf, LocalAddr, MetadataChannel, NetworkTarget,
-    RemoteId, ReplicationSender, SendUpdatesMode, Server, ServerMultiMessageSender,
+    RemoteId, Replicate, ReplicationSender, SendUpdatesMode, Server, ServerMultiMessageSender,
     server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start},
 };
 use shared::protocol::{LobbyState, PlayerId, StartLoadingGameEvent};
 use shared::{SEND_INTERVAL, SERVER_BIND_ADDR, SHARED_SETTINGS};
 
 use crate::ServerGameState;
-
 pub struct ServerNetworkPlugin;
 
 impl Plugin for ServerNetworkPlugin {
@@ -24,10 +23,7 @@ impl Plugin for ServerNetworkPlugin {
             .get_resource::<NetworkMode>()
             .copied()
             .unwrap_or_default();
-        println!(
-            "ServerNetworkPlugin: building with mode {:?}",
-            network_mode
-        );
+        println!("ServerNetworkPlugin: building with mode {:?}", network_mode);
 
         match network_mode {
             NetworkMode::Udp => {
@@ -35,6 +31,9 @@ impl Plugin for ServerNetworkPlugin {
             }
             NetworkMode::Crossbeam => {
                 app.add_systems(PreStartup, startup_server_crossbeam);
+            }
+            NetworkMode::Local => {
+                app.add_systems(PreStartup, startup_server_local);
             }
         }
 
@@ -59,6 +58,21 @@ fn startup_server_crossbeam(mut commands: Commands) {
     });
 }
 
+fn startup_server_local(mut commands: Commands) {
+    // In Local mode (HostServer), server and client are in the same app.
+    // Lightyear handles local communication via HostServer/HostClient automatically.
+    let server_entity = commands
+        .spawn((Name::new("Server"), Server::default()))
+        .id();
+    println!(
+        "ServerNetworkPlugin: spawned Server entity {:?} in Local mode (HostServer)",
+        server_entity
+    );
+    commands.trigger(Start {
+        entity: server_entity,
+    });
+}
+
 fn startup_server(mut commands: Commands) {
     let netcode_config = NetcodeConfig {
         num_disconnect_packets: 10,
@@ -67,7 +81,6 @@ fn startup_server(mut commands: Commands) {
         protocol_id: SHARED_SETTINGS.protocol_id,
         private_key: SHARED_SETTINGS.private_key,
     };
-
     let server_entity = commands
         .spawn((
             NetcodeServer::new(netcode_config),
@@ -92,7 +105,7 @@ fn handle_new_client(trigger: On<Add, LinkOf>, _commands: Commands) {
 fn handle_connected(
     trigger: On<Add, Connected>,
     query: Query<&RemoteId, With<ClientOf>>,
-    lobby_query: Single<&mut LobbyState>,
+    mut lobby_query: Query<&mut LobbyState>,
     mut commands: Commands,
     server_state: Res<State<ServerGameState>>,
     mut sender: ServerMultiMessageSender,
@@ -113,47 +126,64 @@ fn handle_connected(
             true,
         ));
 
-    let mut lobby_state = lobby_query;
-    if !lobby_state.players.contains(&client_id_bits) {
-        println!(
-            "DEBUG: Server accepted connection from Client_{}",
-            client_id_bits
-        );
-        lobby_state.players.push(client_id_bits);
-
-        if lobby_state.players.len() == 1 {
-            println!("DEBUG: Client_{} became host", client_id_bits);
-            lobby_state.host_id = client_id_bits;
-        }
-
-        // If the game is already in progress, send the StartLoadingGameEvent to the newly connected client
-        if *server_state.get() == ServerGameState::Playing {
+    // Get or create the lobby state
+    if let Some(mut lobby_state) = lobby_query.iter_mut().next() {
+        // Lobby exists, add player if not already present
+        if !lobby_state.players.contains(&client_id_bits) {
             println!(
-                "DEBUG: Game already started, sending StartLoadingGameEvent to late-joining Client_{}",
+                "DEBUG: Server accepted connection from Client_{}",
                 client_id_bits
             );
-            sender
-                .send::<StartLoadingGameEvent, MetadataChannel>(
-                    &StartLoadingGameEvent,
-                    server.into_inner(),
-                    &NetworkTarget::Single(client_id.0),
-                )
-                .unwrap_or_else(|e| {
-                    bevy::log::error!(
-                        "Failed to send StartLoadingGameEvent to late-joining client: {:?}",
-                        e
-                    );
-                });
+            lobby_state.players.push(client_id_bits);
+
+            if lobby_state.players.len() == 1 {
+                println!("DEBUG: Client_{} became host", client_id_bits);
+                lobby_state.host_id = client_id_bits;
+            }
+
+            // If the game is already in progress, send the StartLoadingGameEvent to the newly connected client
+            if *server_state.get() == ServerGameState::Playing {
+                println!(
+                    "DEBUG: Game already started, sending StartLoadingGameEvent to late-joining Client_{}",
+                    client_id_bits
+                );
+                sender
+                    .send::<StartLoadingGameEvent, MetadataChannel>(
+                        &StartLoadingGameEvent,
+                        server.into_inner(),
+                        &NetworkTarget::Single(client_id.0),
+                    )
+                    .unwrap_or_else(|e| {
+                        bevy::log::error!(
+                            "Failed to send StartLoadingGameEvent to late-joining client: {:?}",
+                            e
+                        );
+                    });
+            }
+        } else {
+            println!("DEBUG: Client_{} already in lobby", client_id_bits);
         }
     } else {
-        println!("DEBUG: Client_{} already in lobby", client_id_bits);
+        // No lobby exists, create it with this first client as host
+        println!(
+            "DEBUG: Creating lobby with Client_{} as first player and host",
+            client_id_bits
+        );
+        commands.spawn((
+            LobbyState {
+                players: vec![client_id_bits],
+                host_id: client_id_bits,
+            },
+            Replicate::to_clients(NetworkTarget::All),
+            Name::from("LobbyState"),
+        ));
     }
 }
 
 fn handle_disconnected(
     trigger: On<Add, Disconnected>,
     query: Query<&RemoteId, With<ClientOf>>,
-    lobby_query: Single<&mut LobbyState>,
+    mut lobby_query: Query<&mut LobbyState>,
     player_query: Query<(Entity, &ControlledBy), With<PlayerId>>,
     mut commands: Commands,
 ) {
@@ -169,11 +199,11 @@ fn handle_disconnected(
         }
     }
 
-    let mut lobby_state = lobby_query;
-    if let Some(pos) = lobby_state
-        .players
-        .iter()
-        .position(|&id| id == client_id_bits)
+    if let Some(mut lobby_state) = lobby_query.iter_mut().next()
+        && let Some(pos) = lobby_state
+            .players
+            .iter()
+            .position(|&id| id == client_id_bits)
     {
         lobby_state.players.remove(pos);
 

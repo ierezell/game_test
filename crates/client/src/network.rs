@@ -1,15 +1,15 @@
 use crate::{ClientGameState, LocalPlayerId};
 
 use bevy::prelude::{
-    Add, App, Commands, CommandsStatesExt, Entity, Name, On, OnEnter, Plugin, Query, Remove, Res,
-    Resource, State, With, error, info,
+    Add, App, Commands, CommandsStatesExt, Entity, IntoScheduleConfigs, Name, On, OnEnter, Plugin,
+    Query, Remove, Res, Resource, State, SystemCondition, Update, With, error, in_state, info,
 };
 
 #[derive(Resource)]
 pub struct ServerAddr(pub std::net::SocketAddr);
 use lightyear::prelude::{
-    Authentication, Client, Connect, Connected, Link, LocalAddr, PeerAddr, PredictionManager,
-    ReplicationReceiver, UdpIo,
+    Authentication, Client, Connect, Connected, Link, LocalAddr, PeerAddr, PeerId, PredictionManager,
+    RemoteId, ReplicationReceiver, UdpIo,
     client::{NetcodeClient, NetcodeConfig},
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -35,6 +35,9 @@ impl Plugin for ClientNetworkPlugin {
             }
             NetworkMode::Crossbeam => {
                 app.add_systems(OnEnter(ClientGameState::Lobby), start_connection_crossbeam);
+            }
+            NetworkMode::Local => {
+                app.add_systems(OnEnter(ClientGameState::Lobby), start_connection_local);
             }
         }
 
@@ -63,6 +66,8 @@ fn start_connection_crossbeam(
         client_id.0
     );
 
+    use lightyear::prelude::{Linked, PingConfig, PingManager, ReplicationSender};
+
     // Clone the endpoint because we might need it again if we reconnect (though Res is borrowed)
     // CrossbeamIo should be cloneable (channels are).
     let io = endpoint.0.clone();
@@ -70,12 +75,73 @@ fn start_connection_crossbeam(
     let client_entity = commands
         .spawn((
             Client::default(),
+            Link::new(None),
+            Linked, // Crossbeam is always immediately linked
             io,
+            PingManager::new(PingConfig {
+                ping_interval: std::time::Duration::default(),
+            }),
+            ReplicationSender::default(),
             ReplicationReceiver::default(),
             PredictionManager::default(),
         ))
         .insert(Name::from(format!("Client {}", client_id.0)))
         .id();
+
+    commands.trigger(Connect {
+        entity: client_entity,
+    });
+}
+
+fn start_connection_local(
+    mut commands: Commands,
+    client_id: Res<LocalPlayerId>,
+    existing_clients: Query<Entity, With<Client>>,
+    server_query: Query<Entity, With<lightyear::prelude::server::Server>>,
+) {
+    if !existing_clients.is_empty() {
+        for client_entity in existing_clients.iter() {
+            commands.trigger(Connect {
+                entity: client_entity,
+            });
+        }
+        return;
+    }
+
+    println!(
+        "DEBUG: start_connection_local called for client {}",
+        client_id.0
+    );
+
+    // Local mode (HostClient): Create a Client entity linked to the Server entity
+    // This is the HostServer pattern from Lightyear
+    use lightyear::prelude::{Link, LinkOf, Linked, PingConfig, PingManager};
+    
+    let server_entity = match server_query.iter().next() {
+        Some(entity) => entity,
+        None => {
+            error!("Failed to find Server entity for HostClient - server may not be initialized yet");
+            return;
+        }
+    };
+    
+    let client_entity = commands
+        .spawn((
+            Client::default(),
+            LinkOf {
+                server: server_entity,
+            },
+            Link::new(None),
+            Linked, // HostClient is always immediately linked
+            PingManager::new(PingConfig {
+                ping_interval: std::time::Duration::default(),
+            }),
+            PredictionManager::default(),
+        ))
+        .insert(Name::from(format!("HostClient {}", client_id.0)))
+        .id();
+
+    println!("DEBUG: Created HostClient entity {:?} linked to Server entity {:?}", client_entity, server_entity);
 
     commands.trigger(Connect {
         entity: client_entity,

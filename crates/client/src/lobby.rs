@@ -10,6 +10,7 @@ use bevy::prelude::{
     Res, Resource, Single, Text, TextFont, UiRect, Update, Val, With, in_state,
 };
 
+use crate::Headless;
 use lightyear::prelude::MessageSender;
 use lightyear::prelude::MetadataChannel;
 use shared::protocol::{HostStartGameEvent, LobbyState};
@@ -20,13 +21,6 @@ pub struct AutoStart(pub bool);
 pub struct ClientLobbyPlugin;
 impl Plugin for ClientLobbyPlugin {
     fn build(&self, app: &mut App) {
-        // Only spawn/despawn UI and camera if NOT headless
-        // We can check the resource existence or value. Since we insert Headless(true) or Headless(false),
-        // we should check the value.
-        // Actually, simpler: just don't add the systems if headless.
-        // But the plugin build happens once. We need run conditions.
-
-        use crate::Headless;
         fn is_not_headless(headless: Option<Res<Headless>>) -> bool {
             !headless.map(|h| h.0).unwrap_or(false)
         }
@@ -51,26 +45,35 @@ fn handle_auto_start(
     auto_start: Option<Res<AutoStart>>,
     lobby_state: Query<&LobbyState>,
     local_player_id: Res<LocalPlayerId>,
-    mut sender: Single<&mut MessageSender<HostStartGameEvent>>,
+    mut sender_q: Query<&mut MessageSender<HostStartGameEvent>>,
     mut commands: Commands,
 ) {
+    // Only act when AutoStart is enabled
     if let Some(auto_start_res) = auto_start
         && auto_start_res.0
     {
+        // Require lobby replication to be visible client-side
         if let Ok(lobby_data) = lobby_state.single() {
-            println!(
-                "DEBUG: handle_auto_start running. Host: {}, Local: {}, Players: {}",
-                lobby_data.host_id,
-                local_player_id.0,
-                lobby_data.players.len()
-            );
-            if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
-                println!("DEBUG: handle_auto_start sending HostStartGameEvent");
-                sender.send::<MetadataChannel>(HostStartGameEvent);
-                commands.remove_resource::<AutoStart>();
+            // Require a MessageSender to be present (established link)
+            if let Some(mut sender) = sender_q.iter_mut().next() {
+                println!(
+                    "DEBUG: handle_auto_start running. Host: {}, Local: {}, Players: {}",
+                    lobby_data.host_id,
+                    local_player_id.0,
+                    lobby_data.players.len()
+                );
+                if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
+                    println!("DEBUG: handle_auto_start sending HostStartGameEvent");
+                    sender.send::<MetadataChannel>(HostStartGameEvent);
+                    commands.remove_resource::<AutoStart>();
+                }
+            } else {
+                // No sender yet; wait until the network establishes it
+                println!("DEBUG: handle_auto_start - MessageSender not ready yet");
             }
         } else {
-            // println!("DEBUG: handle_auto_start - No LobbyState found");
+            // No lobby yet; will try again on next tick
+            println!("DEBUG: handle_auto_start - No LobbyState found");
         }
     }
 }

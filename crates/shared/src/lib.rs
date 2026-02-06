@@ -1,25 +1,22 @@
-pub mod bulkhead_door;
-pub mod camera;
 pub mod components;
-pub mod create_static_level;
-pub mod culling;
 pub mod entities;
-pub mod input;
-pub mod level_generation;
-pub mod level_visuals;
-pub mod movement;
+pub mod gym;
+pub mod inputs;
+pub mod level;
 pub mod navigation;
 pub mod protocol;
 pub mod render;
 
-#[cfg(test)]
-mod tests;
+use avian3d::collision::CollisionDiagnostics;
+use avian3d::dynamics::solver::SolverDiagnostics;
+use avian3d::prelude::{PhysicsDiagnosticsPlugin, PhysicsPlugins};
+use avian3d::spatial_query::SpatialQueryDiagnostics;
 
-use avian3d::prelude::PhysicsPlugins;
-
-use bevy::prelude::Plugin;
+use bevy::prelude::{Plugin, Resource};
 
 use std::net::SocketAddr;
+
+use crate::inputs::SharedInputPlugin;
 
 pub const SEND_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
 pub const SERVER_BIND_ADDR: SocketAddr = SocketAddr::new(
@@ -43,28 +40,27 @@ pub const FIXED_TIMESTEP_HZ: f64 = 60.0;
 #[derive(bevy::prelude::Resource, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum NetworkMode {
     #[default]
-    Udp,
-    Crossbeam,
+    Udp, // standard UDP networking (internet client server)
+    Crossbeam, // for in-process messaging channel
+    Local,     // for same-process in app communication
 }
+
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct GymMode(pub bool);
 
 pub struct SharedPlugin;
 impl Plugin for SharedPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
+        app.add_plugins(SharedInputPlugin);
         app.add_plugins(protocol::ProtocolPlugin);
-        app.add_plugins(
-            PhysicsPlugins::default(),
-            // .build()
-            // .disable::<PhysicsTransformPlugin>()
-            // .disable::<PhysicsInterpolationPlugin>()
-            // .disable::<IslandPlugin>()
-            // .disable::<IslandSleepingPlugin>(),
-        );
+        // Add diagnostics plugin and resource first so required resources exist
+        app.add_plugins(PhysicsDiagnosticsPlugin);
+        app.insert_resource(CollisionDiagnostics::default());
+        app.insert_resource(SolverDiagnostics::default());
+        app.insert_resource(SpatialQueryDiagnostics::default());
+        app.add_plugins(PhysicsPlugins::default());
         app.add_plugins(navigation::NavigationPlugin);
         app.add_plugins(components::health::HealthPlugin);
         app.add_plugins(components::weapons::WeaponsPlugin);
-        app.add_plugins(level_generation::LevelGenerationPlugin);
-        app.add_plugins(bulkhead_door::BulkheadDoorPlugin);
-        app.add_plugins(level_visuals::LevelVisualsPlugin);
-        app.add_plugins(culling::CullingPlugin);
     }
 }

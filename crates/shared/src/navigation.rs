@@ -3,7 +3,6 @@ use bevy::prelude::*;
 use lightyear::prelude::{InterpolationTarget, NetworkTarget, Replicate};
 use serde::{Deserialize, Serialize};
 
-/// Component for entities that should block navigation (obstacles)
 #[derive(Component, Clone, Debug)]
 pub struct NavigationObstacle;
 
@@ -15,7 +14,6 @@ impl Plugin for NavigationPlugin {
     }
 }
 
-/// Simplified navigation agent for basic movement
 #[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimpleNavigationAgent {
     pub speed: f32,

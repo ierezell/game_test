@@ -13,6 +13,10 @@ bevy.workspace = true
 avian3d.workspace = true
 leafwing-input-manager.workspace = true
 
+[dev-dependencies]
+crossbeam-channel = "0.5"
+lightyear_tests = { git = "https://github.com/cBournhonesque/lightyear", branch = "main" }
+
 [[bin]]
 name = "launcher"
 path = "src/main.rs"

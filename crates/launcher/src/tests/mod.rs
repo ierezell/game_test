@@ -1,10 +1,2 @@
-mod common;
-mod end_to_end_test;
-mod flow_test;
-mod input_handling_test;
-mod late_joining_unit_test;
-mod movement_replication_unit_test;
-mod movement_tests;
-mod network_e2e_test;
-mod performance_test;
-mod udp_integration_test;
+#[cfg(test)]
+pub mod basic;

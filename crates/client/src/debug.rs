@@ -1,18 +1,15 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use lightyear::prelude::{
-    Controlled, LocalTimeline, NetworkTimeline, Predicted, PredictionManager,
-};
+use lightyear::prelude::{Controlled, LocalTimeline, Predicted};
 use shared::{
     navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
     protocol::{CharacterMarker, PlayerId},
 };
 
-pub struct DebugPlugin;
+pub struct ClientDebugPlugin;
 
-impl Plugin for DebugPlugin {
+impl Plugin for ClientDebugPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(PhysicsDebugPlugin);
         app.add_systems(Update, debug_navigation_paths);
         app.add_systems(Update, debug_player_position);
     }
@@ -62,7 +59,7 @@ fn debug_player_position(
             With<CharacterMarker>,
         ),
     >,
-    timeline: Single<&LocalTimeline, With<PredictionManager>>,
+    timeline: Res<LocalTimeline>,
 ) {
     for (name, position, linear_velocity) in player_query.iter() {
         debug!(

@@ -5,10 +5,7 @@ pub struct GunEffectsPlugin;
 
 impl Plugin for GunEffectsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (
-            show_hit_markers,
-            cleanup_old_hit_markers,
-        ));
+        app.add_systems(Update, (show_hit_markers, cleanup_old_hit_markers));
     }
 }
 
@@ -17,7 +14,6 @@ struct HitMarker {
     timer: Timer,
 }
 
-/// Show visual feedback when shots hit
 fn show_hit_markers(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -25,7 +21,6 @@ fn show_hit_markers(
     hit_events: Query<&HitEvent, Added<HitEvent>>,
 ) {
     for hit_event in hit_events.iter() {
-        // Spawn a small sphere at the hit point as visual feedback
         commands.spawn((
             Mesh3d(meshes.add(Sphere::new(0.1))),
             MeshMaterial3d(materials.add(StandardMaterial {
@@ -39,12 +34,11 @@ fn show_hit_markers(
             },
             Name::new("HitMarker"),
         ));
-        
+
         info!("💥 Hit marker spawned at {:?}", hit_event.hit_point);
     }
 }
 
-/// Remove hit markers after their timer expires
 fn cleanup_old_hit_markers(
     mut commands: Commands,
     mut markers: Query<(Entity, &mut HitMarker)>,

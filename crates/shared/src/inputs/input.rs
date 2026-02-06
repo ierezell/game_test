@@ -1,5 +1,7 @@
 use bevy::prelude::Reflect;
+
 use leafwing_input_manager::Actionlike;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(
@@ -29,6 +31,6 @@ pub enum PlayerAction {
     ToggleFlashlight,
 }
 
-/// Constants for player physics and input
 pub const PLAYER_CAPSULE_RADIUS: f32 = 0.5;
 pub const PLAYER_CAPSULE_HEIGHT: f32 = 1.5;
+pub const PITCH_LIMIT_RADIANS: f32 = std::f32::consts::FRAC_PI_2 - 0.01;

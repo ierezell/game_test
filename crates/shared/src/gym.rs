@@ -1,12 +1,16 @@
-use crate::navigation::NavigationObstacle;
-use avian3d::prelude::{Collider, Position, RigidBody};
+use crate::GymMode;
+use crate::components::health::Health;
+use crate::entities::NpcPhysicsBundle;
+use crate::navigation::{NavigationObstacle, setup_patrol, validate_spawn_position};
+use crate::protocol::CharacterMarker;
+use avian3d::prelude::{Collider, LinearVelocity, Position, RigidBody, Rotation};
 use bevy::prelude::Color;
 use bevy::prelude::{
-    AmbientLight, Assets, Commands, Component, Cuboid, Dir3, Mesh, Mesh3d, MeshMaterial3d, Name,
-    Plane3d, Quat, ResMut, StandardMaterial, Transform, Vec2, Vec3, default, info,
+    Assets, Commands, Component, Cuboid, Dir3, Mesh, Mesh3d, MeshMaterial3d, Name, Plane3d, Query,
+    Res, ResMut, StandardMaterial, Vec2, Vec3, With, default, info,
 };
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+
+use lightyear::prelude::{InterpolationTarget, NetworkTarget, Replicate};
 use serde::{Deserialize, Serialize};
 use vleue_navigator::prelude::*;
 
@@ -18,29 +22,11 @@ pub const ROOM_SIZE: f32 = 50.0;
 #[derive(Component, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct LevelDoneMarker;
 
-pub fn setup_static_level(
+pub fn setup_gym_level(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: Option<ResMut<Assets<StandardMaterial>>>,
-    seed: Option<u64>,
+    mut materials: Option<ResMut<Assets<StandardMaterial>>>, // Option for tests as there is no render
 ) {
-    let seed = seed.unwrap_or(42); // Default seed if none provided
-    info!("Setting up static level with seed: {}", seed);
-
-    // Use seed for procedural generation
-    let mut _rng = StdRng::seed_from_u64(seed);
-    if materials.is_some() {
-        // Pure darkness - flashlight only
-        commands.insert_resource(AmbientLight {
-            color: Color::BLACK,
-            brightness: 0.0,
-            affects_lightmapped_meshes: false,
-        });
-
-        // NO DIRECTIONAL LIGHT - removed for pure darkness
-    }
-
-    // Floor with physics collision
     let mut floor_entity = commands.spawn((
         Name::new("Floor"),
         Position::from(Vec3::new(0.0, -FLOOR_THICKNESS / 2.0, 0.0)),
@@ -56,7 +42,6 @@ pub fn setup_static_level(
         floor_entity.insert(MeshMaterial3d(mats.add(StandardMaterial { ..default() })));
     }
 
-    // Ceiling with physics collision
     let mut ceiling_entity = commands.spawn((
         Name::new("Ceiling"),
         Position::from(Vec3::new(0.0, WALL_HEIGHT + FLOOR_THICKNESS / 2.0, 0.0)),
@@ -72,7 +57,6 @@ pub fn setup_static_level(
         ceiling_entity.insert(MeshMaterial3d(mats.add(StandardMaterial { ..default() })));
     }
 
-    // Walls - could be procedurally varied based on seed
     let walls = [
         (
             Vec3::new(ROOM_SIZE / 2.0, WALL_HEIGHT / 2.0, 0.0),
@@ -105,7 +89,7 @@ pub fn setup_static_level(
             })),
             RigidBody::Static,
             Collider::cuboid(size.x, size.y, size.z),
-            NavigationObstacle, // Mark walls as navigation obstacles
+            NavigationObstacle,
         ));
 
         if let Some(ref mut mats) = materials {
@@ -113,23 +97,21 @@ pub fn setup_static_level(
         }
     }
 
-    // Create some interior obstacles for more interesting pathfinding
-    // Position them to be floor-to-ceiling barriers that NPCs cannot pass through
     let obstacle_positions = [
-        Vec3::new(15.0, 1.5, 10.0),   // Lowered Y position
-        Vec3::new(-10.0, 1.5, -15.0), // Lowered Y position
-        Vec3::new(20.0, 1.5, -20.0),  // Lowered Y position
-        Vec3::new(-15.0, 1.5, 15.0),  // Lowered Y position
+        Vec3::new(15.0, 1.5, 10.0),
+        Vec3::new(-10.0, 1.5, -15.0),
+        Vec3::new(20.0, 1.5, -20.0),
+        Vec3::new(-15.0, 1.5, 15.0),
     ];
 
     for (i, pos) in obstacle_positions.iter().enumerate() {
         let mut obstacle_entity = commands.spawn((
             Name::new(format!("Obstacle_{}", i + 1)),
             Position::from(*pos),
-            Mesh3d(meshes.add(Cuboid::new(3.0, 3.0, 3.0))), // Smaller, cube-shaped obstacles
-            RigidBody::Static, // Use Static RigidBody to make boxes non-movable
-            Collider::cuboid(1.5, 1.5, 1.5), // Smaller collision box to match visual
-            NavigationObstacle, // Mark as navigation obstacle
+            Mesh3d(meshes.add(Cuboid::new(3.0, 3.0, 3.0))),
+            RigidBody::Static,
+            Collider::cuboid(1.5, 1.5, 1.5),
+            NavigationObstacle,
         ));
 
         if let Some(ref mut mats) = materials {
@@ -140,13 +122,10 @@ pub fn setup_static_level(
         }
     }
 
-    // Setup navigation mesh for pathfinding
-    // The navmesh covers the floor area minus the walls
     let nav_area = ROOM_SIZE - 2.0; // Leave more margin from walls for safety
     commands.spawn((
-        ManagedNavMesh::single(), // Add ManagedNavMesh component
+        ManagedNavMesh::single(),
         NavMeshSettings {
-            // Define the outer borders of the navmesh (floor area)
             fixed: Triangulation::from_outer_edges(&[
                 Vec2::new(-nav_area, -nav_area),
                 Vec2::new(nav_area, -nav_area),
@@ -155,18 +134,59 @@ pub fn setup_static_level(
             ]),
             simplify: 0.1,
             merge_steps: 1,
-            build_timeout: Some(10.0), // More time for obstacle processing
-            agent_radius: 1.0,         // Increased radius for better collision avoidance
+            build_timeout: Some(10.0),
+            agent_radius: 1.0,
             ..default()
         },
-        // Position the navmesh at the actual NPC movement level
-        Transform::from_xyz(0.0, 1.0, 0.0)
-            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)), // Rotate to match Y-up coordinate system
-        // Auto-update navmesh when obstacles change
         NavMeshUpdateMode::Direct,
         Name::new("NavMesh"),
     ));
 
-    commands.spawn((LevelDoneMarker, Name::new("Level")));
-    info!("Scene setup complete with navmesh and seed: {}", seed);
+    commands.spawn((LevelDoneMarker, Name::new("Gym")));
+}
+
+pub fn spawn_gym_patrolling_npc_entities(
+    mut commands: Commands,
+    obstacles: Query<&Position, With<NavigationObstacle>>,
+    gym_mode: Option<Res<GymMode>>,
+) {
+    let is_gym_mode = gym_mode.map(|gm| gm.0).unwrap_or(false);
+
+    if !is_gym_mode {
+        info!("⏭️  Skipping NPC spawn in normal mode (not implemented yet)");
+        return;
+    }
+
+    info!("🤖 Spawning test NPC for gym mode");
+
+    let initial_spawn = Vec3::new(-18.0, 1.0, -8.0);
+    // Obstacles are created at create_static_level, so it's before this system runs
+    let validated_spawn = validate_spawn_position(initial_spawn, &obstacles, 0.5);
+    let enemy = commands
+        .spawn((
+            Name::new("Patrol_Enemy_1"),
+            Position::new(validated_spawn),
+            Rotation::default(),
+            LinearVelocity::default(),
+            Health::basic(),
+            Replicate::to_clients(NetworkTarget::All),
+            InterpolationTarget::to_clients(NetworkTarget::All),
+            CharacterMarker,
+            NpcPhysicsBundle::default(),
+        ))
+        .id();
+
+    let original_patrol_points = [
+        Vec3::new(-20.0, 1.0, -10.0),
+        Vec3::new(-5.0, 1.0, -10.0),
+        Vec3::new(-5.0, 1.0, 5.0),
+        Vec3::new(-20.0, 1.0, 5.0),
+    ];
+
+    let validated_patrol_points: Vec<Vec3> = original_patrol_points
+        .iter()
+        .map(|&point| validate_spawn_position(point, &obstacles, 0.5))
+        .collect();
+
+    setup_patrol(&mut commands, enemy, validated_patrol_points, 3.0);
 }

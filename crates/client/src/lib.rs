@@ -1,29 +1,26 @@
 pub mod camera;
 pub mod debug;
 pub mod entities;
-pub mod flashlight;
+
 pub mod game;
-pub mod gun_effects;
-pub mod input;
-pub mod input_manager;
+pub mod inputs;
 pub mod lobby;
 pub mod network;
+pub mod vfx;
 
-#[cfg(test)]
-mod tests;
-use crate::camera::RenderPlugin;
-use crate::debug::DebugPlugin;
+use crate::camera::ClientCameraPlugin;
+use crate::debug::ClientDebugPlugin;
 use crate::entities::ClientEntitiesPlugin;
-use crate::flashlight::FlashlightPlugin;
-use crate::game::GameClientPlugin;
-use crate::gun_effects::GunEffectsPlugin;
-use crate::input::ClientInputPlugin;
+use crate::game::ClientGameCyclePlugin;
+use crate::inputs::ClientInputPlugin;
 use crate::lobby::ClientLobbyPlugin;
 use crate::network::ClientNetworkPlugin;
+
+use crate::vfx::ClientVFXPlugin;
 use bevy::log::LogPlugin;
 use bevy::prelude::{
     App, AssetApp, AssetPlugin, DefaultPlugins, Image, Mesh, PluginGroup, Resource, Shader,
-    StandardMaterial, Startup, States, default,
+    StandardMaterial, States, default,
 };
 use bevy::render::{
     RenderPlugin as BevyRenderPlugin,
@@ -123,14 +120,8 @@ pub fn create_client_app(
                 })
                 .disable::<LogPlugin>(),
         );
-        client_app.add_plugins(RenderPlugin);
-
-        // Log GPU adapter info on startup
-        client_app.add_systems(Startup, log_gpu_adapter);
     }
 
-    // IMPORTANT: SharedPlugin must be added BEFORE ClientPlugins
-    // to ensure protocol registration happens before lightyear initialization
     client_app.insert_resource(network_mode);
     client_app.add_plugins(shared::SharedPlugin);
     client_app.add_plugins(ClientPlugins {
@@ -140,27 +131,19 @@ pub fn create_client_app(
     client_app.insert_resource(LocalPlayerId(client_id));
     client_app.add_plugins(ClientNetworkPlugin);
     client_app.add_plugins(ClientInputPlugin);
-    if !headless {
-        client_app.add_plugins(DebugPlugin);
-        client_app.add_plugins(FlashlightPlugin); // Add flashlight only for non-headless
-        client_app.add_plugins(GunEffectsPlugin); // Add gun visual effects
-    }
+    client_app.add_plugins(ClientCameraPlugin);
+
     client_app.add_plugins(ClientEntitiesPlugin);
     client_app.add_plugins(ClientLobbyPlugin);
-    client_app.add_plugins(GameClientPlugin);
+    client_app.add_plugins(ClientGameCyclePlugin);
 
     client_app.init_state::<ClientGameState>();
     client_app.insert_state(ClientGameState::LocalMenu);
 
-    client_app
-}
+    if !headless {
+        client_app.add_plugins(ClientDebugPlugin);
+        client_app.add_plugins(ClientVFXPlugin);
+    }
 
-/// Log GPU adapter information on startup
-fn log_gpu_adapter() {
-    bevy::log::info!("┌─────────────────────────────────────────────");
-    bevy::log::info!("│ GPU Configuration:");
-    bevy::log::info!("│ Backends: Vulkan | DirectX12 | Metal");
-    bevy::log::info!("│ Software Rendering (OpenGL): DISABLED");
-    bevy::log::info!("│ VSync: Enabled (AutoVsync)");
-    bevy::log::info!("└─────────────────────────────────────────────");
+    client_app
 }

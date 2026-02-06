@@ -3,30 +3,33 @@ use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     ecs::schedule::IntoScheduleConfigs,
     prelude::{
-        AmbientLight, App, Assets, Color, Commands, Cuboid, default, Entity,
-        FixedUpdate, Mesh, Mesh3d, MeshMaterial3d, Name, Plane3d, Plugin, Query,
-        ResMut, StandardMaterial, Transform, Vec2, Vec3, With, info,
+        App, Assets, Commands, CommandsStatesExt, Entity, FixedUpdate, Mesh, Name, Plugin, Query,
+        Res, ResMut, StandardMaterial, Vec3, With, info,
     },
     state::{condition::in_state, state::OnEnter},
 };
 use leafwing_input_manager::prelude::ActionState;
-use shared::input::PlayerAction;
-use shared::movement::{GroundState, MovementConfig};
-use shared::camera::FpsCamera;
+
+use shared::inputs::movement::GroundState;
+use shared::{GymMode, level::visuals::build_level_visuals};
+use shared::{gym::setup_gym_level, protocol::LevelSeed};
+use shared::{
+    inputs::input::PlayerAction,
+    level::generation::{LevelConfig, build_level_physics, generate_level},
+};
 
 use lightyear::prelude::{
     Connected, ControlledBy, InterpolationTarget, NetworkTarget, PeerId, PredictionTarget,
     RemoteId, Replicate, server::ClientOf,
 };
 use shared::{
+    components::flashlight::PlayerFlashlight,
     components::{
         health::{Health, Respawnable},
         weapons::Gun,
     },
-    entities::{NpcPhysicsBundle, PlayerPhysicsBundle, color_from_id},
-    navigation::{NavigationObstacle, setup_patrol, validate_spawn_position},
+    entities::{PlayerPhysicsBundle, color_from_id},
     protocol::{CharacterMarker, LobbyState, PlayerColor, PlayerId},
-    components::flashlight::PlayerFlashlight,
 };
 
 use crate::ServerGameState;
@@ -34,7 +37,6 @@ use crate::ServerGameState;
 pub struct ServerEntitiesPlugin;
 impl Plugin for ServerEntitiesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ServerInputPlugin);
         app.add_systems(
             FixedUpdate,
             (
@@ -44,74 +46,71 @@ impl Plugin for ServerEntitiesPlugin {
             )
                 .run_if(in_state(ServerGameState::Playing)),
         );
-        app.add_systems(
-            OnEnter(ServerGameState::Playing),
-            (
-                generate_and_build_level,
-                (spawn_player_entities, spawn_patrolling_npc_entities),
-            )
-                .chain(),
-        );
+        app.add_systems(OnEnter(ServerGameState::Loading), generate_and_build_level);
     }
 }
 
-/// Generate the procedural level and build its visual representation
-///
-/// This runs FIRST when entering the Playing state, before spawning players
 fn generate_and_build_level(
     mut commands: Commands,
     meshes: Option<ResMut<Assets<Mesh>>>,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
+    gym_mode: Option<Res<GymMode>>,
+    level_seed_query: Query<&LevelSeed>,
+    lobby_state: Query<&LobbyState>,
+    client_query: Query<(Entity, &RemoteId), With<ClientOf>>,
 ) {
-    info!("🎮 SIMPLIFIED MODE: Spawning basic test environment");
+    let is_gym_mode = gym_mode.map(|gm| gm.0).unwrap_or(false);
 
-    // Only add visual components if rendering is available (not headless)
-    if let (Some(mut meshes), Some(mut materials)) = (meshes, materials) {
-        // Simple ground plane
-        commands.spawn((
-            Mesh3d(meshes.add(Mesh::from(Plane3d::new(Vec3::Y, Vec2::new(50.0, 50.0))))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.3, 0.3, 0.35),
-                perceptual_roughness: 0.9,
-                ..default()
-            })),
-            Transform::from_xyz(0.0, 0.0, 0.0),
-            Replicate::to_clients(NetworkTarget::All),
-            Name::new("Ground"),
-        ));
+    if is_gym_mode {
+        info!("🏋️  GYM MODE: Setting up simple test environment with one NPC and obstacles");
+        if let (Some(mesh_assets), Some(mat_assets)) = (meshes, materials) {
+            setup_gym_level(commands.reborrow(), mesh_assets, Some(mat_assets));
+        }
+        // Spawn players in gym mode
+        spawn_player_entities(commands.reborrow(), &lobby_state, &client_query);
+        // NPC spawning is handled by a separate system (spawn_gym_patrolling_npc_entities is a system)
+    } else if let Some(level_seed) = level_seed_query.iter().next() {
+        bevy::log::info!(
+            "🌱 Server generating level on state enter with seed: {}",
+            level_seed.seed
+        );
 
-        // Simple cube as reference object
-        commands.spawn((
-            Mesh3d(meshes.add(Mesh::from(Cuboid::new(2.0, 2.0, 2.0)))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(0.8, 0.2, 0.2),
-                unlit: false,  // PBR lighting - only visible when lit
-                ..default()
-            })),
-            Transform::from_xyz(5.0, 1.0, 5.0),
-            Replicate::to_clients(NetworkTarget::All),
-            Name::new("Test Cube"),
-        ));
+        info!("🎮 NORMAL MODE: Setting up procedural level generation");
+        let config = LevelConfig {
+            seed: level_seed.seed,
+            target_zone_count: 12,
+            min_zone_spacing: 35.0,
+            max_depth: 8,
+        };
+        let level_graph = generate_level(config);
+        build_level_physics(commands.reborrow(), &level_graph);
 
-        // NO LIGHTS - Pure darkness except for player flashlights
-        commands.insert_resource(AmbientLight {
-            color: Color::BLACK,
-            brightness: 0.0,
-            affects_lightmapped_meshes: false,
-        });
+        if let (Some(mesh_assets), Some(mat_assets)) = (meshes, materials) {
+            build_level_visuals(
+                commands.reborrow(),
+                mesh_assets,
+                Some(mat_assets),
+                level_graph,
+            );
+        }
 
-        info!("✅ Simple test environment ready with visuals (flashlight-only lighting)");
-    } else {
-        info!("✅ Simple test environment ready (headless mode)");
+        // Spawn players in normal mode
+        spawn_player_entities(commands.reborrow(), &lobby_state, &client_query);
     }
+
+    // After loading is complete, transition to Playing
+    info!("✅ Server level loaded, transitioning to Playing state");
+    commands.set_state(ServerGameState::Playing);
 }
 
 fn spawn_player_entities(
     mut commands: Commands,
-    lobby_state: Query<&LobbyState>,
-    client_query: Query<(Entity, &RemoteId), With<ClientOf>>,
+    lobby_state: &Query<&LobbyState>,
+    client_query: &Query<(Entity, &RemoteId), With<ClientOf>>,
 ) {
-    let lobby_data = lobby_state.single().unwrap();
+    let Ok(lobby_data) = lobby_state.single() else {
+        return;
+    };
     let player_count = lobby_data.players.len() as f32;
 
     // Spawn players in a circle
@@ -127,11 +126,8 @@ fn spawn_player_entities(
                 })
         {
             let angle = (index as f32) * 2.0 * std::f32::consts::PI / player_count;
-            let spawn_position = Vec3::new(
-                spawn_radius * angle.cos(),
-                3.5,
-                spawn_radius * angle.sin(),
-            );
+            let spawn_position =
+                Vec3::new(spawn_radius * angle.cos(), 3.5, spawn_radius * angle.sin());
 
             println!(
                 "DEBUG: Spawning player entity for ID: {} at {:?}",
@@ -158,14 +154,7 @@ fn spawn_player_entities(
                     PredictionTarget::to_clients(NetworkTarget::Single(remote_id.0)),
                     InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(remote_id.0)),
                 ))
-                .insert((
-                    // Refactored modular movement components
-                    MovementConfig::default(),
-                    // FpsCamera: Server spawns default, client replicates actual values
-                    // Server needs this for apply_movement system to calculate wish direction
-                    FpsCamera::default(),
-                    GroundState::default(),
-                ))
+                .insert(GroundState::default())
                 .insert((
                     CharacterMarker,
                     PlayerPhysicsBundle::default(),
@@ -184,42 +173,6 @@ fn spawn_player_entities(
             }
         }
     }
-}
-
-fn spawn_patrolling_npc_entities(
-    mut commands: Commands,
-    obstacles: Query<&Position, With<NavigationObstacle>>,
-) {
-    let initial_spawn = Vec3::new(-18.0, 1.0, -8.0);
-    // Obstacles are created at create_static_level, so it's before this system runs
-    let validated_spawn = validate_spawn_position(initial_spawn, &obstacles, 0.5);
-    let enemy = commands
-        .spawn((
-            Name::new("Patrol_Enemy_1"),
-            Position::new(validated_spawn),
-            Rotation::default(),
-            LinearVelocity::default(),
-            Health::basic(),
-            Replicate::to_clients(NetworkTarget::All),
-            InterpolationTarget::to_clients(NetworkTarget::All),
-            CharacterMarker,
-            NpcPhysicsBundle::default(),
-        ))
-        .id();
-
-    let original_patrol_points = [
-        Vec3::new(-20.0, 1.0, -10.0),
-        Vec3::new(-5.0, 1.0, -10.0),
-        Vec3::new(-5.0, 1.0, 5.0),
-        Vec3::new(-20.0, 1.0, 5.0),
-    ];
-
-    let validated_patrol_points: Vec<Vec3> = original_patrol_points
-        .iter()
-        .map(|&point| validate_spawn_position(point, &obstacles, 0.5))
-        .collect();
-
-    setup_patrol(&mut commands, enemy, validated_patrol_points, 3.0);
 }
 
 /// Spawn player entities for clients that join after the game has already started
@@ -289,13 +242,7 @@ fn spawn_late_joining_players(
                     PredictionTarget::to_clients(NetworkTarget::Single(remote_id.0)),
                     InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(remote_id.0)),
                 ))
-                .insert((
-                    // Refactored modular movement components
-                    MovementConfig::default(),
-                    // FpsCamera: Server spawns default, client replicates actual values
-                    FpsCamera::default(),
-                    GroundState::default(),
-                ))
+                .insert(GroundState::default())
                 .insert((
                     CharacterMarker,
                     PlayerPhysicsBundle::default(),

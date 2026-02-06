@@ -1,14 +1,12 @@
 use crate::{
-    bulkhead_door,
-    camera::FpsCamera,
     components::{
+        flashlight::PlayerFlashlight,
         health::{Health, Respawnable},
         weapons::{Gun, Projectile, ProjectileGun},
-        flashlight::PlayerFlashlight,
     },
-    input::PlayerAction,
-    movement::{GroundState, MovementConfig},
-    navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
+    inputs::input::PlayerAction,
+    inputs::movement::GroundState,
+    // navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
 };
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
@@ -97,12 +95,6 @@ impl Plugin for ProtocolPlugin {
             .add_linear_interpolation();
 
         app.register_component::<LinearVelocity>().add_prediction();
-
-        // Refactored movement components (modular, testable)
-        app.register_component::<MovementConfig>().add_prediction();
-        // FpsCamera: Client-authoritative component
-        // Registered for serialization but replication is handled manually
-        app.register_component::<FpsCamera>();
         app.register_component::<GroundState>(); // Server authoritative
 
         // Health and weapon components
@@ -112,16 +104,12 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<ProjectileGun>().add_prediction();
         app.register_component::<Projectile>().add_prediction();
 
-        // Flashlight component - replicated with prediction
-        app.register_component::<PlayerFlashlight>().add_prediction();
-
-        // Navigation components for debug visualization on client
-        app.register_component::<SimpleNavigationAgent>();
-        app.register_component::<PatrolRoute>();
-        app.register_component::<PatrolState>();
+        app.register_component::<PlayerFlashlight>()
+            .add_prediction();
 
         app.register_component::<LobbyState>();
 
+        // Events
         app.register_message::<ClientWorldCreatedEvent>()
             .add_direction(NetworkDirection::ClientToServer);
 
@@ -130,9 +118,6 @@ impl Plugin for ProtocolPlugin {
 
         app.register_message::<StartLoadingGameEvent>()
             .add_direction(NetworkDirection::ServerToClient);
-
-        // Register bulkhead door networking
-        bulkhead_door::register_bulkhead_networking(app);
 
         debug!("Protocol plugin initialized with components, messages, inputs, and events");
     }

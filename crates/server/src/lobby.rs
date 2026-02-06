@@ -1,36 +1,22 @@
-use bevy::app::Startup;
 use bevy::prelude::{
-    App, Assets, Commands, CommandsStatesExt, Mesh, Name, Plugin, Query, ResMut, Single,
+    App, Assets, Commands, CommandsStatesExt, Mesh, Plugin, Query, ResMut, Single,
     StandardMaterial, Update, error,
 };
 
 use lightyear::prelude::{
-    MessageReceiver, MetadataChannel, NetworkTarget, Replicate, Server, ServerMultiMessageSender,
+    MessageReceiver, MetadataChannel, NetworkTarget, Server, ServerMultiMessageSender,
 };
 
 use crate::ServerGameState;
-use shared::create_static_level::setup_static_level;
 
-use shared::protocol::{GameSeed, HostStartGameEvent, LobbyState, StartLoadingGameEvent};
+use shared::protocol::{GameSeed, HostStartGameEvent, StartLoadingGameEvent};
 
 pub struct ServerLobbyPlugin;
 
 impl Plugin for ServerLobbyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, host_start_game_event);
-        app.add_systems(Startup, init_lobby);
     }
-}
-
-fn init_lobby(mut commands: Commands) {
-    commands.spawn((
-        LobbyState {
-            players: Vec::new(),
-            host_id: 0,
-        },
-        Replicate::to_clients(NetworkTarget::All),
-        Name::from("LobbyState"),
-    ));
 }
 
 fn host_start_game_event(
@@ -38,19 +24,21 @@ fn host_start_game_event(
     mut sender: ServerMultiMessageSender,
     server: Single<&Server>,
     mut commands: Commands,
-    meshes: ResMut<Assets<Mesh>>,
-    materials: Option<ResMut<Assets<StandardMaterial>>>,
+    _meshes: ResMut<Assets<Mesh>>,
+    _materials: Option<ResMut<Assets<StandardMaterial>>>,
 ) {
     let mut trigger = false;
     for mut message_receiver in message_receiver_query.iter_mut() {
         // There is one message receiver per connected client...
         if message_receiver.has_messages() {
+            println!("DEBUG: Server received HostStartGameEvent");
             trigger = true;
             message_receiver.receive().for_each(drop);
         }
     }
 
     if trigger {
+        println!("DEBUG: Server transitioning to Loading state");
         commands.spawn(GameSeed { seed: 42 });
         commands.set_state(ServerGameState::Loading);
         sender
@@ -63,7 +51,7 @@ fn host_start_game_event(
                 error!("Failed to send message: {:?}", e);
             });
 
-        setup_static_level(commands.reborrow(), meshes, materials, None);
-        commands.set_state(ServerGameState::Playing);
+        // Stay in Loading state - transition to Playing happens after gym environment loads
+        // This is handled by the entities plugin OnEnter(Loading) systems
     }
 }

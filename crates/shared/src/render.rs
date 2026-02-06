@@ -1,9 +1,9 @@
-use crate::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
+use crate::inputs::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
 use crate::protocol::{PlayerColor, PlayerId};
 use avian3d::prelude::Position;
 use bevy::prelude::{
-    Add, Assets, Capsule3d, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d, On, Query,
-    ResMut, StandardMaterial, Without, debug, default,
+    Add, Assets, Capsule3d, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d, On, Query, ResMut,
+    StandardMaterial, Without, debug, default,
 };
 
 pub fn add_player_visuals(
@@ -22,7 +22,7 @@ pub fn add_player_visuals(
         Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: color.0,
-            unlit: false,  // PBR lighting - only visible when lit
+            unlit: false, // PBR lighting - only visible when lit
             ..default()
         })),
     ));

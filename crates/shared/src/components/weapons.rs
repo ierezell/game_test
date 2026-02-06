@@ -1,12 +1,11 @@
 use crate::components::health::DamageEvent;
-use crate::input::PlayerAction;
-use crate::camera::FpsCamera;
+use crate::inputs::input::PlayerAction;
 use avian3d::prelude::{
     Collider, LinearVelocity, Position, RigidBody, Rotation, SpatialQueryFilter,
     SpatialQueryPipeline,
 };
 use bevy::prelude::{
-    Commands, Component, Dir3, Entity, MessageWriter, Quat, Query, Res, Time, Timer, TimerMode, Vec3,
+    Commands, Component, Dir3, Entity, MessageWriter, Query, Res, Time, Timer, TimerMode, Vec3,
     info,
 };
 use leafwing_input_manager::prelude::ActionState;
@@ -56,24 +55,16 @@ pub struct HitEvent {
 // Gun use raycast to detect hits. ProjectileGun spawns projectile entities.
 pub fn fire_gun_system(
     mut commands: Commands,
-    mut query: Query<(
-        Entity,
-        &mut Gun,
-        &Position,
-        &FpsCamera,
-        &ActionState<PlayerAction>,
-    )>,
+    mut query: Query<(Entity, &mut Gun, &Position, &ActionState<PlayerAction>)>,
     spatial_query: Res<SpatialQueryPipeline>,
     mut damage_writer: MessageWriter<DamageEvent>,
     time: Res<Time>,
 ) {
-    for (shooter_entity, mut gun, pos, camera, action_state) in query.iter_mut() {
+    for (shooter_entity, mut gun, pos, action_state) in query.iter_mut() {
         gun.cooldown.tick(time.delta());
         if action_state.pressed(&PlayerAction::Shoot) && gun.cooldown.is_finished() {
-            // Calculate shooting direction from camera orientation
-            let yaw_rotation = Quat::from_rotation_y(camera.yaw);
-            let pitch_rotation = Quat::from_rotation_x(camera.pitch);
-            let direction = yaw_rotation * pitch_rotation * Vec3::NEG_Z;
+            // Calculate shooting direction
+            let direction = Vec3::ZERO; // TODO : Compute the direction from where the player is looking (mouse position)
 
             // Create raycast filter to exclude the shooter
             let filter = SpatialQueryFilter::default().with_excluded_entities([shooter_entity]);

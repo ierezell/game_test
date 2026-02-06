@@ -1,73 +1,17 @@
 use bevy::prelude::{
-    Add, App, ButtonInput, Commands, FixedUpdate, IntoScheduleConfigs, KeyCode, MessageReader, MouseButton, On, Plugin, Query, Res,
-    Update, With,
+    Add, ButtonInput, Commands, KeyCode, MessageReader, MouseButton, On, Query, Res, With,
 };
 
-use avian3d::prelude::{Rotation};
 use bevy::window::WindowFocused;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
-use leafwing_input_manager::prelude::{ActionState, InputMap, MouseMove, VirtualDPad};
+use leafwing_input_manager::prelude::ActionState;
 
+use crate::inputs::input::get_player_input_map;
 use lightyear::prelude::{Controlled, Predicted};
 
-use shared::input::PlayerAction;
-use shared::movement::{PhysicsConfig, update_ground_detection, apply_movement};
-use shared::camera::{FpsCamera, update_camera_from_input};
+use shared::inputs::input::PlayerAction;
+
 use shared::protocol::PlayerId;
-
-pub struct ClientInputPlugin;
-
-impl Plugin for ClientInputPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<PhysicsConfig>();
-        
-        // Movement systems (FixedUpdate for physics)
-        app.add_systems(FixedUpdate, (
-            update_ground_detection,
-            apply_movement,
-            update_camera_rotation_client,
-        ).chain());
-        
-        // Camera and input management (Update for responsiveness)
-        app.add_systems(Update, (
-            update_camera_from_input,
-            toggle_cursor_grab,
-            handle_focus_change,
-            detect_stuck_inputs,
-        ));
-        
-        app.add_observer(grab_cursor);
-    }
-}
-
-/// Client system: Update entity Rotation from FpsCamera
-fn update_camera_rotation_client(
-    mut query: Query<
-        (&FpsCamera, &mut Rotation),
-        (With<PlayerId>, With<Predicted>, With<Controlled>),
-    >,
-) {
-    for (camera, mut rotation) in query.iter_mut() {
-        rotation.0 = bevy::prelude::Quat::from_euler(
-            bevy::prelude::EulerRot::YXZ,
-            camera.yaw,
-            0.0,
-            0.0,
-        );
-    }
-}
-
-pub fn get_player_input_map() -> InputMap<PlayerAction> {
-    InputMap::<PlayerAction>::default()
-        .with(PlayerAction::Jump, KeyCode::Space)
-        .with(PlayerAction::Shoot, MouseButton::Left)
-        .with(PlayerAction::Aim, MouseButton::Right)
-        .with(PlayerAction::Sprint, KeyCode::ShiftLeft)
-        .with(PlayerAction::ToggleFlashlight, KeyCode::KeyF)
-        .with_dual_axis(PlayerAction::Move, VirtualDPad::wasd())
-        .with_dual_axis(PlayerAction::Move, VirtualDPad::arrow_keys())
-        .with_dual_axis(PlayerAction::Look, MouseMove::default())
-}
 
 pub fn is_cursor_locked(cursor_options_query: &Query<&CursorOptions, With<PrimaryWindow>>) -> bool {
     cursor_options_query
@@ -75,7 +19,7 @@ pub fn is_cursor_locked(cursor_options_query: &Query<&CursorOptions, With<Primar
         .is_ok_and(|cursor_options| cursor_options.grab_mode == CursorGrabMode::Locked)
 }
 
-fn toggle_cursor_grab(
+pub fn toggle_cursor_grab(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut action_query: Query<
@@ -121,9 +65,7 @@ fn toggle_cursor_grab(
     }
 
     // Re-lock cursor on mouse click when unlocked
-    if cursor_options.grab_mode == CursorGrabMode::None 
-        && mouse.just_pressed(MouseButton::Left) 
-    {
+    if cursor_options.grab_mode == CursorGrabMode::None && mouse.just_pressed(MouseButton::Left) {
         cursor_options.grab_mode = CursorGrabMode::Locked;
         cursor_options.visible = false;
         if let Ok(mut action_state) = action_query.single_mut() {
@@ -137,7 +79,7 @@ fn toggle_cursor_grab(
     }
 }
 
-fn handle_focus_change(
+pub fn handle_focus_change(
     mut focus_events: MessageReader<WindowFocused>,
     mut action_query: Query<
         &mut ActionState<PlayerAction>,
@@ -157,10 +99,10 @@ fn handle_focus_change(
             action_state.release(&PlayerAction::Sprint);
             action_state.release(&PlayerAction::Shoot);
             action_state.release(&PlayerAction::Aim);
-            
+
             // DON'T auto-lock cursor on focus - let user press Escape to toggle manually
             // This prevents cursor from being stuck when alt-tabbing or clicking away
-            
+
             if action_state.disabled() {
                 action_state.enable();
             }
@@ -176,7 +118,7 @@ fn handle_focus_change(
     }
 }
 
-fn grab_cursor(
+pub fn grab_cursor(
     trigger: On<Add, Controlled>,
     mut commands: Commands,
     mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
@@ -203,38 +145,6 @@ fn grab_cursor(
             commands
                 .entity(controlled_entity)
                 .insert((input_map, action_state));
-        }
-    }
-}
-
-/// Detects and clears stuck inputs that might occur from network lag, 
-/// focus changes, or input system edge cases
-fn detect_stuck_inputs(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut action_query: Query<
-        &mut ActionState<PlayerAction>,
-        (With<PlayerId>, With<Predicted>, With<Controlled>),
-    >,
-) {
-    let Ok(mut action_state) = action_query.single_mut() else {
-        return;
-    };
-
-    // If ActionState shows movement but no movement keys are actually pressed, clear it
-    let move_input = action_state.axis_pair(&PlayerAction::Move);
-    if move_input.length_squared() > 0.0 {
-        let wasd_pressed = keyboard.pressed(KeyCode::KeyW)
-            || keyboard.pressed(KeyCode::KeyA)
-            || keyboard.pressed(KeyCode::KeyS)
-            || keyboard.pressed(KeyCode::KeyD);
-        let arrows_pressed = keyboard.pressed(KeyCode::ArrowUp)
-            || keyboard.pressed(KeyCode::ArrowDown)
-            || keyboard.pressed(KeyCode::ArrowLeft)
-            || keyboard.pressed(KeyCode::ArrowRight);
-
-        if !wasd_pressed && !arrows_pressed {
-            // Input is stuck - clear it
-            action_state.set_axis_pair(&PlayerAction::Move, bevy::math::Vec2::ZERO);
         }
     }
 }

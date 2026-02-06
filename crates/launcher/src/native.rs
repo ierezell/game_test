@@ -1,7 +1,11 @@
+use crate::AutoJoin;
+use crate::host::create_host_app;
 use crate::local_menu::LocalMenuPlugin;
-use crate::{AutoHost, AutoJoin};
 use clap::{Parser, ValueEnum};
 use client::create_client_app;
+use client::lobby::AutoStart;
+use server::create_server_app;
+use shared::{GymMode, NetworkMode};
 
 #[derive(Parser)]
 #[command(name = "yolo-game")]
@@ -34,22 +38,23 @@ struct Cli {
     auto_join: bool,
 
     #[arg(long, default_value_t = false)]
-    #[arg(help = "Automatically host a game on startup")]
-    auto_host: bool,
-
-    #[arg(long, default_value_t = false)]
     #[arg(help = "Automatically start the game when hosting (requires --auto-host)")]
     auto_start: bool,
 
     #[arg(long)]
     #[arg(help = "Automatically stop the game after X seconds (0 = disabled)")]
     stop_after: Option<u64>,
+
+    #[arg(long, default_value_t = false)]
+    #[arg(help = "Use gym mode (test environment with simple square room and one NPC)")]
+    gym: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Mode {
     Client,
     Server,
+    Host,
 }
 
 pub fn run() {
@@ -61,16 +66,13 @@ pub fn run() {
                 cli.client_id,
                 "../../assets".to_string(),
                 cli.headless,
-                shared::NetworkMode::Udp,
+                NetworkMode::Udp,
             );
             client_app.add_plugins(LocalMenuPlugin);
-
-            if cli.auto_host {
-                client_app.insert_resource(AutoHost(true));
-            }
+            client_app.insert_resource(GymMode(cli.gym));
 
             if cli.auto_start {
-                client_app.insert_resource(client::lobby::AutoStart(true));
+                client_app.insert_resource(AutoStart(true));
             }
 
             if cli.auto_join {
@@ -90,7 +92,10 @@ pub fn run() {
             client_app.run();
         }
         Mode::Server => {
-            let mut server_app = server::create_server_app(cli.headless, shared::NetworkMode::Udp);
+            let mut server_app = create_server_app(cli.headless, NetworkMode::Udp);
+            if cli.gym {
+                server_app.insert_resource(GymMode(cli.gym));
+            }
 
             if let Some(stop_after_seconds) = cli.stop_after
                 && stop_after_seconds > 0
@@ -103,6 +108,25 @@ pub fn run() {
             }
 
             server_app.run();
+        }
+        Mode::Host => {
+            let mut host_app = create_host_app(cli.headless, "../../assets".to_string());
+
+            if cli.gym {
+                host_app.insert_resource(GymMode(cli.gym));
+            }
+
+            if let Some(stop_after_seconds) = cli.stop_after
+                && stop_after_seconds > 0
+            {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
+                    println!("Auto-stopping after {} seconds", stop_after_seconds);
+                    std::process::exit(0);
+                });
+            }
+
+            host_app.run();
         }
     }
 }

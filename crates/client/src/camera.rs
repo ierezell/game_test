@@ -1,9 +1,9 @@
 use avian3d::prelude::{Position, Rotation};
 
 use bevy::prelude::{
-    Add, App, Camera, Camera2d, Camera3d, Changed, Commands, Component, Entity, EulerRot,
-    IntoScheduleConfigs, Name, On, Or, Plugin, PostUpdate, Quat, Query, Res, Startup, Transform,
-    Vec3, With, default, in_state,
+    Add, App, Camera, Camera2d, Camera3d, Changed, Commands, Component, Entity, IntoScheduleConfigs,
+    Name, On, Or, Plugin, PostUpdate, Query, Res, Startup, Transform, Vec3, With, default,
+    in_state,
 };
 
 use bevy_inspector_egui::{
@@ -114,7 +114,7 @@ fn update_camera_from_player(
             With<PlayerId>,
             With<Predicted>,
             With<Controlled>,
-            Or<(Changed<Position>, Changed<PlayerCamera>)>,
+            Or<(Changed<Position>, Changed<Rotation>)>,
         ),
     >,
     mut camera_query: Query<&mut Transform, With<PlayerCamera>>,
@@ -133,6 +133,61 @@ fn update_camera_from_player(
         player_position.0.z,
     );
 
-    camera_transform.rotation =
-        Quat::from_euler(EulerRot::YXZ, player_rotation.x, player_rotation.y, 0.0);
+    camera_transform.rotation = player_rotation.0;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PlayerCamera, update_camera_from_player};
+    use avian3d::prelude::{Position, Rotation};
+    use bevy::prelude::{App, MinimalPlugins, PostUpdate, Quat, Transform, Vec3};
+    use lightyear::prelude::{Controlled, Predicted};
+    use shared::inputs::input::PLAYER_CAPSULE_HEIGHT;
+    use shared::protocol::PlayerId;
+
+    #[test]
+    fn camera_tracks_player_position_and_rotation() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_systems(PostUpdate, update_camera_from_player);
+
+        let expected_rotation = Quat::from_rotation_y(0.7) * Quat::from_rotation_x(-0.2);
+        let player_position = Vec3::new(3.0, 1.5, -4.0);
+
+        app.world_mut().spawn((
+            PlayerId(lightyear::prelude::PeerId::Netcode(1)),
+            Predicted,
+            Controlled,
+            Position::new(player_position),
+            Rotation::from(expected_rotation),
+        ));
+
+        let camera_entity = app
+            .world_mut()
+            .spawn((PlayerCamera, Transform::default()))
+            .id();
+
+        app.update();
+
+        let transform = app
+            .world()
+            .get::<Transform>(camera_entity)
+            .expect("camera should have transform");
+
+        assert_eq!(
+            transform.translation,
+            Vec3::new(
+                player_position.x,
+                player_position.y + PLAYER_CAPSULE_HEIGHT + 0.6,
+                player_position.z
+            )
+        );
+
+        let dot = transform.rotation.dot(expected_rotation).abs();
+        assert!(
+            dot > 0.999,
+            "camera rotation should match player rotation, dot={}",
+            dot
+        );
+    }
 }

@@ -17,6 +17,9 @@ leafwing-input-manager.workspace = true
 crossbeam-channel = "0.5"
 lightyear_tests = { git = "https://github.com/cBournhonesque/lightyear", branch = "main" }
 
+[features]
+legacy_udp_tests = []
+
 [[bin]]
 name = "launcher"
 path = "src/main.rs"

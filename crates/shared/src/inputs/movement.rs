@@ -157,21 +157,23 @@ pub fn apply_movement(
     mut query: Query<(
         &ActionState<PlayerAction>,
         &GroundState,
+        &Rotation,
         &mut LinearVelocity,
     )>,
 ) {
     let dt = time.delta_secs();
 
-    for (action_state, ground_state, mut velocity) in query.iter_mut() {
+    for (action_state, ground_state, rotation, mut velocity) in query.iter_mut() {
         // Get input
         let move_input = action_state.axis_pair(&PlayerAction::Move);
+        let (yaw, _, _) = rotation.0.to_euler(EulerRot::YXZ);
 
         // DEBUG: Log when movement is applied
         if move_input.length() > 0.1 {
             bevy::log::debug!(
                 "apply_movement: input={:?}, camera.yaw={:.2}, grounded={}, velocity={:?}",
                 move_input,
-                0.0, // TODO : Use actual camera yaw
+                yaw,
                 ground_state.is_grounded,
                 velocity.0
             );
@@ -180,7 +182,7 @@ pub fn apply_movement(
         let is_jumping = action_state.pressed(&PlayerAction::Jump);
 
         // Calculate wish direction using camera yaw for camera-relative movement
-        let (wish_direction, mut wish_speed) = get_wish_direction(move_input, 0.0, 100.0, 60.0); // TODO : Use actual camera yaw
+        let (wish_direction, mut wish_speed) = get_wish_direction(move_input, yaw, 100.0, 60.0);
 
         // Apply speed limits
         let max_speed = if is_sprinting { RUN_SPEED } else { WALK_SPEED };
@@ -222,5 +224,149 @@ pub fn apply_movement(
         }
 
         clamp_max_velocity(&mut velocity, 50.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        GroundState, LinearVelocity, apply_ground_friction, calculate_acceleration,
+        clamp_max_velocity, get_wish_direction,
+    };
+    use crate::inputs::input::PlayerAction;
+    use crate::inputs::look::update_player_rotation_from_input;
+    use crate::protocol::{CharacterMarker, PlayerId};
+    use avian3d::prelude::{Position, Rotation};
+    use bevy::prelude::{
+        App, FixedUpdate, IntoScheduleConfigs, MinimalPlugins, Res, Time, Update, Vec2, Vec3,
+    };
+    use lightyear::prelude::{Controlled, PeerId, Predicted};
+    use leafwing_input_manager::prelude::ActionState;
+
+    fn integrate_position(mut q: bevy::prelude::Query<(&mut Position, &LinearVelocity)>, time: Res<Time>) {
+        for (mut position, velocity) in q.iter_mut() {
+            position.0 += velocity.0 * time.delta_secs();
+        }
+    }
+
+    fn step(app: &mut App, dt: std::time::Duration) {
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(dt));
+        app.update();
+    }
+
+    #[test]
+    fn acceleration_only_when_needed() {
+        let wish_direction = Vec3::new(1.0, 0.0, 0.0);
+        let add = calculate_acceleration(wish_direction, 10.0, 8.0, Vec3::ZERO, 0.1);
+        assert!(add.x > 0.0);
+
+        let saturated = calculate_acceleration(wish_direction, 10.0, 8.0, Vec3::new(12.0, 0.0, 0.0), 0.1);
+        assert_eq!(saturated, Vec3::ZERO);
+    }
+
+    #[test]
+    fn ground_friction_reduces_lateral_speed() {
+        let mut velocity = LinearVelocity(Vec3::new(8.0, 0.0, 0.0));
+        apply_ground_friction(&mut velocity, 0.1);
+        assert!(velocity.0.x < 8.0);
+        assert_eq!(velocity.0.y, 0.0);
+    }
+
+    #[test]
+    fn velocity_clamp_enforces_max_speed() {
+        let mut velocity = LinearVelocity(Vec3::new(30.0, 40.0, 0.0));
+        clamp_max_velocity(&mut velocity, 10.0);
+        assert!((velocity.0.length() - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn wish_direction_uses_yaw_rotation() {
+        let (dir, speed) = get_wish_direction(Vec2::new(0.0, 1.0), std::f32::consts::FRAC_PI_2, 100.0, 60.0);
+        assert!(speed > 0.0);
+        assert!(dir.x.abs() > 0.9, "Direction should rotate into x axis, got {:?}", dir);
+    }
+
+    #[test]
+    fn keyboard_forward_then_mouse_turn_then_forward_changes_path() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_systems(Update, update_player_rotation_from_input);
+        app.add_systems(FixedUpdate, (super::apply_movement, integrate_position).chain());
+
+        let mut action_state = ActionState::<PlayerAction>::default();
+        action_state.enable();
+        action_state.set_axis_pair(&PlayerAction::Move, Vec2::new(0.0, 1.0));
+        action_state.set_axis_pair(&PlayerAction::Look, Vec2::ZERO);
+
+        let player = app.world_mut().spawn((
+            PlayerId(PeerId::Netcode(1)),
+            Predicted,
+            Controlled,
+            action_state,
+            GroundState {
+                is_grounded: true,
+                ground_normal: Vec3::Y,
+                ground_distance: 0.0,
+                ground_tick: 1,
+            },
+            LinearVelocity(Vec3::ZERO),
+            Position::new(Vec3::ZERO),
+            Rotation::default(),
+            CharacterMarker,
+        )).id();
+
+        for _ in 0..30 {
+            step(&mut app, std::time::Duration::from_millis(16));
+        }
+
+        let pos_after_first_forward = app
+            .world()
+            .get::<Position>(player)
+            .expect("Player should have Position")
+            .0;
+        assert!(
+            pos_after_first_forward.z < -0.5,
+            "First forward movement should move mostly on -Z axis"
+        );
+
+        {
+            let world = app.world_mut();
+            let mut action = world
+                .get_mut::<ActionState<PlayerAction>>(player)
+                .expect("Player should have ActionState");
+            action.set_axis_pair(&PlayerAction::Look, Vec2::new(-785.0, 0.0));
+        }
+        step(&mut app, std::time::Duration::from_millis(16));
+        {
+            let world = app.world_mut();
+            let mut action = world
+                .get_mut::<ActionState<PlayerAction>>(player)
+                .expect("Player should have ActionState");
+            action.set_axis_pair(&PlayerAction::Look, Vec2::ZERO);
+            action.set_axis_pair(&PlayerAction::Move, Vec2::new(0.0, 1.0));
+        }
+
+        for _ in 0..30 {
+            step(&mut app, std::time::Duration::from_millis(16));
+        }
+
+        let pos_after_second_forward = app
+            .world()
+            .get::<Position>(player)
+            .expect("Player should still have Position")
+            .0;
+
+        let second_segment = pos_after_second_forward - pos_after_first_forward;
+
+        assert!(
+            second_segment.x.abs() > 0.5,
+            "Second forward after yaw turn should add significant lateral displacement, delta={:?}",
+            second_segment
+        );
+        assert!(
+            second_segment.x.abs() > second_segment.z.abs() * 0.5,
+            "After yaw turn, lateral movement should dominate enough, delta={:?}",
+            second_segment
+        );
     }
 }

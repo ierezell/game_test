@@ -147,3 +147,23 @@ pub fn create_client_app(
 
     client_app
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ClientGameState, create_client_app};
+    use shared::NetworkMode;
+
+    #[test]
+    fn create_headless_client_initializes_lobby_state() {
+        let app = create_client_app(1, "../../../../assets".to_string(), true, NetworkMode::Local);
+        let state = app.world().resource::<bevy::prelude::State<ClientGameState>>();
+        assert_eq!(state.get(), &ClientGameState::LocalMenu);
+    }
+
+    #[test]
+    fn create_client_normalizes_zero_id_to_one() {
+        let app = create_client_app(0, "../../../../assets".to_string(), true, NetworkMode::Local);
+        let local_id = app.world().resource::<super::LocalPlayerId>();
+        assert_eq!(local_id.0, 1);
+    }
+}

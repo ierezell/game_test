@@ -1,15 +1,15 @@
 use crate::{ClientGameState, LocalPlayerId};
 
 use bevy::prelude::{
-    Add, App, Commands, CommandsStatesExt, Entity, IntoScheduleConfigs, Name, On, OnEnter, Plugin,
-    Query, Remove, Res, Resource, State, SystemCondition, Update, With, error, in_state, info,
+    Add, App, Commands, CommandsStatesExt, Entity, Name, On, OnEnter, Plugin, Query, Remove, Res,
+    Resource, State, With, error, info,
 };
 
 #[derive(Resource)]
 pub struct ServerAddr(pub std::net::SocketAddr);
 use lightyear::prelude::{
-    Authentication, Client, Connect, Connected, Link, LocalAddr, PeerAddr, PeerId, PredictionManager,
-    RemoteId, ReplicationReceiver, UdpIo,
+    Authentication, Client, Connect, Connected, Link, LocalAddr, PeerAddr, PredictionManager,
+    ReplicationReceiver, ReplicationSender, UdpIo,
     client::{NetcodeClient, NetcodeConfig},
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -66,7 +66,10 @@ fn start_connection_crossbeam(
         client_id.0
     );
 
-    use lightyear::prelude::{Linked, PingConfig, PingManager, ReplicationSender};
+    use lightyear::prelude::{
+        Linked, LocalId, PeerId, PingConfig, PingManager, RemoteId, ReplicationSender,
+        Transport,
+    };
 
     // Clone the endpoint because we might need it again if we reconnect (though Res is borrowed)
     // CrossbeamIo should be cloneable (channels are).
@@ -78,6 +81,9 @@ fn start_connection_crossbeam(
             Link::new(None),
             Linked, // Crossbeam is always immediately linked
             io,
+            Transport::default(),
+            RemoteId(PeerId::Server),
+            LocalId(PeerId::Netcode(client_id.0)),
             PingManager::new(PingConfig {
                 ping_interval: std::time::Duration::default(),
             }),
@@ -116,15 +122,17 @@ fn start_connection_local(
     // Local mode (HostClient): Create a Client entity linked to the Server entity
     // This is the HostServer pattern from Lightyear
     use lightyear::prelude::{Link, LinkOf, Linked, PingConfig, PingManager};
-    
+
     let server_entity = match server_query.iter().next() {
         Some(entity) => entity,
         None => {
-            error!("Failed to find Server entity for HostClient - server may not be initialized yet");
+            error!(
+                "Failed to find Server entity for HostClient - server may not be initialized yet"
+            );
             return;
         }
     };
-    
+
     let client_entity = commands
         .spawn((
             Client::default(),
@@ -136,12 +144,16 @@ fn start_connection_local(
             PingManager::new(PingConfig {
                 ping_interval: std::time::Duration::default(),
             }),
+            ReplicationSender::default(),
             PredictionManager::default(),
         ))
         .insert(Name::from(format!("HostClient {}", client_id.0)))
         .id();
 
-    println!("DEBUG: Created HostClient entity {:?} linked to Server entity {:?}", client_entity, server_entity);
+    println!(
+        "DEBUG: Created HostClient entity {:?} linked to Server entity {:?}",
+        client_entity, server_entity
+    );
 
     commands.trigger(Connect {
         entity: client_entity,
@@ -206,6 +218,7 @@ fn start_connection(
                     LocalAddr(client_addr),
                     PeerAddr(server_addr),
                     Link::new(None),
+                    ReplicationSender::default(),
                     ReplicationReceiver::default(),
                     netcode_client,
                     UdpIo::default(),

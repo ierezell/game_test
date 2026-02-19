@@ -1,15 +1,19 @@
 use bevy::prelude::{
     Add, App, Commands, Entity, Name, On, Plugin, PreStartup, Query, Res, Single, State, With,
 };
+use std::time::Duration;
 
 use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
-    Connected, ControlledBy, Disconnected, LinkOf, LocalAddr, MetadataChannel, NetworkTarget,
-    RemoteId, Replicate, ReplicationSender, SendUpdatesMode, Server, ServerMultiMessageSender,
+    Connected, ControlledBy, DeltaManager, Disconnected, LocalAddr, NetworkTarget, RemoteId,
+    Replicate, ReplicationReceiver, ReplicationSender, SendUpdatesMode, Server,
+    ServerMultiMessageSender,
     server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start},
 };
-use shared::protocol::{LobbyState, PlayerId, StartLoadingGameEvent};
-use shared::{SEND_INTERVAL, SERVER_BIND_ADDR, SHARED_SETTINGS};
+use shared::protocol::{
+    LevelSeed, LobbyControlChannel, LobbyState, PlayerId, StartLoadingGameEvent,
+};
+use shared::{SERVER_BIND_ADDR, SHARED_SETTINGS};
 
 use crate::ServerGameState;
 pub struct ServerNetworkPlugin;
@@ -37,7 +41,6 @@ impl Plugin for ServerNetworkPlugin {
             }
         }
 
-        app.add_observer(handle_new_client);
         app.add_observer(handle_disconnected);
         app.add_observer(handle_connected);
     }
@@ -86,7 +89,7 @@ fn startup_server(mut commands: Commands) {
             NetcodeServer::new(netcode_config),
             LocalAddr(SERVER_BIND_ADDR),
             ServerUdpIo::default(),
-            // DeltaManager::default(), // Enable delta compression
+            DeltaManager::default(),
         ))
         .id();
 
@@ -95,17 +98,12 @@ fn startup_server(mut commands: Commands) {
     });
 }
 
-fn handle_new_client(trigger: On<Add, LinkOf>, _commands: Commands) {
-    println!(
-        "DEBUG: handle_new_client triggered for entity {:?}",
-        trigger.entity
-    );
-}
-
+#[allow(clippy::too_many_arguments)]
 fn handle_connected(
     trigger: On<Add, Connected>,
     query: Query<&RemoteId, With<ClientOf>>,
-    mut lobby_query: Query<&mut LobbyState>,
+    mut lobby_query: Query<(Entity, &mut LobbyState)>,
+    level_seed_query: Query<&LevelSeed>,
     mut commands: Commands,
     server_state: Res<State<ServerGameState>>,
     mut sender: ServerMultiMessageSender,
@@ -117,17 +115,14 @@ fn handle_connected(
 
     let client_id_bits = client_id.0.to_bits();
 
-    commands
-        .entity(trigger.entity)
-        .insert(Name::from(format!("Client_{}", client_id_bits)))
-        .insert(ReplicationSender::new(
-            SEND_INTERVAL,
-            SendUpdatesMode::SinceLastAck,
-            true,
-        ));
+    commands.entity(trigger.entity).insert((
+        Name::from(format!("Client_{}", client_id_bits)),
+        ReplicationSender::new(Duration::ZERO, SendUpdatesMode::SinceLastAck, true),
+        ReplicationReceiver::default(),
+    ));
 
     // Get or create the lobby state
-    if let Some(mut lobby_state) = lobby_query.iter_mut().next() {
+    if let Some((lobby_entity, mut lobby_state)) = lobby_query.iter_mut().next() {
         // Lobby exists, add player if not already present
         if !lobby_state.players.contains(&client_id_bits) {
             println!(
@@ -135,6 +130,9 @@ fn handle_connected(
                 client_id_bits
             );
             lobby_state.players.push(client_id_bits);
+            commands
+                .entity(lobby_entity)
+                .insert(Replicate::to_clients(NetworkTarget::All));
 
             if lobby_state.players.len() == 1 {
                 println!("DEBUG: Client_{} became host", client_id_bits);
@@ -147,9 +145,16 @@ fn handle_connected(
                     "DEBUG: Game already started, sending StartLoadingGameEvent to late-joining Client_{}",
                     client_id_bits
                 );
+
+                let seed = level_seed_query.iter().next().map_or(42, |s| s.seed);
+                commands.spawn((
+                    LevelSeed { seed },
+                    Replicate::to_clients(NetworkTarget::Single(client_id.0)),
+                ));
+
                 sender
-                    .send::<StartLoadingGameEvent, MetadataChannel>(
-                        &StartLoadingGameEvent,
+                    .send::<StartLoadingGameEvent, LobbyControlChannel>(
+                        &StartLoadingGameEvent { start: true },
                         server.into_inner(),
                         &NetworkTarget::Single(client_id.0),
                     )
@@ -174,7 +179,7 @@ fn handle_connected(
                 players: vec![client_id_bits],
                 host_id: client_id_bits,
             },
-            Replicate::to_clients(NetworkTarget::All),
+            Replicate::to_clients(NetworkTarget::Single(client_id.0)),
             Name::from("LobbyState"),
         ));
     }

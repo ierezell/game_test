@@ -230,3 +230,75 @@ pub fn validate_spawn_position(
     adjusted_position.y = 1.0;
     adjusted_position
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{NavigationObstacle, PatrolRoute, validate_spawn_position};
+    use avian3d::prelude::Position;
+    use bevy::prelude::{App, Query, Resource, Vec3, With};
+
+    #[derive(Resource, Default)]
+    struct AdjustedSpawn(pub Option<Vec3>);
+
+    fn compute_adjusted_spawn(
+        obstacles: Query<&Position, With<NavigationObstacle>>,
+        mut adjusted: bevy::prelude::ResMut<AdjustedSpawn>,
+    ) {
+        adjusted.0 = Some(validate_spawn_position(
+            Vec3::new(0.1, 0.0, 0.1),
+            &obstacles,
+            0.5,
+        ));
+    }
+
+    #[test]
+    fn patrol_route_ping_pong_advances_and_reverses() {
+        let route = PatrolRoute::new(vec![
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(2.0, 0.0, 0.0),
+        ]);
+
+        let mut forward = true;
+        let (_, idx1) = route
+            .get_next_target(0, &mut forward)
+            .expect("target should advance to index 1");
+        assert_eq!(idx1, 1);
+        assert!(forward);
+
+        let (_, idx2) = route
+            .get_next_target(idx1, &mut forward)
+            .expect("target should advance to index 2");
+        assert_eq!(idx2, 2);
+
+        let (_, idx3) = route
+            .get_next_target(idx2, &mut forward)
+            .expect("target should reverse toward index 1");
+        assert_eq!(idx3, 1);
+        assert!(!forward);
+    }
+
+    #[test]
+    fn validate_spawn_pushes_away_from_obstacles() {
+        let mut app = App::new();
+        app.insert_resource(AdjustedSpawn::default());
+        app.world_mut()
+            .spawn((Position::new(Vec3::ZERO), NavigationObstacle));
+        app.add_systems(bevy::prelude::Update, compute_adjusted_spawn);
+
+        app.update();
+
+        let adjusted = app
+            .world()
+            .resource::<AdjustedSpawn>()
+            .0
+            .expect("Adjusted spawn should be computed");
+
+        assert!(
+            adjusted.distance(Vec3::ZERO) >= 2.4,
+            "Adjusted position should be moved away from obstacle, got {:?}",
+            adjusted
+        );
+        assert_eq!(adjusted.y, 1.0, "Adjusted spawn Y should be normalized to 1.0");
+    }
+}

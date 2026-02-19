@@ -340,3 +340,63 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
 
     info!("Level physics built successfully");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{LevelConfig, ZoneId, generate_level};
+    use bevy::prelude::Vec3;
+
+    #[test]
+    fn generate_level_is_deterministic_for_same_seed() {
+        let config = LevelConfig {
+            seed: 1337,
+            target_zone_count: 10,
+            min_zone_spacing: 30.0,
+            max_depth: 6,
+        };
+
+        let level_a = generate_level(config.clone());
+        let level_b = generate_level(config);
+
+        assert_eq!(level_a.zones.len(), level_b.zones.len());
+        assert_eq!(level_a.connections.len(), level_b.connections.len());
+
+        for zone_id in level_a.zones.keys() {
+            let pos_a = level_a
+                .zones
+                .get(zone_id)
+                .expect("zone should exist in first graph")
+                .position;
+            let pos_b = level_b
+                .zones
+                .get(zone_id)
+                .expect("zone should exist in second graph")
+                .position;
+            assert_eq!(pos_a, pos_b);
+        }
+    }
+
+    #[test]
+    fn generated_level_contains_spawn_zone_and_connections() {
+        let level = generate_level(LevelConfig {
+            seed: 7,
+            target_zone_count: 12,
+            min_zone_spacing: 35.0,
+            max_depth: 8,
+        });
+
+        assert!(level.zones.len() >= 2, "Level should contain multiple zones");
+        assert!(
+            !level.connections.is_empty(),
+            "Level should contain at least one connection"
+        );
+        assert!(level.zones.contains_key(&ZoneId(0)), "Spawn zone should exist");
+
+        let spawn_pos = level
+            .zones
+            .get(&ZoneId(0))
+            .expect("spawn zone should exist")
+            .position;
+        assert_eq!(spawn_pos, Vec3::ZERO, "Spawn zone position should be origin");
+    }
+}

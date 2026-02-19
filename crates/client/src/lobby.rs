@@ -9,11 +9,11 @@ use bevy::prelude::{
     IntoScheduleConfigs, JustifyContent, Name, Node, On, OnEnter, OnExit, Plugin, Pointer, Query,
     Res, Resource, Single, Text, TextFont, UiRect, Update, Val, With, in_state,
 };
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::Headless;
-use lightyear::prelude::MessageSender;
-use lightyear::prelude::MetadataChannel;
-use shared::protocol::{HostStartGameEvent, LobbyState};
+use lightyear::prelude::{Confirmed, MessageSender};
+use shared::protocol::{HostStartGameEvent, LobbyControlChannel, LobbyState};
 
 #[derive(Resource)]
 pub struct AutoStart(pub bool);
@@ -27,7 +27,8 @@ impl Plugin for ClientLobbyPlugin {
 
         app.add_systems(
             OnEnter(ClientGameState::Lobby),
-            (spawn_lobby_ui, spawn_lobby_camera).run_if(is_not_headless),
+            (spawn_lobby_ui, spawn_lobby_camera, ensure_cursor_visible_in_lobby)
+                .run_if(is_not_headless),
         );
         app.add_systems(
             OnExit(ClientGameState::Lobby),
@@ -41,9 +42,19 @@ impl Plugin for ClientLobbyPlugin {
     }
 }
 
+fn ensure_cursor_visible_in_lobby(
+    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
+) {
+    if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
+        cursor_options.grab_mode = CursorGrabMode::None;
+        cursor_options.visible = true;
+    }
+}
+
 fn handle_auto_start(
     auto_start: Option<Res<AutoStart>>,
     lobby_state: Query<&LobbyState>,
+    confirmed_lobby_state: Query<&Confirmed<LobbyState>>,
     local_player_id: Res<LocalPlayerId>,
     mut sender_q: Query<&mut MessageSender<HostStartGameEvent>>,
     mut commands: Commands,
@@ -53,7 +64,13 @@ fn handle_auto_start(
         && auto_start_res.0
     {
         // Require lobby replication to be visible client-side
-        if let Ok(lobby_data) = lobby_state.single() {
+        let replicated_lobby = lobby_state
+            .single()
+            .ok()
+            .cloned()
+            .or_else(|| confirmed_lobby_state.single().ok().map(|lobby| lobby.0.clone()));
+
+        if let Some(lobby_data) = replicated_lobby {
             // Require a MessageSender to be present (established link)
             if let Some(mut sender) = sender_q.iter_mut().next() {
                 println!(
@@ -62,9 +79,9 @@ fn handle_auto_start(
                     local_player_id.0,
                     lobby_data.players.len()
                 );
-                if lobby_data.host_id == local_player_id.0 && !lobby_data.players.is_empty() {
+                if lobby_data.host_id == local_player_id.0 && lobby_data.players.len() >= 2 {
                     println!("DEBUG: handle_auto_start sending HostStartGameEvent");
-                    sender.send::<MetadataChannel>(HostStartGameEvent);
+                    sender.send::<LobbyControlChannel>(HostStartGameEvent { requested: true });
                     commands.remove_resource::<AutoStart>();
                 }
             } else {
@@ -232,7 +249,7 @@ fn update_lobby_text(
                                     },
                                 ))
                                 .observe(|_click: On<Pointer<Click>>,mut commands: Commands , mut sender: Single<&mut MessageSender<HostStartGameEvent>>| {
-                                    sender.send::<MetadataChannel>(HostStartGameEvent);
+                                    sender.send::<LobbyControlChannel>(HostStartGameEvent { requested: true });
                                     commands.remove_resource::<AutoStart>();
                                 });
                         });
@@ -272,5 +289,41 @@ fn update_lobby_text(
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_cursor_visible_in_lobby;
+    use bevy::prelude::{App, MinimalPlugins, Update};
+    use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+
+    #[test]
+    fn lobby_cursor_is_visible_and_unlocked() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_systems(Update, ensure_cursor_visible_in_lobby);
+
+        let window = app
+            .world_mut()
+            .spawn((
+                PrimaryWindow,
+                CursorOptions {
+                    grab_mode: CursorGrabMode::Locked,
+                    visible: false,
+                    ..Default::default()
+                },
+            ))
+            .id();
+
+        app.update();
+
+        let cursor_options = app
+            .world()
+            .get::<CursorOptions>(window)
+            .expect("primary window should have cursor options");
+
+        assert_eq!(cursor_options.grab_mode, CursorGrabMode::None);
+        assert!(cursor_options.visible);
     }
 }

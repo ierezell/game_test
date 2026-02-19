@@ -6,17 +6,19 @@ use crate::{
     },
     inputs::input::PlayerAction,
     inputs::movement::GroundState,
-    // navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
+    navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
 };
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     log::debug,
     prelude::{App, Color, Component, Name, Plugin, default},
+    reflect::TypePath,
 };
 
 use lightyear::prelude::{
-    AppComponentExt, AppMessageExt, InterpolationRegistrationExt, NetworkDirection, PeerId,
-    PredictionRegistrationExt, input::leafwing::InputPlugin,
+    AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings,
+    InterpolationRegistrationExt, NetworkDirection, PeerId, PredictionRegistrationExt,
+    ReliableSettings, input::leafwing::InputPlugin,
 };
 
 use lightyear::input::config::InputConfig;
@@ -56,10 +58,17 @@ pub struct ClientWorldCreatedEvent {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct HostStartGameEvent;
+pub struct HostStartGameEvent {
+    pub requested: bool,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct StartLoadingGameEvent;
+pub struct StartLoadingGameEvent {
+    pub start: bool,
+}
+
+#[derive(TypePath)]
+pub struct LobbyControlChannel;
 
 #[derive(Clone)]
 pub struct ProtocolPlugin;
@@ -107,7 +116,17 @@ impl Plugin for ProtocolPlugin {
         app.register_component::<PlayerFlashlight>()
             .add_prediction();
 
+        app.register_component::<SimpleNavigationAgent>();
+        app.register_component::<PatrolState>();
+        app.register_component::<PatrolRoute>();
+
         app.register_component::<LobbyState>();
+
+        app.add_channel::<LobbyControlChannel>(ChannelSettings {
+            mode: ChannelMode::OrderedReliable(ReliableSettings::default()),
+            ..default()
+        })
+        .add_direction(NetworkDirection::Bidirectional);
 
         // Events
         app.register_message::<ClientWorldCreatedEvent>()

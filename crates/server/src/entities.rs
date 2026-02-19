@@ -1,4 +1,3 @@
-use crate::input::ServerInputPlugin;
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
     ecs::schedule::IntoScheduleConfigs,
@@ -12,7 +11,7 @@ use leafwing_input_manager::prelude::ActionState;
 
 use shared::inputs::movement::GroundState;
 use shared::{GymMode, level::visuals::build_level_visuals};
-use shared::{gym::setup_gym_level, protocol::LevelSeed};
+use shared::{gym::{setup_gym_level, spawn_gym_patrolling_npc_entities}, protocol::LevelSeed};
 use shared::{
     inputs::input::PlayerAction,
     level::generation::{LevelConfig, build_level_physics, generate_level},
@@ -47,13 +46,17 @@ impl Plugin for ServerEntitiesPlugin {
                 .run_if(in_state(ServerGameState::Playing)),
         );
         app.add_systems(OnEnter(ServerGameState::Loading), generate_and_build_level);
+        app.add_systems(
+            OnEnter(ServerGameState::Playing),
+            spawn_gym_patrolling_npc_entities,
+        );
     }
 }
 
 fn generate_and_build_level(
     mut commands: Commands,
     meshes: Option<ResMut<Assets<Mesh>>>,
-    materials: Option<ResMut<Assets<StandardMaterial>>>,
+    mut materials: Option<ResMut<Assets<StandardMaterial>>>,
     gym_mode: Option<Res<GymMode>>,
     level_seed_query: Query<&LevelSeed>,
     lobby_state: Query<&LobbyState>,
@@ -63,8 +66,9 @@ fn generate_and_build_level(
 
     if is_gym_mode {
         info!("🏋️  GYM MODE: Setting up simple test environment with one NPC and obstacles");
-        if let (Some(mesh_assets), Some(mat_assets)) = (meshes, materials) {
-            setup_gym_level(commands.reborrow(), mesh_assets, Some(mat_assets));
+        if let Some(mesh_assets) = meshes {
+            let material_assets = materials.take();
+            setup_gym_level(commands.reborrow(), mesh_assets, material_assets);
         }
         // Spawn players in gym mode
         spawn_player_entities(commands.reborrow(), &lobby_state, &client_query);

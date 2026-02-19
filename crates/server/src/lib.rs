@@ -70,3 +70,23 @@ pub fn create_server_app(headless: bool, network_mode: NetworkMode) -> App {
 
     app
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ServerGameState, create_server_app};
+    use shared::NetworkMode;
+
+    #[test]
+    fn create_headless_server_initializes_lobby_state() {
+        let app = create_server_app(true, NetworkMode::Local);
+        let state = app.world().resource::<bevy::prelude::State<ServerGameState>>();
+        assert_eq!(state.get(), &ServerGameState::Lobby);
+    }
+
+    #[test]
+    fn create_server_in_udp_mode_sets_network_resource() {
+        let app = create_server_app(true, NetworkMode::Udp);
+        let network_mode = app.world().resource::<NetworkMode>();
+        assert_eq!(*network_mode, NetworkMode::Udp);
+    }
+}

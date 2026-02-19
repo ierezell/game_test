@@ -155,3 +155,70 @@ fn health_regeneration_system(mut health_query: Query<&mut Health>, time: Res<Ti
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Health, Respawnable};
+    use bevy::prelude::Vec3;
+
+    #[test]
+    fn health_take_damage_and_death() {
+        let mut health = Health::basic();
+
+        let damage = health.take_damage(30.0, 1.0);
+        assert_eq!(damage, 30.0);
+        assert_eq!(health.current, 70.0);
+        assert!(!health.is_dead);
+        assert_eq!(health.last_damage_time, 1.0);
+
+        let lethal_damage = health.take_damage(200.0, 2.0);
+        assert_eq!(lethal_damage, 70.0);
+        assert_eq!(health.current, 0.0);
+        assert!(health.is_dead);
+    }
+
+    #[test]
+    fn health_regeneration_conditions() {
+        let mut health = Health::basic();
+        health.take_damage(40.0, 2.0);
+
+        assert!(
+            !health.can_regenerate_now(4.9),
+            "Should not regenerate before regeneration_delay elapses"
+        );
+        assert!(
+            health.can_regenerate_now(5.0),
+            "Should regenerate exactly at regeneration_delay boundary"
+        );
+
+        let healed = health.heal(10.0);
+        assert_eq!(healed, 10.0);
+        assert_eq!(health.current, 70.0);
+    }
+
+    #[test]
+    fn health_reset_restores_alive_full_state() {
+        let mut health = Health::basic();
+        health.take_damage(100.0, 3.0);
+        assert!(health.is_dead);
+
+        health.reset();
+
+        assert_eq!(health.current, health.max);
+        assert!(!health.is_dead);
+        assert_eq!(health.last_damage_time, 0.0);
+        assert_eq!(health.percentage(), 1.0);
+    }
+
+    #[test]
+    fn respawnable_delay_and_position() {
+        let respawn = Respawnable::with_position(2.5, Vec3::new(1.0, 2.0, 3.0));
+        assert_eq!(respawn.respawn_position, Some(Vec3::new(1.0, 2.0, 3.0)));
+
+        let mut delayed = respawn.clone();
+        delayed.death_time = 10.0;
+
+        assert!(!delayed.can_respawn(12.4));
+        assert!(delayed.can_respawn(12.5));
+    }
+}

@@ -3,6 +3,7 @@ pub mod debug;
 pub mod entities;
 
 pub mod game;
+pub mod hud;
 pub mod inputs;
 pub mod lobby;
 pub mod network;
@@ -12,6 +13,7 @@ use crate::camera::ClientCameraPlugin;
 use crate::debug::ClientDebugPlugin;
 use crate::entities::ClientEntitiesPlugin;
 use crate::game::ClientGameCyclePlugin;
+use crate::hud::ClientHudPlugin;
 use crate::inputs::ClientInputPlugin;
 use crate::lobby::ClientLobbyPlugin;
 use crate::network::ClientNetworkPlugin;
@@ -136,6 +138,7 @@ pub fn create_client_app(
     client_app.add_plugins(ClientEntitiesPlugin);
     client_app.add_plugins(ClientLobbyPlugin);
     client_app.add_plugins(ClientGameCyclePlugin);
+    client_app.add_plugins(ClientHudPlugin);
 
     client_app.init_state::<ClientGameState>();
     client_app.insert_state(ClientGameState::LocalMenu);

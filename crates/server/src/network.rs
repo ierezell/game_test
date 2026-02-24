@@ -1,6 +1,8 @@
 use bevy::prelude::{
-    Add, App, Commands, Entity, Name, On, Plugin, PreStartup, Query, Res, Single, State, With,
+    Add, App, Commands, Entity, Name, On, Plugin, PreStartup, Query, Res, Single, State, Update,
+    With, info,
 };
+use std::collections::HashSet;
 use std::time::Duration;
 
 use lightyear::connection::client_of::ClientOf;
@@ -43,6 +45,7 @@ impl Plugin for ServerNetworkPlugin {
 
         app.add_observer(handle_disconnected);
         app.add_observer(handle_connected);
+        app.add_systems(Update, reconcile_disconnected_clients);
     }
 }
 
@@ -197,6 +200,7 @@ fn handle_disconnected(
     };
 
     let client_id_bits = client_id.0.to_bits();
+    info!("Client {} disconnected", client_id_bits);
 
     for (player_entity, controlled_by) in player_query.iter() {
         if controlled_by.owner == trigger.entity {
@@ -219,5 +223,116 @@ fn handle_disconnected(
                 lobby_state.host_id = 0;
             }
         }
+    }
+}
+
+fn reconcile_disconnected_clients(
+    connected_clients: Query<(Entity, &RemoteId), (With<ClientOf>, With<Connected>)>,
+    mut lobby_query: Query<&mut LobbyState>,
+    player_query: Query<(Entity, &ControlledBy, &PlayerId), With<PlayerId>>,
+    mut commands: Commands,
+) {
+    let Some(mut lobby_state) = lobby_query.iter_mut().next() else {
+        return;
+    };
+
+    let connected_ids: HashSet<u64> = connected_clients
+        .iter()
+        .map(|(_, remote_id)| remote_id.0.to_bits())
+        .collect();
+
+    let previous_len = lobby_state.players.len();
+    lobby_state
+        .players
+        .retain(|player_id| connected_ids.contains(player_id));
+
+    if lobby_state.host_id != 0 && !connected_ids.contains(&lobby_state.host_id) {
+        lobby_state.host_id = lobby_state.players.first().copied().unwrap_or(0);
+    }
+
+    if lobby_state.players.len() != previous_len {
+        info!(
+            "Lobby reconciled after disconnects: {} -> {} players",
+            previous_len,
+            lobby_state.players.len()
+        );
+    }
+
+    for (player_entity, controlled_by, player_id) in player_query.iter() {
+        let owner_connected = connected_clients.get(controlled_by.owner).is_ok();
+        let player_bits = player_id.0.to_bits();
+        let in_lobby = connected_ids.contains(&player_bits);
+
+        if !owner_connected || !in_lobby {
+            commands.entity(player_entity).despawn();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reconcile_disconnected_clients;
+    use bevy::prelude::{App, MinimalPlugins, Update};
+    use lightyear::connection::client_of::ClientOf;
+    use lightyear::prelude::{Connected, ControlledBy, PeerId, RemoteId};
+    use shared::protocol::{LobbyState, PlayerId};
+
+    #[test]
+    fn reconcile_removes_disconnected_players_and_reassigns_host() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_systems(Update, reconcile_disconnected_clients);
+
+        let connected_client = app.world_mut().spawn((
+            ClientOf,
+            Connected,
+            RemoteId(PeerId::Netcode(1)),
+        ))
+        .id();
+
+        let disconnected_client = app.world_mut().spawn((
+            ClientOf,
+            RemoteId(PeerId::Netcode(2)),
+        ))
+        .id();
+
+        app.world_mut().spawn(LobbyState {
+            players: vec![1, 2],
+            host_id: 2,
+        });
+
+        let player_1 = app.world_mut().spawn((
+            PlayerId(PeerId::Netcode(1)),
+            ControlledBy {
+                owner: connected_client,
+                lifetime: Default::default(),
+            },
+        ))
+        .id();
+
+        let player_2 = app.world_mut().spawn((
+            PlayerId(PeerId::Netcode(2)),
+            ControlledBy {
+                owner: disconnected_client,
+                lifetime: Default::default(),
+            },
+        ))
+        .id();
+
+        app.update();
+
+        let lobby = {
+            let world = app.world_mut();
+            world
+                .query::<&LobbyState>()
+                .single(world)
+                .expect("lobby should exist")
+                .clone()
+        };
+
+        assert_eq!(lobby.players, vec![1]);
+        assert_eq!(lobby.host_id, 1);
+        assert!(app.world().entities().contains(player_1));
+        assert!(!app.world().entities().contains(player_2));
     }
 }

@@ -5,6 +5,7 @@ pub mod network;
 pub mod render;
 
 use bevy::MinimalPlugins;
+use bevy::log::LogPlugin;
 use bevy::prelude::{App, DefaultPlugins, PluginGroup, States, default};
 use bevy::state::app::AppExtStates;
 use bevy::window::{Window, WindowPlugin};
@@ -41,6 +42,10 @@ pub fn create_server_app(headless: bool, network_mode: NetworkMode) -> App {
     } else {
         app.add_plugins(
             DefaultPlugins
+                .set(LogPlugin {
+                    filter: "info,lightyear_udp::server=off".to_string(),
+                    ..default()
+                })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Yolo Game - Server".to_string(),

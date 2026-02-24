@@ -1,5 +1,5 @@
 use crate::GymMode;
-use crate::components::health::Health;
+use crate::components::health::{Health, Respawnable};
 use crate::entities::NpcPhysicsBundle;
 use crate::navigation::{NavigationObstacle, setup_patrol, validate_spawn_position};
 use crate::protocol::CharacterMarker;
@@ -169,6 +169,7 @@ pub fn spawn_gym_patrolling_npc_entities(
             Rotation::default(),
             LinearVelocity::default(),
             Health::basic(),
+            Respawnable::with_position(2.0, validated_spawn),
             Replicate::to_clients(NetworkTarget::All),
             InterpolationTarget::to_clients(NetworkTarget::All),
             CharacterMarker,

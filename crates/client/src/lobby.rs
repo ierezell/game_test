@@ -27,7 +27,11 @@ impl Plugin for ClientLobbyPlugin {
 
         app.add_systems(
             OnEnter(ClientGameState::Lobby),
-            (spawn_lobby_ui, spawn_lobby_camera, ensure_cursor_visible_in_lobby)
+            (
+                spawn_lobby_ui,
+                spawn_lobby_camera,
+                ensure_cursor_visible_in_lobby,
+            )
                 .run_if(is_not_headless),
         );
         app.add_systems(
@@ -64,21 +68,16 @@ fn handle_auto_start(
         && auto_start_res.0
     {
         // Require lobby replication to be visible client-side
-        let replicated_lobby = lobby_state
-            .single()
-            .ok()
-            .cloned()
-            .or_else(|| confirmed_lobby_state.single().ok().map(|lobby| lobby.0.clone()));
+        let replicated_lobby = lobby_state.single().ok().cloned().or_else(|| {
+            confirmed_lobby_state
+                .single()
+                .ok()
+                .map(|lobby| lobby.0.clone())
+        });
 
         if let Some(lobby_data) = replicated_lobby {
             // Require a MessageSender to be present (established link)
             if let Some(mut sender) = sender_q.iter_mut().next() {
-                println!(
-                    "DEBUG: handle_auto_start running. Host: {}, Local: {}, Players: {}",
-                    lobby_data.host_id,
-                    local_player_id.0,
-                    lobby_data.players.len()
-                );
                 if lobby_data.host_id == local_player_id.0 && lobby_data.players.len() >= 2 {
                     println!("DEBUG: handle_auto_start sending HostStartGameEvent");
                     sender.send::<LobbyControlChannel>(HostStartGameEvent { requested: true });
@@ -188,6 +187,7 @@ fn spawn_lobby_ui(mut commands: Commands) {
                         },
                     ));
                 });
+
         });
 }
 

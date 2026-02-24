@@ -2,13 +2,14 @@ use bevy::prelude::{
     App, Camera, Camera3d, Commands, Entity, Name, Plugin, Query, Startup, Transform, Vec3, With,
 };
 use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
-use shared::render::add_player_visuals;
+use shared::render::{add_npc_visuals, add_player_visuals};
 pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_camera_if_none_exists);
         app.add_observer(add_player_visuals);
+        app.add_observer(add_npc_visuals);
         app.add_plugins((EguiPlugin::default(), WorldInspectorPlugin::default()));
     }
 }

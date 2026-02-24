@@ -28,6 +28,9 @@ pub enum PlayerAction {
     Aim,
 
     #[actionlike(Button)]
+    Reload,
+
+    #[actionlike(Button)]
     ToggleFlashlight,
 }
 

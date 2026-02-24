@@ -4,11 +4,13 @@ use avian3d::prelude::{
     Collider, LinearVelocity, Position, RigidBody, Rotation, SpatialQueryFilter,
     SpatialQueryPipeline,
 };
+use bevy::ecs::query::With;
 use bevy::prelude::{
     Commands, Component, Dir3, Entity, MessageWriter, Query, Res, Time, Timer, TimerMode, Vec3,
     info,
 };
 use leafwing_input_manager::prelude::ActionState;
+use lightyear::prelude::ControlledBy;
 use serde::{Deserialize, Serialize};
 
 pub struct WeaponsPlugin;
@@ -32,14 +34,46 @@ pub struct Gun {
     pub cooldown: Timer,
     pub damage: f32,
     pub range: f32,
+    pub magazine_size: u32,
+    pub ammo_in_magazine: u32,
+    pub reload_timer: Timer,
+    pub is_reloading: bool,
 }
 
 impl Default for Gun {
     fn default() -> Self {
+        let magazine_size = 8;
         Self {
             cooldown: Timer::from_seconds(0.3, TimerMode::Once), // ~3 shots/sec
             damage: 25.0,
             range: 100.0,
+            magazine_size,
+            ammo_in_magazine: magazine_size,
+            reload_timer: Timer::from_seconds(1.2, TimerMode::Once),
+            is_reloading: false,
+        }
+    }
+}
+
+impl Gun {
+    pub fn start_reload(&mut self) {
+        if self.is_reloading || self.ammo_in_magazine >= self.magazine_size {
+            return;
+        }
+
+        self.is_reloading = true;
+        self.reload_timer.reset();
+    }
+
+    pub fn tick_reload(&mut self, delta: std::time::Duration) {
+        if !self.is_reloading {
+            return;
+        }
+
+        self.reload_timer.tick(delta);
+        if self.reload_timer.is_finished() {
+            self.is_reloading = false;
+            self.ammo_in_magazine = self.magazine_size;
         }
     }
 }
@@ -55,16 +89,41 @@ pub struct HitEvent {
 // Gun use raycast to detect hits. ProjectileGun spawns projectile entities.
 pub fn fire_gun_system(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut Gun, &Position, &ActionState<PlayerAction>)>,
+    mut query: Query<
+        (
+            Entity,
+            &mut Gun,
+            &Position,
+            &Rotation,
+            &ActionState<PlayerAction>,
+        ),
+        With<ControlledBy>,
+    >,
     spatial_query: Res<SpatialQueryPipeline>,
     mut damage_writer: MessageWriter<DamageEvent>,
     time: Res<Time>,
 ) {
-    for (shooter_entity, mut gun, pos, action_state) in query.iter_mut() {
+    for (shooter_entity, mut gun, pos, rot, action_state) in query.iter_mut() {
         gun.cooldown.tick(time.delta());
+
+        if action_state.just_pressed(&PlayerAction::Reload) {
+            gun.start_reload();
+        }
+
+        gun.tick_reload(time.delta());
+
         if action_state.pressed(&PlayerAction::Shoot) && gun.cooldown.is_finished() {
-            // Calculate shooting direction
-            let direction = Vec3::ZERO; // TODO : Compute the direction from where the player is looking (mouse position)
+            if gun.is_reloading {
+                continue;
+            }
+
+            if gun.ammo_in_magazine == 0 {
+                gun.start_reload();
+                continue;
+            }
+
+            // Calculate shooting direction from current player look rotation.
+            let direction = shoot_direction(rot);
 
             // Create raycast filter to exclude the shooter
             let filter = SpatialQueryFilter::default().with_excluded_entities([shooter_entity]);
@@ -82,7 +141,7 @@ pub fn fire_gun_system(
                 &filter,
             ) {
                 let hit_entity = hit.entity;
-                let hit_point = shoot_origin + direction.normalize() * hit.distance;
+                let hit_point = shoot_origin + direction * hit.distance;
 
                 info!(
                     "🔫 Gun hit entity {:?} at distance {:.2}m point {:?}",
@@ -107,9 +166,14 @@ pub fn fire_gun_system(
                 info!("🔫 Gun fired but missed (no hit detected)");
             }
 
+            gun.ammo_in_magazine = gun.ammo_in_magazine.saturating_sub(1);
             gun.cooldown.reset();
         }
     }
+}
+
+fn shoot_direction(rotation: &Rotation) -> Vec3 {
+    (rotation.0 * Vec3::NEG_Z).normalize_or_zero()
 }
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -192,3 +256,66 @@ pub fn process_hit_events(mut commands: Commands, hit_events: Query<(Entity, &Hi
 }
 
 // Death handling is managed by the health system
+
+#[cfg(test)]
+mod tests {
+    use super::{Gun, shoot_direction};
+    use avian3d::prelude::Rotation;
+    use bevy::prelude::{Quat, Vec3};
+    use std::time::Duration;
+
+    #[test]
+    fn shoot_direction_is_finite_and_normalized() {
+        let rotation = Rotation::from(Quat::from_rotation_y(0.6) * Quat::from_rotation_x(-0.3));
+        let direction = shoot_direction(&rotation);
+
+        assert!(
+            direction.is_finite(),
+            "Shoot direction should be finite, got {:?}",
+            direction
+        );
+        assert!(
+            direction.length_squared() > 0.99 && direction.length_squared() < 1.01,
+            "Shoot direction should be normalized, len2={}",
+            direction.length_squared()
+        );
+    }
+
+    #[test]
+    fn hit_point_math_is_finite_when_using_shoot_direction() {
+        let rotation = Rotation::from(Quat::from_rotation_x(-0.2));
+        let direction = shoot_direction(&rotation);
+        let shoot_origin = Vec3::new(4.0, 2.0, -1.0);
+        let hit_point = shoot_origin + direction * 21.03;
+
+        assert!(hit_point.is_finite(), "Hit point should be finite");
+    }
+
+    #[test]
+    fn gun_reload_refills_magazine_after_duration() {
+        let mut gun = Gun {
+            ammo_in_magazine: 0,
+            ..Gun::default()
+        };
+
+        gun.start_reload();
+        assert!(gun.is_reloading);
+
+        gun.tick_reload(Duration::from_secs_f32(0.6));
+        assert!(gun.is_reloading);
+        assert_eq!(gun.ammo_in_magazine, 0);
+
+        gun.tick_reload(Duration::from_secs_f32(1.0));
+        assert!(!gun.is_reloading);
+        assert_eq!(gun.ammo_in_magazine, gun.magazine_size);
+    }
+
+    #[test]
+    fn start_reload_is_noop_when_magazine_already_full() {
+        let mut gun = Gun::default();
+        gun.start_reload();
+
+        assert!(!gun.is_reloading);
+        assert_eq!(gun.ammo_in_magazine, gun.magazine_size);
+    }
+}

@@ -9,6 +9,7 @@ pub fn get_player_input_map() -> InputMap<PlayerAction> {
         .with(PlayerAction::Jump, KeyCode::Space)
         .with(PlayerAction::Shoot, MouseButton::Left)
         .with(PlayerAction::Aim, MouseButton::Right)
+        .with(PlayerAction::Reload, KeyCode::KeyR)
         .with(PlayerAction::Sprint, KeyCode::ShiftLeft)
         .with(PlayerAction::ToggleFlashlight, KeyCode::KeyF)
         .with_dual_axis(PlayerAction::Move, VirtualDPad::wasd())

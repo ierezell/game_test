@@ -1,9 +1,10 @@
 use avian3d::prelude::{Position, Rotation};
 
+use bevy::input::common_conditions::input_toggle_active;
 use bevy::prelude::{
     Add, App, Camera, Camera2d, Camera3d, Changed, Commands, Component, Entity, IntoScheduleConfigs,
-    Name, On, Or, Plugin, PostUpdate, Query, Res, Startup, Transform, Vec3, With, default,
-    in_state,
+    KeyCode, Name, On, Or, Plugin, PostUpdate, Query, Res, Startup, Transform, Vec3, With,
+    default, in_state,
 };
 
 use bevy_inspector_egui::{
@@ -34,7 +35,10 @@ impl Plugin for ClientCameraPlugin {
                 auto_create_primary_context: false,
                 ..Default::default()
             });
-            app.add_plugins((EguiPlugin::default(), WorldInspectorPlugin::default()));
+            app.add_plugins((
+                EguiPlugin::default(),
+                WorldInspectorPlugin::default().run_if(input_toggle_active(false, KeyCode::F2)),
+            ));
             app.add_systems(Startup, spawn_menu_and_debug_camera);
         }
 

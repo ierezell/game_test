@@ -1,5 +1,6 @@
 use bevy::prelude::{
-    App, Component, Entity, Message, MessageReader, Plugin, Query, Res, Time, Update, Vec3, info,
+    App, Component, Entity, Message, MessageReader, Plugin, Query, Reflect, ReflectComponent,
+    Res, Time, Update, Vec3, info,
 };
 use serde::{Deserialize, Serialize};
 
@@ -8,11 +9,14 @@ pub struct HealthPlugin;
 impl Plugin for HealthPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<DamageEvent>()
+            .register_type::<Health>()
+            .register_type::<Respawnable>()
             .add_systems(Update, (process_damage_events, health_regeneration_system));
     }
 }
 
-#[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Component, Reflect, Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[reflect(Component)]
 pub struct Health {
     pub current: f32,
     pub max: f32,
@@ -86,7 +90,8 @@ impl Health {
     }
 }
 
-#[derive(Component, Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Component, Reflect, Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[reflect(Component)]
 pub struct Respawnable {
     pub respawn_delay: f32,
     pub death_time: f32,

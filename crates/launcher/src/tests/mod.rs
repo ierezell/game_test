@@ -24,15 +24,12 @@ use server::network::ServerNetworkPlugin;
 use shared::{NetworkMode, SharedPlugin};
 use std::time::Duration;
 
-#[cfg(feature = "legacy_udp_tests")]
 mod app_flow;
-#[cfg(feature = "legacy_udp_tests")]
 mod ccc;
-#[cfg(feature = "legacy_udp_tests")]
+
 mod gameplay;
-#[cfg(feature = "legacy_udp_tests")]
+mod health;
 mod world;
-mod deterministic_stepper;
 
 fn update_all(server_app: &mut App, client_app1: &mut App, client_app2: &mut App) {
     let dt = Duration::from_millis(16);
@@ -85,10 +82,8 @@ fn try_send_host_start(client_app: &mut App) -> bool {
     use shared::protocol::{HostStartGameEvent, LobbyControlChannel};
 
     let world = client_app.world_mut();
-    let mut q = world.query_filtered::<
-        &mut MessageSender<HostStartGameEvent>,
-        bevy::prelude::With<Client>,
-    >();
+    let mut q = world
+        .query_filtered::<&mut MessageSender<HostStartGameEvent>, bevy::prelude::With<Client>>();
     if let Some(mut sender) = q.iter_mut(world).next() {
         sender.send::<LobbyControlChannel>(HostStartGameEvent { requested: true });
         true
@@ -181,14 +176,12 @@ fn wait_until_all_playing(server_app: &mut App, client_app1: &mut App, client_ap
 
         let world = client_app1.world_mut();
         let mut q = world.query_filtered::<&Transport, (bevy::prelude::With<Client>, bevy::prelude::With<Connected>)>();
-        q.iter(world)
-            .next()
-            .map(|transport| {
-                (
-                    transport.has_sender::<LobbyControlChannel>(),
-                    transport.has_receiver::<LobbyControlChannel>(),
-                )
-            })
+        q.iter(world).next().map(|transport| {
+            (
+                transport.has_sender::<LobbyControlChannel>(),
+                transport.has_receiver::<LobbyControlChannel>(),
+            )
+        })
     };
 
     let server_transport_lobby_channel = {
@@ -197,15 +190,16 @@ fn wait_until_all_playing(server_app: &mut App, client_app1: &mut App, client_ap
         use shared::protocol::LobbyControlChannel;
 
         let world = server_app.world_mut();
-        let mut q = world.query_filtered::<&Transport, (bevy::prelude::With<ClientOf>, bevy::prelude::With<Connected>)>();
-        q.iter(world)
-            .next()
-            .map(|transport| {
-                (
-                    transport.has_sender::<LobbyControlChannel>(),
-                    transport.has_receiver::<LobbyControlChannel>(),
-                )
-            })
+        let mut q = world.query_filtered::<&Transport, (
+            bevy::prelude::With<ClientOf>,
+            bevy::prelude::With<Connected>,
+        )>();
+        q.iter(world).next().map(|transport| {
+            (
+                transport.has_sender::<LobbyControlChannel>(),
+                transport.has_receiver::<LobbyControlChannel>(),
+            )
+        })
     };
 
     let client_replication_visibility = {
@@ -321,13 +315,10 @@ fn client_has_local_predicted_player(client_app: &mut App, id: u64) -> bool {
 
     let world = client_app.world_mut();
 
-    let mut direct_q = world.query_filtered::<
-        &PlayerId,
-        (
-            bevy::prelude::With<Predicted>,
-            bevy::prelude::With<Controlled>,
-        ),
-    >();
+    let mut direct_q = world.query_filtered::<&PlayerId, (
+        bevy::prelude::With<Predicted>,
+        bevy::prelude::With<Controlled>,
+    )>();
     if direct_q
         .iter(world)
         .any(|pid| matches!(pid.0, lightyear::prelude::PeerId::Netcode(pid) if pid == id))
@@ -335,13 +326,10 @@ fn client_has_local_predicted_player(client_app: &mut App, id: u64) -> bool {
         return true;
     }
 
-    let mut confirmed_q = world.query_filtered::<
-        &Confirmed<PlayerId>,
-        (
-            bevy::prelude::With<Predicted>,
-            bevy::prelude::With<Controlled>,
-        ),
-    >();
+    let mut confirmed_q = world.query_filtered::<&Confirmed<PlayerId>, (
+        bevy::prelude::With<Predicted>,
+        bevy::prelude::With<Controlled>,
+    )>();
     confirmed_q
         .iter(world)
         .any(|pid| matches!(pid.0.0, lightyear::prelude::PeerId::Netcode(pid) if pid == id))
@@ -467,7 +455,11 @@ fn assert_level_exists(app: &mut App, peer_name: &str, min_characters: usize) {
     }
 }
 
-fn create_test_client_app_with_mode(client_id: u64, gym_mode: bool, network_mode: NetworkMode) -> App {
+fn create_test_client_app_with_mode(
+    client_id: u64,
+    gym_mode: bool,
+    network_mode: NetworkMode,
+) -> App {
     create_test_client_app_with_mode_and_endpoint(client_id, gym_mode, network_mode, None)
 }
 

@@ -248,10 +248,18 @@ fn update_lobby_text(
                                         ..Default::default()
                                     },
                                 ))
-                                .observe(|_click: On<Pointer<Click>>,mut commands: Commands , mut sender: Single<&mut MessageSender<HostStartGameEvent>>| {
-                                    sender.send::<LobbyControlChannel>(HostStartGameEvent { requested: true });
-                                    commands.remove_resource::<AutoStart>();
-                                });
+                                .observe(
+                                    |_click: On<Pointer<Click>>,
+                                     mut commands: Commands,
+                                     sender: Option<Single<&mut MessageSender<HostStartGameEvent>>>| {
+                                        if let Some(mut sender) = sender {
+                                            sender.send::<LobbyControlChannel>(
+                                                HostStartGameEvent { requested: true },
+                                            );
+                                            commands.remove_resource::<AutoStart>();
+                                        }
+                                    },
+                                );
                         });
                 });
         }

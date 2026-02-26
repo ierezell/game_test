@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::inputs::input::PlayerAction;
 
-pub const WALK_SPEED: f32 = 60.0;
-pub const RUN_SPEED: f32 = 100.0;
+pub const WALK_SPEED: f32 = 20.0;
+pub const RUN_SPEED: f32 = 40.0;
 pub const AIR_SPEED_CAP: f32 = 15.0;
 pub const AIR_ACCELERATION: f32 = 15.0;
 pub const MAX_AIR_SPEED: f32 = 50.0;
-pub const ACCELERATION: f32 = 8.0;
+pub const ACCELERATION: f32 = 4.0;
 pub const FRICTION: f32 = 10.0;
 pub const JUMP_SPEED: f32 = 8.5;
 pub const GRAVITY: f32 = 9.1;
@@ -165,7 +165,11 @@ pub fn apply_movement(
 
     for (action_state, ground_state, rotation, mut velocity) in query.iter_mut() {
         // Get input
-        let move_input = action_state.axis_pair(&PlayerAction::Move);
+        let move_input = if action_state.disabled() {
+            Vec2::ZERO
+        } else {
+            action_state.axis_pair(&PlayerAction::Move)
+        };
         let (yaw, _, _) = rotation.0.to_euler(EulerRot::YXZ);
 
         // DEBUG: Log when movement is applied
@@ -178,8 +182,8 @@ pub fn apply_movement(
                 velocity.0
             );
         }
-        let is_sprinting = action_state.pressed(&PlayerAction::Sprint);
-        let is_jumping = action_state.pressed(&PlayerAction::Jump);
+        let is_sprinting = !action_state.disabled() && action_state.pressed(&PlayerAction::Sprint);
+        let is_jumping = !action_state.disabled() && action_state.pressed(&PlayerAction::Jump);
 
         // Calculate wish direction using camera yaw for camera-relative movement
         let (wish_direction, mut wish_speed) = get_wish_direction(move_input, yaw, 100.0, 60.0);
@@ -240,10 +244,13 @@ mod tests {
     use bevy::prelude::{
         App, FixedUpdate, IntoScheduleConfigs, MinimalPlugins, Res, Time, Update, Vec2, Vec3,
     };
-    use lightyear::prelude::{Controlled, PeerId, Predicted};
     use leafwing_input_manager::prelude::ActionState;
+    use lightyear::prelude::{Controlled, PeerId, Predicted};
 
-    fn integrate_position(mut q: bevy::prelude::Query<(&mut Position, &LinearVelocity)>, time: Res<Time>) {
+    fn integrate_position(
+        mut q: bevy::prelude::Query<(&mut Position, &LinearVelocity)>,
+        time: Res<Time>,
+    ) {
         for (mut position, velocity) in q.iter_mut() {
             position.0 += velocity.0 * time.delta_secs();
         }
@@ -260,7 +267,8 @@ mod tests {
         let add = calculate_acceleration(wish_direction, 10.0, 8.0, Vec3::ZERO, 0.1);
         assert!(add.x > 0.0);
 
-        let saturated = calculate_acceleration(wish_direction, 10.0, 8.0, Vec3::new(12.0, 0.0, 0.0), 0.1);
+        let saturated =
+            calculate_acceleration(wish_direction, 10.0, 8.0, Vec3::new(12.0, 0.0, 0.0), 0.1);
         assert_eq!(saturated, Vec3::ZERO);
     }
 
@@ -281,9 +289,18 @@ mod tests {
 
     #[test]
     fn wish_direction_uses_yaw_rotation() {
-        let (dir, speed) = get_wish_direction(Vec2::new(0.0, 1.0), std::f32::consts::FRAC_PI_2, 100.0, 60.0);
+        let (dir, speed) = get_wish_direction(
+            Vec2::new(0.0, 1.0),
+            std::f32::consts::FRAC_PI_2,
+            100.0,
+            60.0,
+        );
         assert!(speed > 0.0);
-        assert!(dir.x.abs() > 0.9, "Direction should rotate into x axis, got {:?}", dir);
+        assert!(
+            dir.x.abs() > 0.9,
+            "Direction should rotate into x axis, got {:?}",
+            dir
+        );
     }
 
     #[test]
@@ -291,29 +308,35 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_systems(Update, update_player_rotation_from_input);
-        app.add_systems(FixedUpdate, (super::apply_movement, integrate_position).chain());
+        app.add_systems(
+            FixedUpdate,
+            (super::apply_movement, integrate_position).chain(),
+        );
 
         let mut action_state = ActionState::<PlayerAction>::default();
         action_state.enable();
         action_state.set_axis_pair(&PlayerAction::Move, Vec2::new(0.0, 1.0));
         action_state.set_axis_pair(&PlayerAction::Look, Vec2::ZERO);
 
-        let player = app.world_mut().spawn((
-            PlayerId(PeerId::Netcode(1)),
-            Predicted,
-            Controlled,
-            action_state,
-            GroundState {
-                is_grounded: true,
-                ground_normal: Vec3::Y,
-                ground_distance: 0.0,
-                ground_tick: 1,
-            },
-            LinearVelocity(Vec3::ZERO),
-            Position::new(Vec3::ZERO),
-            Rotation::default(),
-            CharacterMarker,
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                PlayerId(PeerId::Netcode(1)),
+                Predicted,
+                Controlled,
+                action_state,
+                GroundState {
+                    is_grounded: true,
+                    ground_normal: Vec3::Y,
+                    ground_distance: 0.0,
+                    ground_tick: 1,
+                },
+                LinearVelocity(Vec3::ZERO),
+                Position::new(Vec3::ZERO),
+                Rotation::default(),
+                CharacterMarker,
+            ))
+            .id();
 
         for _ in 0..30 {
             step(&mut app, std::time::Duration::from_millis(16));

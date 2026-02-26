@@ -12,9 +12,7 @@ use lightyear::prelude::{
     ServerMultiMessageSender,
     server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start},
 };
-use shared::protocol::{
-    LevelSeed, LobbyControlChannel, LobbyState, PlayerId, StartLoadingGameEvent,
-};
+use shared::protocol::{LobbyControlChannel, LobbyState, PlayerId, StartLoadingGameEvent};
 use shared::{SERVER_BIND_ADDR, SHARED_SETTINGS};
 
 use crate::ServerGameState;
@@ -106,7 +104,6 @@ fn handle_connected(
     trigger: On<Add, Connected>,
     query: Query<&RemoteId, With<ClientOf>>,
     mut lobby_query: Query<(Entity, &mut LobbyState)>,
-    level_seed_query: Query<&LevelSeed>,
     mut commands: Commands,
     server_state: Res<State<ServerGameState>>,
     mut sender: ServerMultiMessageSender,
@@ -149,12 +146,6 @@ fn handle_connected(
                     client_id_bits
                 );
 
-                let seed = level_seed_query.iter().next().map_or(42, |s| s.seed);
-                commands.spawn((
-                    LevelSeed { seed },
-                    Replicate::to_clients(NetworkTarget::Single(client_id.0)),
-                ));
-
                 sender
                     .send::<StartLoadingGameEvent, LobbyControlChannel>(
                         &StartLoadingGameEvent { start: true },
@@ -182,7 +173,7 @@ fn handle_connected(
                 players: vec![client_id_bits],
                 host_id: client_id_bits,
             },
-            Replicate::to_clients(NetworkTarget::Single(client_id.0)),
+            Replicate::to_clients(NetworkTarget::All),
             Name::from("LobbyState"),
         ));
     }
@@ -283,41 +274,42 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_systems(Update, reconcile_disconnected_clients);
 
-        let connected_client = app.world_mut().spawn((
-            ClientOf,
-            Connected,
-            RemoteId(PeerId::Netcode(1)),
-        ))
-        .id();
+        let connected_client = app
+            .world_mut()
+            .spawn((ClientOf, Connected, RemoteId(PeerId::Netcode(1))))
+            .id();
 
-        let disconnected_client = app.world_mut().spawn((
-            ClientOf,
-            RemoteId(PeerId::Netcode(2)),
-        ))
-        .id();
+        let disconnected_client = app
+            .world_mut()
+            .spawn((ClientOf, RemoteId(PeerId::Netcode(2))))
+            .id();
 
         app.world_mut().spawn(LobbyState {
             players: vec![1, 2],
             host_id: 2,
         });
 
-        let player_1 = app.world_mut().spawn((
-            PlayerId(PeerId::Netcode(1)),
-            ControlledBy {
-                owner: connected_client,
-                lifetime: Default::default(),
-            },
-        ))
-        .id();
+        let player_1 = app
+            .world_mut()
+            .spawn((
+                PlayerId(PeerId::Netcode(1)),
+                ControlledBy {
+                    owner: connected_client,
+                    lifetime: Default::default(),
+                },
+            ))
+            .id();
 
-        let player_2 = app.world_mut().spawn((
-            PlayerId(PeerId::Netcode(2)),
-            ControlledBy {
-                owner: disconnected_client,
-                lifetime: Default::default(),
-            },
-        ))
-        .id();
+        let player_2 = app
+            .world_mut()
+            .spawn((
+                PlayerId(PeerId::Netcode(2)),
+                ControlledBy {
+                    owner: disconnected_client,
+                    lifetime: Default::default(),
+                },
+            ))
+            .id();
 
         app.update();
 

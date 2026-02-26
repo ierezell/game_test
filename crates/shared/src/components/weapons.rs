@@ -106,6 +106,10 @@ pub fn fire_gun_system(
     for (shooter_entity, mut gun, pos, rot, action_state) in query.iter_mut() {
         gun.cooldown.tick(time.delta());
 
+        if action_state.disabled() {
+            continue;
+        }
+
         if action_state.just_pressed(&PlayerAction::Reload) {
             gun.start_reload();
         }
@@ -210,6 +214,11 @@ pub fn fire_projectile_gun_system(
 ) {
     for (entity, mut gun, pos, rot, action_state) in query.iter_mut() {
         gun.cooldown.tick(time.delta());
+
+        if action_state.disabled() {
+            continue;
+        }
+
         if action_state.pressed(&PlayerAction::Shoot) && gun.cooldown.is_finished() {
             let direction = rot.0 * Vec3::NEG_Z;
             commands.spawn((

@@ -1,12 +1,17 @@
-use avian3d::prelude::Rotation;
 use bevy::prelude::*;
 use leafwing_input_manager::prelude::ActionState;
-use lightyear::prelude::{Controlled, Predicted};
+use lightyear::prelude::{Controlled, Interpolated, Predicted};
 use shared::components::flashlight::PlayerFlashlight;
 use shared::inputs::input::{PLAYER_CAPSULE_HEIGHT, PlayerAction};
 use shared::protocol::PlayerId;
 
 pub struct ClientFlashlightPlugin;
+
+#[derive(Component)]
+struct FlashlightBeam;
+
+#[derive(Component)]
+struct HasFlashlightBeam;
 
 impl Plugin for ClientFlashlightPlugin {
     fn build(&self, app: &mut App) {
@@ -14,10 +19,8 @@ impl Plugin for ClientFlashlightPlugin {
             Update,
             (
                 handle_flashlight_toggle,
-                spawn_flashlight_beam_predicted,
-                spawn_flashlight_beam_interpolated,
-                update_flashlight_beam_predicted,
-                update_flashlight_beam_interpolated,
+                spawn_flashlight_beam,
+                update_flashlight_beam,
             )
                 .chain(),
         );
@@ -31,6 +34,10 @@ fn handle_flashlight_toggle(
     >,
 ) {
     for (mut flashlight, action_state) in player_query.iter_mut() {
+        if action_state.disabled() {
+            continue;
+        }
+
         if action_state.just_pressed(&PlayerAction::ToggleFlashlight) {
             flashlight.toggle();
             info!(
@@ -41,25 +48,35 @@ fn handle_flashlight_toggle(
     }
 }
 
-fn spawn_flashlight_beam_predicted(
+fn spawn_flashlight_beam(
     mut commands: Commands,
     player_query: Query<
-        (Entity, &PlayerFlashlight),
+        (Entity, &PlayerFlashlight, Has<Controlled>),
         (
-            With<Predicted>,
-            With<Controlled>,
+            Or<(With<Predicted>, With<Interpolated>)>,
             With<PlayerId>,
-            Without<Children>,
+            Without<HasFlashlightBeam>,
         ),
     >,
 ) {
-    for (player_entity, flashlight) in player_query.iter() {
+    for (player_entity, flashlight, is_controlled) in player_query.iter() {
+        let beam_intensity = if flashlight.is_on {
+            flashlight.intensity
+        } else {
+            0.0
+        };
+        let beam_name = if is_controlled {
+            "LocalPlayerFlashlightBeam"
+        } else {
+            "RemotePlayerFlashlightBeam"
+        };
+
         let beam_entity = commands
             .spawn((
-                PlayerFlashlight::new(),
+                FlashlightBeam,
                 SpotLight {
                     color: Color::srgb(1.0, 0.95, 0.7),
-                    intensity: flashlight.intensity,
+                    intensity: beam_intensity,
                     range: flashlight.range,
                     radius: 0.1,
                     shadows_enabled: true,
@@ -67,66 +84,31 @@ fn spawn_flashlight_beam_predicted(
                     inner_angle: flashlight.inner_angle,
                     ..default()
                 },
-                Transform::default(),
-                Name::new("LocalPlayerFlashlightBeam"),
+                Transform::from_translation(Vec3::new(0.0, PLAYER_CAPSULE_HEIGHT * 0.8, 0.2)),
+                Name::new(beam_name),
             ))
             .id();
 
-        commands.entity(player_entity).add_child(beam_entity);
-        info!(
-            "🔦 Spawned local flashlight beam for player {:?}",
-            player_entity
-        );
+        commands
+            .entity(player_entity)
+            .add_child(beam_entity)
+            .insert(HasFlashlightBeam);
+        info!("🔦 Spawned flashlight beam for player {:?}", player_entity);
     }
 }
 
-fn spawn_flashlight_beam_interpolated(
-    mut commands: Commands,
+fn update_flashlight_beam(
+    mut flashlight_query: Query<&mut SpotLight, With<FlashlightBeam>>,
     player_query: Query<
-        (Entity, &PlayerFlashlight),
+        (&PlayerFlashlight, &Children),
         (
-            With<lightyear::prelude::Interpolated>,
+            Or<(With<Predicted>, With<Interpolated>)>,
             With<PlayerId>,
-            Without<Children>,
+            Changed<PlayerFlashlight>,
         ),
     >,
 ) {
-    for (player_entity, flashlight) in player_query.iter() {
-        let beam_entity = commands
-            .spawn((
-                PlayerFlashlight::new(),
-                SpotLight {
-                    color: Color::srgb(1.0, 0.95, 0.7),
-                    intensity: flashlight.intensity,
-                    range: flashlight.range,
-                    radius: 0.1,
-                    shadows_enabled: true,
-                    outer_angle: flashlight.outer_angle,
-                    inner_angle: flashlight.inner_angle,
-                    ..default()
-                },
-                Transform::default(),
-                Name::new("RemotePlayerFlashlightBeam"),
-            ))
-            .id();
-
-        commands.entity(player_entity).add_child(beam_entity);
-        info!(
-            "🔦 Spawned remote flashlight beam for player {:?}",
-            player_entity
-        );
-    }
-}
-
-fn update_flashlight_beam_predicted(
-    mut flashlight_query: Query<&mut SpotLight, With<PlayerFlashlight>>,
-    player_query: Query<
-        (&PlayerFlashlight, &Rotation, &Children),
-        (With<Predicted>, With<Controlled>, With<PlayerId>),
-    >,
-    mut transform_query: Query<&mut Transform>,
-) {
-    for (flashlight, player_rotation, children) in player_query.iter() {
+    for (flashlight, children) in player_query.iter() {
         for child in children.iter() {
             if let Ok(mut spotlight) = flashlight_query.get_mut(child) {
                 spotlight.intensity = if flashlight.is_on {
@@ -134,39 +116,9 @@ fn update_flashlight_beam_predicted(
                 } else {
                     0.0
                 };
-
-                if let Ok(mut transform) = transform_query.get_mut(child) {
-                    let camera_offset = Vec3::new(0.0, PLAYER_CAPSULE_HEIGHT * 0.8, 0.0);
-                    transform.translation = camera_offset;
-                    transform.rotation = Quat::from_rotation_x(player_rotation.x);
-                }
-            }
-        }
-    }
-}
-
-fn update_flashlight_beam_interpolated(
-    mut flashlight_query: Query<&mut SpotLight, With<PlayerFlashlight>>,
-    player_query: Query<
-        (&PlayerFlashlight, &Rotation, &Children),
-        (With<lightyear::prelude::Interpolated>, With<PlayerId>),
-    >,
-    mut transform_query: Query<&mut Transform>,
-) {
-    for (flashlight, rotation, children) in player_query.iter() {
-        for child in children.iter() {
-            if let Ok(mut spotlight) = flashlight_query.get_mut(child) {
-                spotlight.intensity = if flashlight.is_on {
-                    flashlight.intensity
-                } else {
-                    0.0
-                };
-
-                if let Ok(mut transform) = transform_query.get_mut(child) {
-                    let camera_offset = Vec3::new(0.0, PLAYER_CAPSULE_HEIGHT * 0.8, 0.0);
-                    transform.translation = camera_offset;
-                    transform.rotation = rotation.0;
-                }
+                spotlight.range = flashlight.range;
+                spotlight.outer_angle = flashlight.outer_angle;
+                spotlight.inner_angle = flashlight.inner_angle;
             }
         }
     }

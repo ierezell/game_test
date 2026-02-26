@@ -3,8 +3,8 @@ use bevy::{
     ecs::query::Without,
     ecs::schedule::IntoScheduleConfigs,
     prelude::{
-        App, Assets, Commands, CommandsStatesExt, Entity, FixedUpdate, Mesh, Name, Plugin, Query,
-        Res, ResMut, StandardMaterial, Vec3, With, info,
+        App, Assets, Commands, CommandsStatesExt, Entity, FixedUpdate, Mesh, Name, Plugin,
+        Query, Res, ResMut, StandardMaterial, Vec3, With, info,
     },
     state::{condition::in_state, state::OnEnter},
 };
@@ -14,6 +14,7 @@ use shared::inputs::movement::GroundState;
 use shared::{GymMode, level::visuals::build_level_visuals};
 use shared::{gym::{setup_gym_level, spawn_gym_patrolling_npc_entities}, protocol::LevelSeed};
 use shared::{
+    level::building::build_procedural_runtime_content,
     inputs::input::PlayerAction,
     level::generation::{LevelConfig, build_level_physics, generate_level},
 };
@@ -46,7 +47,6 @@ impl Plugin for ServerEntitiesPlugin {
             (
                 spawn_late_joining_players,
                 handle_player_death,
-                handle_player_respawn,
                 mark_dead_npcs_for_respawn,
                 respawn_dead_npcs,
             )
@@ -60,6 +60,7 @@ impl Plugin for ServerEntitiesPlugin {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_and_build_level(
     mut commands: Commands,
     meshes: Option<ResMut<Assets<Mesh>>>,
@@ -101,9 +102,11 @@ fn generate_and_build_level(
                 commands.reborrow(),
                 mesh_assets,
                 Some(mat_assets),
-                level_graph,
+                &level_graph,
             );
         }
+
+        build_procedural_runtime_content(&mut commands, &level_graph);
 
         // Spawn players in normal mode
         spawn_player_entities(commands.reborrow(), &lobby_state, &client_query);
@@ -279,13 +282,6 @@ fn handle_player_death(
             commands.entity(entity).despawn();
         }
     }
-}
-
-/// Handle player respawn - respawn players after their respawn delay
-fn handle_player_respawn() {
-    // This system will spawn players who are in the lobby but don't have entities
-    // The spawn_late_joining_players system already handles this logic
-    // So dead players will automatically respawn through that system
 }
 
 fn mark_dead_npcs_for_respawn(

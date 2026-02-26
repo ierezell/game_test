@@ -1,4 +1,4 @@
-use avian3d::prelude::{Collider, RigidBody};
+use avian3d::prelude::{Collider, Position, RigidBody, Rotation};
 use bevy::prelude::*;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -47,13 +47,14 @@ pub struct Zone {
     pub id: ZoneId,
     pub zone_type: ZoneType,
     pub position: Vec3,
+    pub rotation: Quat,
     pub size: Vec3,
     pub connections: Vec<ZoneId>,
     pub is_built: bool,
 }
 
 impl Zone {
-    pub fn new(id: ZoneId, zone_type: ZoneType, position: Vec3) -> Self {
+    pub fn new(id: ZoneId, zone_type: ZoneType, position: Vec3, rotation: Quat) -> Self {
         let base_size = 20.0;
         let multiplier = zone_type.size_multiplier();
 
@@ -66,6 +67,7 @@ impl Zone {
             id,
             zone_type,
             position,
+            rotation,
             size,
             connections: Vec::new(),
             is_built: false,
@@ -163,7 +165,7 @@ pub fn generate_level(config: LevelConfig) -> LevelGraph {
     let mut rng = StdRng::seed_from_u64(config.seed);
     let mut graph = LevelGraph::new(config.clone());
 
-    let spawn_zone = Zone::new(ZoneId(0), ZoneType::Hub, Vec3::ZERO);
+    let spawn_zone = Zone::new(ZoneId(0), ZoneType::Hub, Vec3::ZERO, Quat::IDENTITY);
     graph.spawn_zone = spawn_zone.id;
     graph.add_zone(spawn_zone);
 
@@ -174,7 +176,14 @@ pub fn generate_level(config: LevelConfig) -> LevelGraph {
         let frontier_index = rng.random_range(0..frontier.len());
         let (current_zone_id, depth) = frontier[frontier_index];
 
-        let current_zone = graph.get_zone(current_zone_id).unwrap().clone();
+        let Some(current_zone) = graph.get_zone(current_zone_id).cloned() else {
+            warn!(
+                "Skipping missing zone {:?} while generating level",
+                current_zone_id
+            );
+            frontier.remove(frontier_index);
+            continue;
+        };
         let max_connections = current_zone.zone_type.max_connections();
 
         if depth >= config.max_depth || current_zone.connections.len() >= max_connections {
@@ -203,14 +212,24 @@ pub fn generate_level(config: LevelConfig) -> LevelGraph {
 
             let new_position =
                 calculate_zone_position(&graph, current_zone_id, &mut rng, config.min_zone_spacing);
+            let current_pos = current_zone.position;
 
-            let new_zone = Zone::new(ZoneId(next_zone_id), zone_type, new_position);
+            let direction = (new_position - current_pos).normalize_or_zero();
+            let zone_rotation = if zone_type == ZoneType::Corridor && direction != Vec3::ZERO {
+                Quat::from_rotation_arc(Vec3::Z, direction)
+            } else {
+                Quat::IDENTITY
+            };
+
+            let new_zone = Zone::new(ZoneId(next_zone_id), zone_type, new_position, zone_rotation);
             let new_zone_id = new_zone.id;
 
-            let current_pos = current_zone.position;
             let door_position = (current_pos + new_position) * 0.5;
-            let direction = (new_position - current_pos).normalize();
-            let door_rotation = Quat::from_rotation_arc(Vec3::Z, direction);
+            let door_rotation = if direction != Vec3::ZERO {
+                Quat::from_rotation_arc(Vec3::Z, direction)
+            } else {
+                Quat::IDENTITY
+            };
 
             graph.add_zone(new_zone);
             graph.add_connection(current_zone_id, new_zone_id, door_position, door_rotation);
@@ -226,8 +245,9 @@ pub fn generate_level(config: LevelConfig) -> LevelGraph {
             next_zone_id += 1;
         }
 
-        let updated_zone = graph.get_zone(current_zone_id).unwrap();
-        if updated_zone.connections.len() < max_connections {
+        if let Some(updated_zone) = graph.get_zone(current_zone_id)
+            && updated_zone.connections.len() < max_connections
+        {
             frontier.push((current_zone_id, depth));
         }
     }
@@ -263,7 +283,13 @@ fn calculate_zone_position(
     rng: &mut StdRng,
     min_spacing: f32,
 ) -> Vec3 {
-    let parent = graph.get_zone(parent_id).unwrap();
+    let Some(parent) = graph.get_zone(parent_id) else {
+        warn!(
+            "Missing parent zone {:?} while calculating zone position",
+            parent_id
+        );
+        return Vec3::ZERO;
+    };
     let parent_pos = parent.position;
 
     for _ in 0..10 {
@@ -294,16 +320,27 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
         level_graph.zones.len()
     );
 
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut min_z = f32::INFINITY;
+    let mut max_z = f32::NEG_INFINITY;
+
     // Build physics for all zones
     for zone in level_graph.zones.values() {
+        min_x = min_x.min(zone.position.x - zone.size.x * 0.5);
+        max_x = max_x.max(zone.position.x + zone.size.x * 0.5);
+        min_z = min_z.min(zone.position.z - zone.size.z * 0.5);
+        max_z = max_z.max(zone.position.z + zone.size.z * 0.5);
+
         // Floor collider
-        let floor_thickness = 0.5;
+        let floor_thickness = 1.0;
+        let floor_position = zone.position + Vec3::new(0.0, -floor_thickness / 2.0, 0.0);
         commands.spawn((
             RigidBody::Static,
             Collider::cuboid(zone.size.x, floor_thickness, zone.size.z),
-            Transform::from_translation(
-                zone.position + Vec3::new(0.0, -floor_thickness / 2.0, 0.0),
-            ),
+            Position::new(floor_position),
+            Rotation::from(zone.rotation),
+            Transform::from_translation(floor_position).with_rotation(zone.rotation),
             Name::new(format!("Physics_Floor_Zone_{}", zone.id.0)),
         ));
 
@@ -329,13 +366,32 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
         ];
 
         for (i, (offset, wall_size)) in wall_positions.iter().enumerate() {
+            let wall_position = zone.position + zone.rotation * *offset;
             commands.spawn((
                 RigidBody::Static,
                 Collider::cuboid(wall_size.x, wall_size.y, wall_size.z),
-                Transform::from_translation(zone.position + *offset),
+                Position::new(wall_position),
+                Rotation::from(zone.rotation),
+                Transform::from_translation(wall_position).with_rotation(zone.rotation),
                 Name::new(format!("Physics_Wall_{}_Zone_{}", i, zone.id.0)),
             ));
         }
+    }
+
+    if min_x.is_finite() && max_x.is_finite() && min_z.is_finite() && max_z.is_finite() {
+        let safety_margin = 20.0;
+        let safety_width = (max_x - min_x) + safety_margin;
+        let safety_depth = (max_z - min_z) + safety_margin;
+        let safety_center = Vec3::new((min_x + max_x) * 0.5, -4.0, (min_z + max_z) * 0.5);
+
+        commands.spawn((
+            RigidBody::Static,
+            Collider::cuboid(safety_width, 6.0, safety_depth),
+            Position::new(safety_center),
+            Rotation::default(),
+            Transform::from_translation(safety_center),
+            Name::new("Physics_SafetyFloor"),
+        ));
     }
 
     info!("Level physics built successfully");
@@ -385,18 +441,28 @@ mod tests {
             max_depth: 8,
         });
 
-        assert!(level.zones.len() >= 2, "Level should contain multiple zones");
+        assert!(
+            level.zones.len() >= 2,
+            "Level should contain multiple zones"
+        );
         assert!(
             !level.connections.is_empty(),
             "Level should contain at least one connection"
         );
-        assert!(level.zones.contains_key(&ZoneId(0)), "Spawn zone should exist");
+        assert!(
+            level.zones.contains_key(&ZoneId(0)),
+            "Spawn zone should exist"
+        );
 
         let spawn_pos = level
             .zones
             .get(&ZoneId(0))
             .expect("spawn zone should exist")
             .position;
-        assert_eq!(spawn_pos, Vec3::ZERO, "Spawn zone position should be origin");
+        assert_eq!(
+            spawn_pos,
+            Vec3::ZERO,
+            "Spawn zone position should be origin"
+        );
     }
 }

@@ -311,15 +311,59 @@ impl RLTrainingState {
         }
     }
 
-    /// Simple training step (placeholder for proper training implementation)
+    /// Lightweight online training step with epsilon decay and periodic target refresh
     pub fn train_step(&mut self) {
         if self.experience_buffer.len() < self.batch_size {
             return;
         }
 
-        // In a full implementation, this would implement proper DQN training
-        // with loss calculation and gradient descent using nalgebra
-        // For now, just update the step counter
+        let recent_batch = self
+            .experience_buffer
+            .iter()
+            .rev()
+            .take(self.batch_size);
+
+        let mut batch_reward_sum = 0.0f32;
+        let mut terminal_count = 0usize;
+        let mut state_shift = 0.0f32;
+
+        for experience in recent_batch {
+            batch_reward_sum += experience.reward;
+            if experience.done {
+                terminal_count += 1;
+            }
+
+            let state_delta: f32 = experience
+                .next_state
+                .iter()
+                .zip(experience.state.iter())
+                .map(|(next, previous)| (next - previous).abs())
+                .sum();
+            state_shift += state_delta;
+
+            if experience.action.jump {
+                state_shift += 0.01;
+            }
+            if experience.action.shoot {
+                state_shift += 0.01;
+            }
+        }
+
+        let avg_reward = batch_reward_sum / self.batch_size as f32;
+        let batch_pressure = (state_shift / self.batch_size as f32).clamp(0.0, 1.0);
+
+        if terminal_count > 0 || avg_reward < -1.0 {
+            self.epsilon = (self.epsilon * 0.9995).max(0.05);
+        } else {
+            self.epsilon = (self.epsilon * (0.9985 - 0.0005 * batch_pressure)).max(0.02);
+        }
+
+        if self.training_step % 128 == 0
+            && let Some(network) = &self.q_network
+        {
+            self.target_network = Some(network.clone());
+        }
+
         self.training_step += 1;
     }
 }

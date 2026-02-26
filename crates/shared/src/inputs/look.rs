@@ -7,7 +7,7 @@ use crate::{
     protocol::{CharacterMarker, PlayerId},
 };
 const LOOK_DEADZONE_SQUARED: f32 = 0.000001;
-pub const MOUSE_SENSIVITY: f32 = 0.002;
+pub const MOUSE_SENSIVITY: f32 = 0.0007;
 
 pub fn get_mouse_look_delta(action_state: &ActionState<PlayerAction>) -> Vec2 {
     let look_input = action_state.axis_pair(&PlayerAction::Look);
@@ -53,8 +53,8 @@ mod tests {
     use crate::protocol::{CharacterMarker, PlayerId};
     use avian3d::prelude::Rotation;
     use bevy::prelude::{App, Update, Vec2};
-    use lightyear::prelude::{Controlled, PeerId, Predicted};
     use leafwing_input_manager::prelude::ActionState;
+    use lightyear::prelude::{Controlled, PeerId, Predicted};
 
     #[test]
     fn look_delta_applies_deadzone() {
@@ -91,7 +91,8 @@ mod tests {
 
     #[test]
     fn apply_look_delta_clamps_pitch() {
-        let rotation = apply_look_delta(bevy::prelude::Quat::IDENTITY, Vec2::new(0.0, -1_000_000.0));
+        let rotation =
+            apply_look_delta(bevy::prelude::Quat::IDENTITY, Vec2::new(0.0, -1_000_000.0));
         let (_, pitch, _) = rotation.to_euler(bevy::prelude::EulerRot::YXZ);
 
         assert!(
@@ -105,8 +106,14 @@ mod tests {
         let rotation = apply_look_delta(bevy::prelude::Quat::IDENTITY, Vec2::new(0.0, 120.0));
         let (yaw, pitch, _) = rotation.to_euler(bevy::prelude::EulerRot::YXZ);
 
-        assert!(pitch.abs() > 0.0001, "Vertical mouse movement should affect pitch");
-        assert!(yaw.abs() < 0.0001, "Pure vertical mouse movement should not change yaw");
+        assert!(
+            pitch.abs() > 0.0001,
+            "Vertical mouse movement should affect pitch"
+        );
+        assert!(
+            yaw.abs() < 0.0001,
+            "Pure vertical mouse movement should not change yaw"
+        );
     }
 
     #[test]

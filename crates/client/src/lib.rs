@@ -19,6 +19,7 @@ use crate::lobby::ClientLobbyPlugin;
 use crate::network::ClientNetworkPlugin;
 
 use crate::vfx::ClientVFXPlugin;
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::log::LogPlugin;
 use bevy::prelude::{
     App, AssetApp, AssetPlugin, DefaultPlugins, Image, Mesh, PluginGroup, Resource, Shader,
@@ -144,6 +145,7 @@ pub fn create_client_app(
     client_app.insert_state(ClientGameState::LocalMenu);
 
     if !headless {
+        client_app.add_plugins(FrameTimeDiagnosticsPlugin::default());
         client_app.add_plugins(ClientDebugPlugin);
         client_app.add_plugins(ClientVFXPlugin);
     }

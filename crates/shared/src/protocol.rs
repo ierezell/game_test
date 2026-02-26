@@ -117,8 +117,8 @@ impl Plugin for ProtocolPlugin {
             .add_prediction();
 
         app.register_component::<SimpleNavigationAgent>();
-        app.register_component::<PatrolState>();
         app.register_component::<PatrolRoute>();
+        app.register_component::<PatrolState>();
 
         app.register_component::<LobbyState>();
 

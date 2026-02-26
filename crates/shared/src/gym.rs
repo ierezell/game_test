@@ -153,41 +153,49 @@ pub fn spawn_gym_patrolling_npc_entities(
     let is_gym_mode = gym_mode.map(|gm| gm.0).unwrap_or(false);
 
     if !is_gym_mode {
-        info!("⏭️  Skipping NPC spawn in normal mode (not implemented yet)");
         return;
     }
 
-    info!("🤖 Spawning test NPC for gym mode");
+    let npc_specs: Vec<(&str, Vec3, Vec<Vec3>, f32)> = vec![(
+        "Patrol_Enemy_1",
+        Vec3::new(-18.0, 1.0, -8.0),
+        vec![
+            Vec3::new(-20.0, 1.0, -10.0),
+            Vec3::new(-5.0, 1.0, -10.0),
+            Vec3::new(-5.0, 1.0, 5.0),
+            Vec3::new(-20.0, 1.0, 5.0),
+        ],
+        3.0,
+    )];
 
-    let initial_spawn = Vec3::new(-18.0, 1.0, -8.0);
-    // Obstacles are created at create_static_level, so it's before this system runs
-    let validated_spawn = validate_spawn_position(initial_spawn, &obstacles, 0.5);
-    let enemy = commands
-        .spawn((
-            Name::new("Patrol_Enemy_1"),
-            Position::new(validated_spawn),
-            Rotation::default(),
-            LinearVelocity::default(),
-            Health::basic(),
-            Respawnable::with_position(2.0, validated_spawn),
-            Replicate::to_clients(NetworkTarget::All),
-            InterpolationTarget::to_clients(NetworkTarget::All),
-            CharacterMarker,
-            NpcPhysicsBundle::default(),
-        ))
-        .id();
+    info!(
+        "🤖 Spawning {} patrolling NPC(s) for {} mode",
+        npc_specs.len(),
+        "gym"
+    );
 
-    let original_patrol_points = [
-        Vec3::new(-20.0, 1.0, -10.0),
-        Vec3::new(-5.0, 1.0, -10.0),
-        Vec3::new(-5.0, 1.0, 5.0),
-        Vec3::new(-20.0, 1.0, 5.0),
-    ];
+    for (name, spawn_position, patrol_points, speed) in npc_specs {
+        let validated_spawn = validate_spawn_position(spawn_position, &obstacles, 0.5);
+        let enemy = commands
+            .spawn((
+                Name::new(name),
+                Position::new(validated_spawn),
+                Rotation::default(),
+                LinearVelocity::default(),
+                Health::basic(),
+                Respawnable::with_position(2.0, validated_spawn),
+                Replicate::to_clients(NetworkTarget::All),
+                InterpolationTarget::to_clients(NetworkTarget::All),
+                CharacterMarker,
+                NpcPhysicsBundle::default(),
+            ))
+            .id();
 
-    let validated_patrol_points: Vec<Vec3> = original_patrol_points
-        .iter()
-        .map(|&point| validate_spawn_position(point, &obstacles, 0.5))
-        .collect();
+        let validated_patrol_points: Vec<Vec3> = patrol_points
+            .iter()
+            .map(|&point| validate_spawn_position(point, &obstacles, 0.5))
+            .collect();
 
-    setup_patrol(&mut commands, enemy, validated_patrol_points, 3.0);
+        setup_patrol(&mut commands, enemy, validated_patrol_points, speed);
+    }
 }

@@ -44,7 +44,8 @@ async fn fetch_config(path: &str) -> Result<String, JsValue> {
     let request = Request::new_with_str_and_init(path, &opts)?;
     request.headers().set("Accept", "application/ron")?;
 
-    let window = web_sys::window().unwrap();
+    let window = web_sys::window()
+        .ok_or_else(|| JsValue::from_str("window is not available in this environment"))?;
     let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
     let resp: Response = resp_value.dyn_into()?;
 
@@ -57,7 +58,9 @@ async fn fetch_config(path: &str) -> Result<String, JsValue> {
     }
 
     let text = JsFuture::from(resp.text()?).await?;
-    Ok(text.as_string().unwrap())
+    text
+        .as_string()
+        .ok_or_else(|| JsValue::from_str("response text could not be converted to string"))
 }
 
 async fn load_client_config() -> Result<ClientLaunchOptions, JsValue> {

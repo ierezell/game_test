@@ -1,7 +1,7 @@
 use bevy::prelude::{
-    AlignItems, App, Commands, Component, FlexDirection, IntoScheduleConfigs, JustifyContent,
-    Name, Node, OnEnter, OnExit, Plugin, PositionType, Query, Res, Text, TextFont, Update, Val,
-    With, in_state,
+    AlignItems, App, Commands, Component, FlexDirection, IntoScheduleConfigs, JustifyContent, Name,
+    Node, OnEnter, OnExit, Plugin, PositionType, Query, Res, Text, TextFont, Update, Val, With,
+    in_state,
 };
 use lightyear::prelude::{Controlled, Predicted};
 use shared::components::weapons::Gun;
@@ -102,17 +102,18 @@ fn spawn_hud(mut commands: Commands) {
 
 fn update_ammo_text(
     mut ammo_text_query: Query<&mut Text, With<AmmoText>>,
-    local_player_gun_query: Query<
-        &Gun,
-        (With<PlayerId>, With<Predicted>, With<Controlled>),
-    >,
+    local_player_gun_query: Query<&Gun, (With<PlayerId>, With<Predicted>, With<Controlled>)>,
 ) {
     let Ok(mut text) = ammo_text_query.single_mut() else {
         return;
     };
 
     if let Ok(gun) = local_player_gun_query.single() {
-        let status = if gun.is_reloading { " (Reloading...)" } else { "" };
+        let status = if gun.is_reloading {
+            " (Reloading...)"
+        } else {
+            ""
+        };
         **text = format!(
             "Ammo: {} / {}{}",
             gun.ammo_in_magazine, gun.magazine_size, status

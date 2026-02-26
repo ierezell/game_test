@@ -78,7 +78,7 @@ fn handle_world_creation(
 
             let level_graph = generate_level(config);
             build_level_physics(commands.reborrow(), &level_graph);
-            build_level_visuals(commands.reborrow(), meshes, materials, level_graph);
+            build_level_visuals(commands.reborrow(), meshes, materials, &level_graph);
         } else {
             bevy::log::info!(
                 "⏳ Client waiting for LevelSeed replication before generating procedural level"

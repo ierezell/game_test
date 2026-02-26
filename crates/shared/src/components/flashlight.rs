@@ -20,10 +20,10 @@ impl PlayerFlashlight {
     pub fn new() -> Self {
         Self {
             is_on: true,          // Start ON so player can see immediately
-            intensity: 1000000.0, // Much brighter - increased from 500000.0
-            range: 80.0,          // Longer range - increased from 60.0
-            inner_angle: 0.12,    // Very tight core - reduced from 0.15
-            outer_angle: 0.35,    // Tighter cone - reduced from 0.4
+            intensity: 1400000.0, // Brighter beam for dark procedural levels
+            range: 100.0,         // Longer throw distance
+            inner_angle: 0.11,
+            outer_angle: 0.38,
         }
     }
 

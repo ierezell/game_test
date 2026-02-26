@@ -42,7 +42,6 @@ fn handle_local_player_setup(
     >,
     local_player_id: Res<LocalPlayerId>,
 ) {
-    // TODO : may use single here ?
     for (entity, color, player_id) in player_query.iter() {
         if player_id.0.to_bits() == local_player_id.0 {
             let input_map = get_player_input_map();

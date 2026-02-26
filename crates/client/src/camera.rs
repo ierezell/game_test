@@ -1,10 +1,7 @@
-use avian3d::prelude::{Position, Rotation};
-
 use bevy::input::common_conditions::input_toggle_active;
 use bevy::prelude::{
-    Add, App, Camera, Camera2d, Camera3d, Changed, Commands, Component, Entity, IntoScheduleConfigs,
-    KeyCode, Name, On, Or, Plugin, PostUpdate, Query, Res, Startup, Transform, Vec3, With,
-    default, in_state,
+    Add, App, Camera, Camera2d, Camera3d, Commands, Component, Entity, KeyCode, Name, On, Plugin,
+    Query, Res, Startup, Transform, With, default,
 };
 
 use bevy_inspector_egui::{
@@ -16,8 +13,6 @@ use lightyear::prelude::{Controlled, Predicted};
 
 use shared::inputs::input::PLAYER_CAPSULE_HEIGHT;
 use shared::protocol::PlayerId;
-
-use crate::ClientGameState;
 
 #[derive(Component, Default)]
 pub struct PlayerCamera;
@@ -43,10 +38,6 @@ impl Plugin for ClientCameraPlugin {
         }
 
         app.add_observer(spawn_camera_when_player_spawn);
-        app.add_systems(
-            PostUpdate,
-            update_camera_from_player.run_if(in_state(ClientGameState::Playing)),
-        );
     }
 }
 
@@ -64,10 +55,7 @@ fn spawn_menu_and_debug_camera(mut commands: Commands) {
 
 fn spawn_camera_when_player_spawn(
     trigger: On<Add, Controlled>,
-    player_query: Query<
-        (&PlayerId, &Position),
-        (With<Predicted>, With<Controlled>, With<PlayerId>),
-    >,
+    player_query: Query<&PlayerId, (With<Predicted>, With<Controlled>, With<PlayerId>)>,
     camera_query: Query<Entity, With<PlayerCamera>>,
     mut commands: Commands,
     local_player_id: Res<crate::LocalPlayerId>,
@@ -82,116 +70,30 @@ fn spawn_camera_when_player_spawn(
         trigger.entity
     );
 
-    if let Ok((player_id, position)) = player_query.get(trigger.entity)
+    if let Ok(player_id) = player_query.get(trigger.entity)
         && player_id.0.to_bits() == local_player_id.0
     {
-        let camera_height = PLAYER_CAPSULE_HEIGHT + 0.6;
-        let camera_position = position.0 + Vec3::new(0.0, camera_height, 0.0);
+        let camera_entity = commands
+            .spawn((
+                PlayerCamera,
+                Camera {
+                    order: 0,
+                    ..default()
+                },
+                Camera3d::default(),
+                Transform::from_xyz(0.0, PLAYER_CAPSULE_HEIGHT + 0.6, 0.0),
+                Name::new(format!("Client_{}_Camera", local_player_id.0)),
+            ))
+            .id();
 
+        commands.entity(trigger.entity).add_child(camera_entity);
         bevy::log::info!(
-            "🎥 Spawning camera at {:?} for player {}",
-            camera_position,
+            "🎥 Spawned and parented camera for local player {}",
             local_player_id.0
         );
-
-        commands.spawn((
-            PlayerCamera,
-            Camera {
-                order: 0,
-                ..default()
-            },
-            Camera3d::default(),
-            Transform::from_translation(camera_position),
-            Name::new(format!("Client_{}_Camera", local_player_id.0)),
-        ));
     } else {
         bevy::log::warn!(
             "⚠️ Failed to get player data for camera spawn. Player ID mismatch or entity not found."
-        );
-    }
-}
-
-fn update_camera_from_player(
-    player_query: Query<
-        (&Position, &Rotation),
-        (
-            With<PlayerId>,
-            With<Predicted>,
-            With<Controlled>,
-            Or<(Changed<Position>, Changed<Rotation>)>,
-        ),
-    >,
-    mut camera_query: Query<&mut Transform, With<PlayerCamera>>,
-) {
-    let Ok(mut camera_transform) = camera_query.single_mut() else {
-        return;
-    };
-
-    let Ok((player_position, player_rotation)) = player_query.single() else {
-        return;
-    };
-
-    camera_transform.translation = Vec3::new(
-        player_position.0.x,
-        player_position.0.y + PLAYER_CAPSULE_HEIGHT + 0.6,
-        player_position.0.z,
-    );
-
-    camera_transform.rotation = player_rotation.0;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{PlayerCamera, update_camera_from_player};
-    use avian3d::prelude::{Position, Rotation};
-    use bevy::prelude::{App, MinimalPlugins, PostUpdate, Quat, Transform, Vec3};
-    use lightyear::prelude::{Controlled, Predicted};
-    use shared::inputs::input::PLAYER_CAPSULE_HEIGHT;
-    use shared::protocol::PlayerId;
-
-    #[test]
-    fn camera_tracks_player_position_and_rotation() {
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
-        app.add_systems(PostUpdate, update_camera_from_player);
-
-        let expected_rotation = Quat::from_rotation_y(0.7) * Quat::from_rotation_x(-0.2);
-        let player_position = Vec3::new(3.0, 1.5, -4.0);
-
-        app.world_mut().spawn((
-            PlayerId(lightyear::prelude::PeerId::Netcode(1)),
-            Predicted,
-            Controlled,
-            Position::new(player_position),
-            Rotation::from(expected_rotation),
-        ));
-
-        let camera_entity = app
-            .world_mut()
-            .spawn((PlayerCamera, Transform::default()))
-            .id();
-
-        app.update();
-
-        let transform = app
-            .world()
-            .get::<Transform>(camera_entity)
-            .expect("camera should have transform");
-
-        assert_eq!(
-            transform.translation,
-            Vec3::new(
-                player_position.x,
-                player_position.y + PLAYER_CAPSULE_HEIGHT + 0.6,
-                player_position.z
-            )
-        );
-
-        let dot = transform.rotation.dot(expected_rotation).abs();
-        assert!(
-            dot > 0.999,
-            "camera rotation should match player rotation, dot={}",
-            dot
         );
     }
 }

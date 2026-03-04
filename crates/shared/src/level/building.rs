@@ -79,7 +79,7 @@ pub fn spawn_procedural_connection_lights(commands: &mut Commands, level_graph: 
 				intensity: 20000.0,
 				range: 16.0,
 				radius: 0.6,
-				shadows_enabled: true,
+				shadows_enabled: false,
 				..default()
 			},
 			bevy::prelude::Transform::from_translation(

@@ -1,10 +1,14 @@
 use bevy::app::Update;
-use bevy::prelude::{App, IntoScheduleConfigs, MessageReader, Plugin, Query, With, in_state};
+use bevy::prelude::{
+    App, ButtonInput, IntoScheduleConfigs, KeyCode, MessageReader, MouseButton, OnEnter, OnExit,
+    Plugin, Query, Res, With, in_state,
+};
 use bevy::window::WindowFocused;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
-use leafwing_input_manager::prelude::ActionState;
+use leafwing_input_manager::prelude::{ActionState, InputMap};
 
 use crate::ClientGameState;
+use crate::inputs::input::get_player_input_map;
 use shared::inputs::input::PlayerAction;
 
 pub struct ClientWindowPlugin;
@@ -12,8 +16,18 @@ pub struct ClientWindowPlugin;
 impl Plugin for ClientWindowPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
+            OnEnter(ClientGameState::Playing),
+            capture_cursor_for_gameplay,
+        );
+        app.add_systems(
+            OnExit(ClientGameState::Playing),
+            release_cursor_after_gameplay,
+        );
+        app.add_systems(
             Update,
-            (handle_focus).run_if(in_state(ClientGameState::Playing)),
+            (handle_focus, handle_cursor_capture_hotkeys)
+                .chain()
+                .run_if(in_state(ClientGameState::Playing)),
         );
     }
 }
@@ -24,33 +38,95 @@ pub fn is_cursor_locked(cursor_options_query: &Query<&CursorOptions, With<Primar
         .is_ok_and(|cursor_options| cursor_options.grab_mode == CursorGrabMode::Locked)
 }
 
+fn capture_cursor_for_gameplay(
+    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut player_inputs: Query<(&mut ActionState<PlayerAction>, &mut InputMap<PlayerAction>)>,
+) {
+    apply_capture_state(&mut cursor_options_query, &mut player_inputs, true);
+}
+
+fn release_cursor_after_gameplay(
+    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut player_inputs: Query<(&mut ActionState<PlayerAction>, &mut InputMap<PlayerAction>)>,
+) {
+    apply_capture_state(&mut cursor_options_query, &mut player_inputs, false);
+}
+
+fn set_cursor_capture_state(cursor_options: &mut CursorOptions, captured: bool) {
+    if captured {
+        cursor_options.grab_mode = CursorGrabMode::Locked;
+        cursor_options.visible = false;
+    } else {
+        cursor_options.grab_mode = CursorGrabMode::None;
+        cursor_options.visible = true;
+    }
+}
+
+fn apply_capture_state(
+    cursor_options_query: &mut Query<&mut CursorOptions, With<PrimaryWindow>>,
+    player_inputs: &mut Query<(&mut ActionState<PlayerAction>, &mut InputMap<PlayerAction>)>,
+    captured: bool,
+) {
+    if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
+        set_cursor_capture_state(&mut cursor_options, captured);
+    }
+
+    set_player_input_state(player_inputs, captured);
+}
+
+fn set_player_input_state(
+    player_inputs: &mut Query<(&mut ActionState<PlayerAction>, &mut InputMap<PlayerAction>)>,
+    captured: bool,
+) {
+    for (mut action_state, mut input_map) in player_inputs.iter_mut() {
+        if captured {
+            action_state.enable();
+            *input_map = get_player_input_map();
+        } else {
+            action_state.disable();
+            *input_map = InputMap::<PlayerAction>::default();
+        }
+
+        action_state.reset_all();
+    }
+}
+
+fn handle_cursor_capture_hotkeys(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut player_inputs: Query<(&mut ActionState<PlayerAction>, &mut InputMap<PlayerAction>)>,
+) {
+    let mut should_capture = false;
+    let should_release = keys.just_pressed(KeyCode::Escape);
+
+    if !should_release
+        && mouse_buttons.just_pressed(MouseButton::Left)
+        && let Ok(cursor_options) = cursor_options_query.single_mut()
+    {
+        should_capture = cursor_options.grab_mode != CursorGrabMode::Locked;
+    }
+
+    if should_release {
+        apply_capture_state(&mut cursor_options_query, &mut player_inputs, false);
+    } else if should_capture {
+        apply_capture_state(&mut cursor_options_query, &mut player_inputs, true);
+    }
+}
+
 fn handle_focus(
     mut cursor_options_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut focus_events: MessageReader<WindowFocused>,
-    mut player_actions: Query<&mut ActionState<PlayerAction>>,
+    mut player_inputs: Query<(&mut ActionState<PlayerAction>, &mut InputMap<PlayerAction>)>,
 ) {
     for event in focus_events.read() {
-        if let Ok(mut cursor_options) = cursor_options_query.single_mut() {
-            if event.focused {
-                // Window gained focus - grab cursor
-                cursor_options.grab_mode = CursorGrabMode::Locked;
-                cursor_options.visible = false;
-            } else {
-                // Window lost focus - release cursor
-                cursor_options.grab_mode = CursorGrabMode::None;
-                cursor_options.visible = true;
-            }
-        }
-
-        for mut action_state in &mut player_actions {
-            if event.focused {
-                action_state.enable();
-            } else {
-                action_state.disable();
-            }
-
-            // Clear all action states after focus transitions.
-            action_state.reset_all();
+        if event.focused {
+            let captured = cursor_options_query
+                .single_mut()
+                .is_ok_and(|cursor_options| cursor_options.grab_mode == CursorGrabMode::Locked);
+            set_player_input_state(&mut player_inputs, captured);
+        } else {
+            apply_capture_state(&mut cursor_options_query, &mut player_inputs, false);
         }
     }
 }

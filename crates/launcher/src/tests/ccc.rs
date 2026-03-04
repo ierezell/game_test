@@ -1,12 +1,16 @@
 use super::*;
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
-use bevy::prelude::{Entity, IntoScheduleConfigs, Query, Res, Time, Transform, Update, Vec2, Vec3};
+use bevy::prelude::{
+    Entity, GlobalTransform, IntoScheduleConfigs, Query, Res, Time, Transform, Update, Vec2,
+    Vec3, With,
+};
 use client::camera::PlayerCamera;
 use leafwing_input_manager::prelude::ActionState;
 use lightyear::prelude::{Controlled, PeerId, Predicted};
 use shared::inputs::movement::GroundState;
 use shared::protocol::CharacterMarker;
 use shared::inputs::input::PlayerAction;
+use shared::entities::PlayerPhysicsBundle;
 use shared::protocol::PlayerId;
 
 fn integrate_position_from_velocity(
@@ -29,6 +33,9 @@ fn spawn_local_player_for_ccc(client_app: &mut App, player_id: u64) -> Entity {
         CharacterMarker,
         Position::new(Vec3::new(0.0, 2.0, 0.0)),
         Rotation::default(),
+        PlayerPhysicsBundle::default(),
+        Transform::from_xyz(0.0, 2.0, 0.0),
+        GlobalTransform::IDENTITY,
         LinearVelocity::default(),
         GroundState {
             is_grounded: true,
@@ -58,11 +65,11 @@ fn set_client_look_input(client_app: &mut App, player_entity: Entity, axis: Vec2
 
 fn client_camera_transform(client_app: &mut App) -> Transform {
     let world = client_app.world_mut();
-    let mut query = world.query_filtered::<&Transform, bevy::prelude::With<PlayerCamera>>();
+    let mut query = world.query_filtered::<&GlobalTransform, With<PlayerCamera>>();
     query
         .iter(world)
         .next()
-        .copied()
+        .map(GlobalTransform::compute_transform)
         .expect("client should have a PlayerCamera transform")
 }
 

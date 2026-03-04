@@ -7,12 +7,12 @@ use bevy::ecs::query::Changed;
 use bevy::prelude::{
     AlignItems, App, BackgroundColor, Camera2d, Click, Commands, Component, Entity, FlexDirection,
     IntoScheduleConfigs, JustifyContent, Name, Node, On, OnEnter, OnExit, Plugin, Pointer, Query,
-    Res, Resource, Single, Text, TextFont, UiRect, Update, Val, With, in_state,
+    Res, Resource, Text, TextFont, UiRect, Update, Val, With, in_state,
 };
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::Headless;
-use lightyear::prelude::{Confirmed, MessageSender};
+use lightyear::prelude::{Client, Confirmed, MessageSender};
 use shared::protocol::{HostStartGameEvent, LobbyControlChannel, LobbyState};
 
 #[derive(Resource)]
@@ -60,8 +60,7 @@ fn handle_auto_start(
     lobby_state: Query<&LobbyState>,
     confirmed_lobby_state: Query<&Confirmed<LobbyState>>,
     local_player_id: Res<LocalPlayerId>,
-    mut sender_q: Query<&mut MessageSender<HostStartGameEvent>>,
-    mut commands: Commands,
+    mut sender_q: Query<&mut MessageSender<HostStartGameEvent>, With<Client>>,
 ) {
     // Only act when AutoStart is enabled
     if let Some(auto_start_res) = auto_start
@@ -78,10 +77,9 @@ fn handle_auto_start(
         if let Some(lobby_data) = replicated_lobby {
             // Require a MessageSender to be present (established link)
             if let Some(mut sender) = sender_q.iter_mut().next() {
-                if lobby_data.host_id == local_player_id.0 && lobby_data.players.len() >= 2 {
+                if lobby_data.host_id == local_player_id.0 {
                     println!("DEBUG: handle_auto_start sending HostStartGameEvent");
                     sender.send::<LobbyControlChannel>(HostStartGameEvent { requested: true });
-                    commands.remove_resource::<AutoStart>();
                 }
             } else {
                 // No sender yet; wait until the network establishes it
@@ -187,7 +185,6 @@ fn spawn_lobby_ui(mut commands: Commands) {
                         },
                     ));
                 });
-
         });
 }
 
@@ -229,39 +226,42 @@ fn update_lobby_text(
             && let Ok(lobby_entity) = ui_queries.lobby_ui.single()
         {
             commands.entity(lobby_entity).with_children(|parent| {
-                    parent
-                        .spawn((
-                            Node {
-                                padding: UiRect::all(Val::Px(15.0)),
-                                margin: UiRect::top(Val::Px(30.0)),
-                                ..Default::default()
-                            },
-                            BackgroundColor(GREEN_500.into()),
-                            PlayButton,
-                        ))
-                        .with_children(|button_parent| {
-                            button_parent
-                                .spawn((
-                                    Text::new("PLAY"),
-                                    TextFont {
-                                        font_size: 24.0,
-                                        ..Default::default()
-                                    },
-                                ))
-                                .observe(
-                                    |_click: On<Pointer<Click>>,
-                                     mut commands: Commands,
-                                     sender: Option<Single<&mut MessageSender<HostStartGameEvent>>>| {
-                                        if let Some(mut sender) = sender {
-                                            sender.send::<LobbyControlChannel>(
-                                                HostStartGameEvent { requested: true },
-                                            );
-                                            commands.remove_resource::<AutoStart>();
-                                        }
-                                    },
-                                );
-                        });
-                });
+                parent
+                    .spawn((
+                        Node {
+                            padding: UiRect::all(Val::Px(15.0)),
+                            margin: UiRect::top(Val::Px(30.0)),
+                            ..Default::default()
+                        },
+                        BackgroundColor(GREEN_500.into()),
+                        PlayButton,
+                    ))
+                    .with_children(|button_parent| {
+                        button_parent
+                            .spawn((
+                                Text::new("PLAY"),
+                                TextFont {
+                                    font_size: 24.0,
+                                    ..Default::default()
+                                },
+                            ))
+                            .observe(
+                                |_click: On<Pointer<Click>>,
+                                 mut commands: Commands,
+                                 mut sender_q: Query<
+                                    &mut MessageSender<HostStartGameEvent>,
+                                    With<Client>,
+                                >| {
+                                    if let Some(mut sender) = sender_q.iter_mut().next() {
+                                        sender.send::<LobbyControlChannel>(HostStartGameEvent {
+                                            requested: true,
+                                        });
+                                        commands.remove_resource::<AutoStart>();
+                                    }
+                                },
+                            );
+                    });
+            });
         }
 
         for entity in ui_queries.player_text.iter() {

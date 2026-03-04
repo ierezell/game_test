@@ -1,16 +1,17 @@
 use bevy::prelude::{
     Add, App, Commands, Entity, Name, On, Plugin, PreStartup, Query, Res, Single, State, Update,
-    With, info,
+    With, Without, info,
 };
 use std::collections::HashSet;
 use std::time::Duration;
 
 use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
-    Connected, ControlledBy, DeltaManager, Disconnected, LocalAddr, NetworkTarget, RemoteId,
-    Replicate, ReplicationReceiver, ReplicationSender, SendUpdatesMode, Server,
+    Client, Connected, ControlledBy, DeltaManager, Disconnected, Link, LinkOf, Linked, LocalAddr,
+    LocalId, NetworkTarget, PeerId, RemoteId, Replicate, ReplicationReceiver,
+    ReplicationSender, SendUpdatesMode, Server,
     ServerMultiMessageSender,
-    server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start},
+    server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start, Started},
 };
 use shared::protocol::{LobbyControlChannel, LobbyState, PlayerId, StartLoadingGameEvent};
 use shared::{SERVER_BIND_ADDR, SHARED_SETTINGS};
@@ -43,7 +44,54 @@ impl Plugin for ServerNetworkPlugin {
 
         app.add_observer(handle_disconnected);
         app.add_observer(handle_connected);
+        app.add_systems(Update, ensure_local_host_clientof_links);
         app.add_systems(Update, reconcile_disconnected_clients);
+    }
+}
+
+fn ensure_local_host_clientof_links(
+    network_mode: Res<shared::NetworkMode>,
+    server_query: Query<Entity, With<Server>>,
+    host_clients: Query<(&LinkOf, Option<&LocalId>), (With<Client>, Without<ClientOf>)>,
+    existing_clientofs: Query<&RemoteId, With<ClientOf>>,
+    mut commands: Commands,
+) {
+    if *network_mode != shared::NetworkMode::Local {
+        return;
+    }
+
+    let Ok(server_entity) = server_query.single() else {
+        return;
+    };
+
+    let mut existing_remote_ids: HashSet<PeerId> = existing_clientofs.iter().map(|id| id.0).collect();
+
+    for (link_of, local_id) in host_clients.iter() {
+        if link_of.server != server_entity {
+            continue;
+        }
+
+        let client_peer_id = local_id
+            .map(|id: &LocalId| id.0)
+            .unwrap_or(PeerId::Netcode(1));
+        if existing_remote_ids.contains(&client_peer_id) {
+            continue;
+        }
+
+        commands.spawn((
+            ClientOf,
+            Connected,
+            LinkOf {
+                server: server_entity,
+            },
+            Link::new(None),
+            Linked,
+            RemoteId(client_peer_id),
+            LocalId(PeerId::Server),
+            Name::from(format!("LocalClientOf_{:?}", client_peer_id)),
+        ));
+
+        existing_remote_ids.insert(client_peer_id);
     }
 }
 
@@ -51,7 +99,7 @@ fn startup_server_crossbeam(mut commands: Commands) {
     // In Crossbeam mode, connections are manually managed via LinkOf entities.
     // We just need a Server entity to exist to satisfy queries/Start event.
     let server_entity = commands
-        .spawn((Name::new("Server"), Server::default()))
+        .spawn((Name::new("Server"), Server::default(), Started))
         .id();
     println!(
         "ServerNetworkPlugin: spawned Server entity {:?}",
@@ -66,7 +114,7 @@ fn startup_server_local(mut commands: Commands) {
     // In Local mode (HostServer), server and client are in the same app.
     // Lightyear handles local communication via HostServer/HostClient automatically.
     let server_entity = commands
-        .spawn((Name::new("Server"), Server::default()))
+        .spawn((Name::new("Server"), Server::default(), Started))
         .id();
     println!(
         "ServerNetworkPlugin: spawned Server entity {:?} in Local mode (HostServer)",

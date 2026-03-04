@@ -9,14 +9,16 @@ pub mod render;
 
 use avian3d::collision::CollisionDiagnostics;
 use avian3d::dynamics::solver::SolverDiagnostics;
-use avian3d::prelude::{PhysicsDiagnosticsPlugin, PhysicsPlugins};
+use avian3d::prelude::{Collider, PhysicsDiagnosticsPlugin, PhysicsPlugins};
 use avian3d::spatial_query::SpatialQueryDiagnostics;
 
 use bevy::prelude::{Plugin, Resource};
+use vleue_navigator::prelude::{NavmeshUpdaterPlugin, VleueNavigatorPlugin};
 
 use std::net::SocketAddr;
 
 use crate::inputs::SharedInputPlugin;
+use crate::navigation::NavigationObstacle;
 
 pub const SEND_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
 pub const SERVER_BIND_ADDR: SocketAddr = SocketAddr::new(
@@ -59,6 +61,8 @@ impl Plugin for SharedPlugin {
         app.insert_resource(SolverDiagnostics::default());
         app.insert_resource(SpatialQueryDiagnostics::default());
         app.add_plugins(PhysicsPlugins::default());
+        app.add_plugins(VleueNavigatorPlugin);
+        app.add_plugins(NavmeshUpdaterPlugin::<Collider, NavigationObstacle>::default());
         app.add_plugins(navigation::NavigationPlugin);
         app.add_plugins(components::health::HealthPlugin);
         app.add_plugins(components::weapons::WeaponsPlugin);

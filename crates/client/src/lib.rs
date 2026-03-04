@@ -23,10 +23,11 @@ use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::log::LogPlugin;
 use bevy::prelude::{
     App, AssetApp, AssetPlugin, DefaultPlugins, Image, Mesh, PluginGroup, Resource, Shader,
-    StandardMaterial, States, default,
+    StandardMaterial, Startup, States, default,
 };
 use bevy::render::{
     RenderPlugin as BevyRenderPlugin,
+    renderer::RenderAdapterInfo,
     settings::{Backends, WgpuSettings},
 };
 use bevy::state::app::AppExtStates;
@@ -126,10 +127,10 @@ pub fn create_client_app(
     }
 
     client_app.insert_resource(network_mode);
-    client_app.add_plugins(shared::SharedPlugin);
     client_app.add_plugins(ClientPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
+    client_app.add_plugins(shared::SharedPlugin);
 
     client_app.insert_resource(LocalPlayerId(client_id));
     client_app.add_plugins(ClientNetworkPlugin);
@@ -148,9 +149,27 @@ pub fn create_client_app(
         client_app.add_plugins(FrameTimeDiagnosticsPlugin::default());
         client_app.add_plugins(ClientDebugPlugin);
         client_app.add_plugins(ClientVFXPlugin);
+        client_app.add_systems(Startup, log_active_render_adapter);
     }
 
     client_app
+}
+
+fn log_active_render_adapter(adapter_info: Option<bevy::prelude::Res<RenderAdapterInfo>>) {
+    if let Some(adapter_info) = adapter_info {
+        let info = &adapter_info.0;
+        println!(
+            "RENDER ADAPTER: name='{}' backend={:?} device_type={:?} vendor={} device={} driver='{}'",
+            info.name,
+            info.backend,
+            info.device_type,
+            info.vendor,
+            info.device,
+            info.driver
+        );
+    } else {
+        println!("RENDER ADAPTER: unavailable (headless mode or renderer not initialized)");
+    }
 }
 
 #[cfg(test)]

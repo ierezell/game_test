@@ -19,7 +19,7 @@ use bevy::render::{
 
 use server::{
     ServerGameState, entities::ServerEntitiesPlugin, lobby::ServerLobbyPlugin,
-    network::ServerNetworkPlugin, render::RenderPlugin,
+    network::ServerNetworkPlugin,
 };
 use shared::{NetworkMode, SharedPlugin};
 
@@ -71,37 +71,34 @@ pub fn create_host_app(headless: bool, asset_path: String) -> App {
                 .disable::<bevy::text::TextPlugin>(),
         );
     } else {
-        host_app
-            .add_plugins(
-                DefaultPlugins
-                    .set(WindowPlugin {
-                        primary_window: Some(Window {
-                            title: format!("Game Test - Client {}", client_id),
-                            resolution: (1280, 720).into(),
-                            present_mode: PresentMode::AutoVsync,
-                            ..default()
-                        }),
+        host_app.add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: format!("Game Test - Client {}", client_id),
+                        resolution: (1280, 720).into(),
+                        present_mode: PresentMode::AutoVsync,
                         ..default()
-                    })
-                    .set(BevyRenderPlugin {
-                        render_creation: WgpuSettings {
-                            backends: Some(Backends::VULKAN | Backends::DX12 | Backends::METAL),
-                            ..default()
-                        }
-                        .into(),
+                    }),
+                    ..default()
+                })
+                .set(BevyRenderPlugin {
+                    render_creation: WgpuSettings {
+                        backends: Some(Backends::VULKAN | Backends::DX12 | Backends::METAL),
                         ..default()
-                    })
-                    .set(AssetPlugin {
-                        file_path: asset_path,
-                        ..Default::default()
-                    })
-                    .disable::<LogPlugin>(),
-            )
-            .add_plugins(RenderPlugin);
+                    }
+                    .into(),
+                    ..default()
+                })
+                .set(AssetPlugin {
+                    file_path: asset_path,
+                    ..Default::default()
+                })
+                .disable::<LogPlugin>(),
+        );
     }
 
-    // Add server plugins after base plugins
-    host_app.add_plugins(SharedPlugin);
+    // Add networking plugins first, then shared protocol/systems
     host_app.add_plugins(ServerPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
@@ -112,10 +109,10 @@ pub fn create_host_app(headless: bool, asset_path: String) -> App {
     host_app.insert_state(ServerGameState::Lobby);
 
     // Add client plugins to the same app (HostServer setup)
-    // Note: SharedPlugin is already added, don't add it again
     host_app.add_plugins(ClientPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
+    host_app.add_plugins(SharedPlugin);
 
     host_app.insert_resource(LocalPlayerId(client_id));
 

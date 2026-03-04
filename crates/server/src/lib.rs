@@ -63,10 +63,10 @@ pub fn create_server_app(headless: bool, network_mode: NetworkMode) -> App {
     }
 
     app.insert_resource(network_mode);
-    app.add_plugins(SharedPlugin);
     app.add_plugins(ServerPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
+    app.add_plugins(SharedPlugin);
     app.add_plugins(ServerNetworkPlugin);
     app.add_plugins(ServerLobbyPlugin);
     app.add_plugins(ServerEntitiesPlugin);
@@ -84,7 +84,9 @@ mod tests {
     #[test]
     fn create_headless_server_initializes_lobby_state() {
         let app = create_server_app(true, NetworkMode::Local);
-        let state = app.world().resource::<bevy::prelude::State<ServerGameState>>();
+        let state = app
+            .world()
+            .resource::<bevy::prelude::State<ServerGameState>>();
         assert_eq!(state.get(), &ServerGameState::Lobby);
     }
 

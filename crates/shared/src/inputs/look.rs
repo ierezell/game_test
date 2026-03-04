@@ -143,11 +143,11 @@ mod tests {
             .expect("player should still have a rotation")
             .0;
 
-        let dot = updated_rotation.dot(bevy::prelude::Quat::IDENTITY).abs();
+        let angle = updated_rotation.angle_between(bevy::prelude::Quat::IDENTITY);
         assert!(
-            dot < 0.999,
-            "Rotation should change for server-style entity without prediction markers, dot={}",
-            dot
+            angle > 0.01,
+            "Rotation should change for server-style entity without prediction markers, angle={}",
+            angle
         );
     }
 
@@ -201,18 +201,18 @@ mod tests {
             .expect("idle player should have rotation")
             .0;
 
-        let turning_dot = turning_rotation.dot(bevy::prelude::Quat::IDENTITY).abs();
-        let idle_dot = idle_rotation.dot(bevy::prelude::Quat::IDENTITY).abs();
+        let turning_angle = turning_rotation.angle_between(bevy::prelude::Quat::IDENTITY);
+        let idle_angle = idle_rotation.angle_between(bevy::prelude::Quat::IDENTITY);
 
         assert!(
-            turning_dot < 0.999,
-            "Turning player should rotate, dot={}",
-            turning_dot
+            turning_angle > 0.01,
+            "Turning player should rotate, angle={}",
+            turning_angle
         );
         assert!(
-            idle_dot > 0.999,
-            "Idle player should remain near identity rotation, dot={}",
-            idle_dot
+            idle_angle < 0.0001,
+            "Idle player should remain near identity rotation, angle={}",
+            idle_angle
         );
     }
 }

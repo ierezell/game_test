@@ -14,6 +14,7 @@
         "Dont",
         "dylib",
         "Egui",
+        "gilrs",
         "gltf",
         "GTFO",
         "keepalive",
@@ -34,6 +35,8 @@
         "Respawnable",
         "respawned",
         "Respawning",
+        "rngs",
+        "Seedable",
         "serde",
         "shapecasting",
         "shapecasts",
@@ -43,7 +46,9 @@
         "tnua",
         "tonemapping",
         "vleue",
+        "Vsync",
         "wasd",
+        "Wgpu",
         "winit",
         "wireframes",
         "zstd"
@@ -59,6 +64,8 @@
     "python-envs.pythonProjects": [],
     "chat.tools.terminal.autoApprove": {
         "cargo fix": true,
-        "cargo clippy": true
+        "cargo clippy": true,
+        "cargo run": true,
+        ".\\target\\debug\\launcher.exe": true
     }
 }

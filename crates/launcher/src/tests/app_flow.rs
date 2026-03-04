@@ -56,3 +56,94 @@ fn test_late_joining_client_reaches_playing_and_gets_player_entity() {
     assert_eq!(stepper.client_apps.len(), 3, "Late-join migration should support three clients in deterministic harness");
     assert_eq!(stepper.client_of_entities.len(), 3, "Server should own one link per deterministic client");
 }
+
+#[test]
+fn test_crossbeam_two_clients_form_lobby_and_server_auto_start_transitions() {
+    let (mut server_app, mut client_app1, mut client_app2) = setup_two_client_server(false);
+
+    for _ in 0..120 {
+        update_all(&mut server_app, &mut client_app1, &mut client_app2);
+    }
+
+    assert_eq!(
+        server_lobby_player_count(&mut server_app),
+        2,
+        "Server lobby should contain two connected players"
+    );
+
+    let initial_server_state = server_app
+        .world()
+        .resource::<bevy::prelude::State<ServerGameState>>()
+        .get()
+        .clone();
+    assert_eq!(
+        initial_server_state,
+        ServerGameState::Lobby,
+        "Server should still be in Lobby before auto-start is enabled"
+    );
+
+    server_app.insert_resource(server::lobby::AutoStartOnLobbyReady(true));
+
+    for _ in 0..240 {
+        update_all(&mut server_app, &mut client_app1, &mut client_app2);
+    }
+
+    let server_state = server_app
+        .world()
+        .resource::<bevy::prelude::State<ServerGameState>>()
+        .get()
+        .clone();
+    let client1_state = client_app1
+        .world()
+        .resource::<bevy::prelude::State<ClientGameState>>()
+        .get()
+        .clone();
+    let client2_state = client_app2
+        .world()
+        .resource::<bevy::prelude::State<ClientGameState>>()
+        .get()
+        .clone();
+
+    assert_ne!(
+        server_state,
+        ServerGameState::Lobby,
+        "Server should leave Lobby once auto-start-on-ready is enabled"
+    );
+    assert!(
+        matches!(client1_state, ClientGameState::Lobby | ClientGameState::Loading | ClientGameState::Playing),
+        "Client 1 should be in a valid game-flow state, got {:?}",
+        client1_state
+    );
+    assert!(
+        matches!(client2_state, ClientGameState::Lobby | ClientGameState::Loading | ClientGameState::Playing),
+        "Client 2 should be in a valid game-flow state, got {:?}",
+        client2_state
+    );
+}
+
+#[test]
+fn test_host_like_single_client_server_flow_forms_lobby() {
+    let (mut server_app, mut client_app) = setup_one_client_server(false);
+
+    for _ in 0..120 {
+        update_pair(&mut server_app, &mut client_app);
+    }
+
+    assert_eq!(
+        server_lobby_player_count(&mut server_app),
+        1,
+        "Host-like flow should form a one-player lobby"
+    );
+
+    let server_state = server_app
+        .world()
+        .resource::<bevy::prelude::State<ServerGameState>>()
+        .get();
+    let client_state = client_app
+        .world()
+        .resource::<bevy::prelude::State<ClientGameState>>()
+        .get();
+
+    assert_eq!(server_state, &ServerGameState::Lobby);
+    assert_eq!(client_state, &ClientGameState::Lobby);
+}

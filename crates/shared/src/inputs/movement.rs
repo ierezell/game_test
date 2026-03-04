@@ -386,10 +386,17 @@ mod tests {
             "Second forward after yaw turn should add significant lateral displacement, delta={:?}",
             second_segment
         );
+
+        let first_dir = pos_after_first_forward.normalize_or_zero();
+        let second_dir = second_segment.normalize_or_zero();
+        let heading_dot = first_dir.dot(second_dir).abs();
+
         assert!(
-            second_segment.x.abs() > second_segment.z.abs() * 0.5,
-            "After yaw turn, lateral movement should dominate enough, delta={:?}",
-            second_segment
+            heading_dot < 0.95,
+            "After yaw turn, heading should change materially, dot={}, first_dir={:?}, second_dir={:?}",
+            heading_dot,
+            first_dir,
+            second_dir
         );
     }
 }

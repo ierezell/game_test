@@ -2,7 +2,7 @@ use bevy::prelude::{
     App, Assets, Commands, Mesh, Plugin, Query, Res, ResMut, Single, StandardMaterial, Update,
 };
 use bevy::state::commands::CommandsStatesExt;
-use shared::GymMode;
+use shared::{GymMode, NetworkMode};
 use shared::gym::setup_gym_level;
 use shared::level::generation::{LevelConfig, build_level_physics, generate_level};
 use shared::level::visuals::build_level_visuals;
@@ -25,6 +25,7 @@ fn handle_world_creation(
     mut receiver: Single<&mut MessageReceiver<StartLoadingGameEvent>>,
     mut commands: Commands,
     gym_mode: Option<Res<GymMode>>,
+    network_mode: Res<NetworkMode>,
     level_seed_query: Query<&LevelSeed>,
     confirmed_level_seed_query: Query<&Confirmed<LevelSeed>>,
     meshes: ResMut<Assets<Mesh>>,
@@ -51,6 +52,14 @@ fn handle_world_creation(
 
     // When in Loading state, spawn the level then transition to Playing
     if state.get() == &ClientGameState::Loading {
+        if *network_mode == NetworkMode::Local {
+            bevy::log::info!(
+                "🏠 Local host mode detected: skipping client-side level generation (server world is shared)"
+            );
+            commands.set_state(ClientGameState::Playing);
+            return;
+        }
+
         if let Some(gym) = gym_mode
             && gym.0
         {

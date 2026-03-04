@@ -5,6 +5,227 @@ use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::navigation::NavigationObstacle;
+
+pub(crate) const WALL_THICKNESS: f32 = 0.5;
+const DOOR_OPENING_WIDTH: f32 = 6.0;
+const DOOR_EDGE_MARGIN: f32 = 1.0;
+const MIN_WALL_SEGMENT_LENGTH: f32 = 0.5;
+pub(crate) const WALL_SIDE_EAST: usize = 0;
+pub(crate) const WALL_SIDE_WEST: usize = 1;
+pub(crate) const WALL_SIDE_NORTH: usize = 2;
+pub(crate) const WALL_SIDE_SOUTH: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WallSide {
+    East,
+    West,
+    North,
+    South,
+}
+
+impl WallSide {
+    fn as_index(self) -> usize {
+        match self {
+            Self::East => WALL_SIDE_EAST,
+            Self::West => WALL_SIDE_WEST,
+            Self::North => WALL_SIDE_NORTH,
+            Self::South => WALL_SIDE_SOUTH,
+        }
+    }
+
+    fn from_local_direction(local_direction: Vec3) -> Self {
+        if local_direction.x.abs() >= local_direction.z.abs() {
+            if local_direction.x >= 0.0 {
+                Self::East
+            } else {
+                Self::West
+            }
+        } else if local_direction.z >= 0.0 {
+            Self::North
+        } else {
+            Self::South
+        }
+    }
+}
+
+fn wall_half_span(zone: &Zone, side: WallSide) -> f32 {
+    match side {
+        WallSide::East | WallSide::West => zone.size.z * 0.5,
+        WallSide::North | WallSide::South => zone.size.x * 0.5,
+    }
+}
+
+fn opening_coord_for_side(local_door: Vec3, side: WallSide) -> f32 {
+    match side {
+        WallSide::East | WallSide::West => local_door.z,
+        WallSide::North | WallSide::South => local_door.x,
+    }
+}
+
+fn collect_zone_wall_openings(zone: &Zone, level_graph: &LevelGraph) -> [Vec<f32>; 4] {
+    let mut openings: [Vec<f32>; 4] = std::array::from_fn(|_| Vec::new());
+
+    for connection in &level_graph.connections {
+        let maybe_other = if connection.from_zone == zone.id {
+            Some(connection.to_zone)
+        } else if connection.to_zone == zone.id {
+            Some(connection.from_zone)
+        } else {
+            None
+        };
+
+        let Some(other_zone_id) = maybe_other else {
+            continue;
+        };
+        let Some(other_zone) = level_graph.get_zone(other_zone_id) else {
+            continue;
+        };
+
+        let local_direction = zone.rotation.inverse() * (other_zone.position - zone.position);
+        let side = WallSide::from_local_direction(local_direction);
+
+        let local_door = zone.rotation.inverse() * (connection.door_position - zone.position);
+        let half_span = wall_half_span(zone, side);
+        let max_coord = (half_span - DOOR_EDGE_MARGIN).max(0.0);
+        let opening_coord = opening_coord_for_side(local_door, side).clamp(-max_coord, max_coord);
+
+        openings[side.as_index()].push(opening_coord);
+    }
+
+    openings
+}
+
+fn build_wall_segments(
+    half_span: f32,
+    opening_centers: &[f32],
+    opening_width: f32,
+) -> Vec<(f32, f32)> {
+    if half_span <= 0.0 {
+        return Vec::new();
+    }
+
+    if opening_centers.is_empty() {
+        return vec![(0.0, half_span * 2.0)];
+    }
+
+    let opening_half_width = opening_width * 0.5;
+    let mut ranges: Vec<(f32, f32)> = opening_centers
+        .iter()
+        .map(|center| {
+            (
+                (center - opening_half_width).clamp(-half_span, half_span),
+                (center + opening_half_width).clamp(-half_span, half_span),
+            )
+        })
+        .filter(|(start, end)| end > start)
+        .collect();
+
+    if ranges.is_empty() {
+        return vec![(0.0, half_span * 2.0)];
+    }
+
+    ranges.sort_by(|(a_start, _), (b_start, _)| {
+        a_start
+            .partial_cmp(b_start)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut merged_ranges: Vec<(f32, f32)> = Vec::with_capacity(ranges.len());
+    for (start, end) in ranges {
+        if let Some((_, prev_end)) = merged_ranges.last_mut()
+            && start <= *prev_end
+        {
+            *prev_end = prev_end.max(end);
+        } else {
+            merged_ranges.push((start, end));
+        }
+    }
+
+    let mut segments = Vec::new();
+    let mut cursor = -half_span;
+
+    for (open_start, open_end) in merged_ranges {
+        let segment_length = open_start - cursor;
+        if segment_length >= MIN_WALL_SEGMENT_LENGTH {
+            let segment_center = cursor + segment_length * 0.5;
+            segments.push((segment_center, segment_length));
+        }
+        cursor = cursor.max(open_end);
+    }
+
+    let tail_length = half_span - cursor;
+    if tail_length >= MIN_WALL_SEGMENT_LENGTH {
+        let tail_center = cursor + tail_length * 0.5;
+        segments.push((tail_center, tail_length));
+    }
+
+    segments
+}
+
+pub(crate) fn collect_zone_wall_segments(
+    zone: &Zone,
+    level_graph: &LevelGraph,
+) -> [Vec<(f32, f32)>; 4] {
+    let openings = collect_zone_wall_openings(zone, level_graph);
+    let mut segments: [Vec<(f32, f32)>; 4] = std::array::from_fn(|_| Vec::new());
+
+    for side in [WallSide::East, WallSide::West, WallSide::North, WallSide::South] {
+        segments[side.as_index()] = build_wall_segments(
+            wall_half_span(zone, side),
+            &openings[side.as_index()],
+            DOOR_OPENING_WIDTH,
+        );
+    }
+
+    segments
+}
+
+fn spawn_wall_segments_for_side(
+    commands: &mut Commands,
+    zone: &Zone,
+    side: WallSide,
+    segment_definitions: &[(f32, f32)],
+) {
+    let half_x = zone.size.x * 0.5;
+    let half_z = zone.size.z * 0.5;
+
+    let (wall_anchor, span_on_z) = match side {
+        WallSide::East => (Vec3::new(half_x, zone.size.y * 0.5, 0.0), true),
+        WallSide::West => (Vec3::new(-half_x, zone.size.y * 0.5, 0.0), true),
+        WallSide::North => (Vec3::new(0.0, zone.size.y * 0.5, half_z), false),
+        WallSide::South => (Vec3::new(0.0, zone.size.y * 0.5, -half_z), false),
+    };
+
+    for (segment_index, (segment_center, segment_length)) in segment_definitions.iter().enumerate() {
+        let local_offset = if span_on_z {
+            wall_anchor + Vec3::new(0.0, 0.0, *segment_center)
+        } else {
+            wall_anchor + Vec3::new(*segment_center, 0.0, 0.0)
+        };
+
+        let wall_size = if span_on_z {
+            Vec3::new(WALL_THICKNESS, zone.size.y, *segment_length)
+        } else {
+            Vec3::new(*segment_length, zone.size.y, WALL_THICKNESS)
+        };
+
+        let world_position = zone.position + zone.rotation * local_offset;
+        commands.spawn((
+            RigidBody::Static,
+            Collider::cuboid(wall_size.x, wall_size.y, wall_size.z),
+            NavigationObstacle,
+            Position::new(world_position),
+            Rotation::from(zone.rotation),
+            Transform::from_translation(world_position).with_rotation(zone.rotation),
+            Name::new(format!(
+                "Physics_Wall_{:?}_{}_Zone_{}",
+                side, segment_index, zone.id.0
+            )),
+        ));
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ZoneId(pub u32);
 
@@ -345,37 +566,32 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
         ));
 
         // Walls colliders
-        let wall_thickness = 0.5;
-        let wall_positions = [
-            (
-                Vec3::new(zone.size.x / 2.0, zone.size.y / 2.0, 0.0),
-                Vec3::new(wall_thickness, zone.size.y, zone.size.z),
-            ),
-            (
-                Vec3::new(-zone.size.x / 2.0, zone.size.y / 2.0, 0.0),
-                Vec3::new(wall_thickness, zone.size.y, zone.size.z),
-            ),
-            (
-                Vec3::new(0.0, zone.size.y / 2.0, zone.size.z / 2.0),
-                Vec3::new(zone.size.x, zone.size.y, wall_thickness),
-            ),
-            (
-                Vec3::new(0.0, zone.size.y / 2.0, -zone.size.z / 2.0),
-                Vec3::new(zone.size.x, zone.size.y, wall_thickness),
-            ),
-        ];
+        let wall_segments = collect_zone_wall_segments(zone, level_graph);
 
-        for (i, (offset, wall_size)) in wall_positions.iter().enumerate() {
-            let wall_position = zone.position + zone.rotation * *offset;
-            commands.spawn((
-                RigidBody::Static,
-                Collider::cuboid(wall_size.x, wall_size.y, wall_size.z),
-                Position::new(wall_position),
-                Rotation::from(zone.rotation),
-                Transform::from_translation(wall_position).with_rotation(zone.rotation),
-                Name::new(format!("Physics_Wall_{}_Zone_{}", i, zone.id.0)),
-            ));
-        }
+        spawn_wall_segments_for_side(
+            &mut commands,
+            zone,
+            WallSide::East,
+            &wall_segments[WALL_SIDE_EAST],
+        );
+        spawn_wall_segments_for_side(
+            &mut commands,
+            zone,
+            WallSide::West,
+            &wall_segments[WALL_SIDE_WEST],
+        );
+        spawn_wall_segments_for_side(
+            &mut commands,
+            zone,
+            WallSide::North,
+            &wall_segments[WALL_SIDE_NORTH],
+        );
+        spawn_wall_segments_for_side(
+            &mut commands,
+            zone,
+            WallSide::South,
+            &wall_segments[WALL_SIDE_SOUTH],
+        );
     }
 
     if min_x.is_finite() && max_x.is_finite() && min_z.is_finite() && max_z.is_finite() {
@@ -399,7 +615,10 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
 
 #[cfg(test)]
 mod tests {
-    use super::{LevelConfig, ZoneId, generate_level};
+    use super::{
+        LevelConfig, WallSide, ZoneId, build_wall_segments, collect_zone_wall_segments,
+        generate_level, wall_half_span,
+    };
     use bevy::prelude::Vec3;
 
     #[test]
@@ -464,5 +683,86 @@ mod tests {
             Vec3::ZERO,
             "Spawn zone position should be origin"
         );
+    }
+
+    #[test]
+    fn wall_segments_split_around_single_opening() {
+        let segments = build_wall_segments(10.0, &[0.0], 6.0);
+
+        assert_eq!(segments.len(), 2, "Expected two wall segments around one opening");
+        assert!(
+            (segments[0].1 - 7.0).abs() < 0.001,
+            "First segment length should be 7.0, got {:?}",
+            segments[0]
+        );
+        assert!(
+            (segments[1].1 - 7.0).abs() < 0.001,
+            "Second segment length should be 7.0, got {:?}",
+            segments[1]
+        );
+    }
+
+    #[test]
+    fn procedural_connections_create_openings_on_both_sides() {
+        let level = generate_level(LevelConfig {
+            seed: 99,
+            target_zone_count: 12,
+            min_zone_spacing: 30.0,
+            max_depth: 8,
+        });
+
+        assert!(
+            !level.connections.is_empty(),
+            "Generated level should have at least one connection"
+        );
+
+        for connection in &level.connections {
+            let from_zone = level
+                .get_zone(connection.from_zone)
+                .expect("Connection source zone should exist");
+            let to_zone = level
+                .get_zone(connection.to_zone)
+                .expect("Connection target zone should exist");
+
+            let from_direction =
+                from_zone.rotation.inverse() * (to_zone.position - from_zone.position);
+            let to_direction = to_zone.rotation.inverse() * (from_zone.position - to_zone.position);
+
+            let from_side = WallSide::from_local_direction(from_direction);
+            let to_side = WallSide::from_local_direction(to_direction);
+
+            let from_segments = collect_zone_wall_segments(from_zone, &level);
+            let to_segments = collect_zone_wall_segments(to_zone, &level);
+
+            let from_full_length = wall_half_span(from_zone, from_side) * 2.0;
+            let to_full_length = wall_half_span(to_zone, to_side) * 2.0;
+
+            let from_segment_total: f32 = from_segments[from_side.as_index()]
+                .iter()
+                .map(|(_, length)| *length)
+                .sum();
+            let to_segment_total: f32 = to_segments[to_side.as_index()]
+                .iter()
+                .map(|(_, length)| *length)
+                .sum();
+
+            assert!(
+                from_segment_total < from_full_length - 0.01,
+                "Source zone {:?} side {:?} should have doorway opening (full {:.2}, segmented {:.2})",
+                from_zone.id,
+                from_side,
+                from_full_length,
+                from_segment_total
+            );
+
+            assert!(
+                to_segment_total < to_full_length - 0.01,
+                "Target zone {:?} side {:?} should have doorway opening (full {:.2}, segmented {:.2})",
+                to_zone.id,
+                to_side,
+                to_full_length,
+                to_segment_total
+            );
+        }
     }
 }

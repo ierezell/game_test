@@ -1,14 +1,14 @@
 use crate::{ClientGameState, LocalPlayerId};
 
 use bevy::prelude::{
-    Add, App, Commands, CommandsStatesExt, Entity, Name, On, OnEnter, Plugin, Query, Remove, Res,
-    Resource, State, With, error, info,
+    Add, App, Commands, CommandsStatesExt, Entity, IntoScheduleConfigs, Name, On, Plugin, Query, Remove, Res,
+    Resource, State, Update, With, Without, error, in_state, info,
 };
 
 #[derive(Resource)]
 pub struct ServerAddr(pub std::net::SocketAddr);
 use lightyear::prelude::{
-    Authentication, Client, Connect, Connected, Link, LocalAddr, PeerAddr, PredictionManager,
+    Authentication, Client, Connect, Connected, Connecting, Link, LocalAddr, PeerAddr, PredictionManager,
     ReplicationReceiver, ReplicationSender, UdpIo,
     client::{NetcodeClient, NetcodeConfig},
 };
@@ -31,13 +31,19 @@ impl Plugin for ClientNetworkPlugin {
             .unwrap_or_default();
         match network_mode {
             NetworkMode::Udp => {
-                app.add_systems(OnEnter(ClientGameState::Lobby), start_connection);
+                app.add_systems(Update, start_connection.run_if(in_state(ClientGameState::Lobby)));
             }
             NetworkMode::Crossbeam => {
-                app.add_systems(OnEnter(ClientGameState::Lobby), start_connection_crossbeam);
+                app.add_systems(
+                    Update,
+                    start_connection_crossbeam.run_if(in_state(ClientGameState::Lobby)),
+                );
             }
             NetworkMode::Local => {
-                app.add_systems(OnEnter(ClientGameState::Lobby), start_connection_local);
+                app.add_systems(
+                    Update,
+                    start_connection_local.run_if(in_state(ClientGameState::Lobby)),
+                );
             }
         }
 
@@ -50,10 +56,11 @@ fn start_connection_crossbeam(
     mut commands: Commands,
     client_id: Res<LocalPlayerId>,
     existing_clients: Query<Entity, With<Client>>,
+    reconnect_candidates: Query<Entity, (With<Client>, Without<Connected>, Without<Connecting>)>,
     endpoint: Res<CrossbeamClientEndpoint>,
 ) {
     if !existing_clients.is_empty() {
-        for client_entity in existing_clients.iter() {
+        for client_entity in reconnect_candidates.iter() {
             commands.trigger(Connect {
                 entity: client_entity,
             });
@@ -103,10 +110,11 @@ fn start_connection_local(
     mut commands: Commands,
     client_id: Res<LocalPlayerId>,
     existing_clients: Query<Entity, With<Client>>,
+    reconnect_candidates: Query<Entity, (With<Client>, Without<Connected>, Without<Connecting>)>,
     server_query: Query<Entity, With<lightyear::prelude::server::Server>>,
 ) {
     if !existing_clients.is_empty() {
-        for client_entity in existing_clients.iter() {
+        for client_entity in reconnect_candidates.iter() {
             commands.trigger(Connect {
                 entity: client_entity,
             });
@@ -119,9 +127,9 @@ fn start_connection_local(
         client_id.0
     );
 
-    // Local mode (HostClient): Create a Client entity linked to the Server entity
-    // This is the HostServer pattern from Lightyear
-    use lightyear::prelude::{Link, LinkOf, Linked, PingConfig, PingManager};
+    // Local mode (HostClient): Create a Client entity linked to the Server entity.
+    // Include explicit peer ids so the server can always resolve a RemoteId.
+    use lightyear::prelude::{Link, LinkOf, LocalId, PeerId, RemoteId};
 
     let server_entity = match server_query.iter().next() {
         Some(entity) => entity,
@@ -140,10 +148,8 @@ fn start_connection_local(
                 server: server_entity,
             },
             Link::new(None),
-            Linked, // HostClient is always immediately linked
-            PingManager::new(PingConfig {
-                ping_interval: std::time::Duration::default(),
-            }),
+            RemoteId(PeerId::Server),
+            LocalId(PeerId::Netcode(client_id.0)),
             ReplicationSender::default(),
             PredictionManager::default(),
         ))
@@ -164,10 +170,11 @@ fn start_connection(
     mut commands: Commands,
     client_id: Res<LocalPlayerId>,
     existing_clients: Query<Entity, With<Client>>,
+    reconnect_candidates: Query<Entity, (With<Client>, Without<Connected>, Without<Connecting>)>,
     test_server_addr: Option<Res<ServerAddr>>,
 ) {
     if !existing_clients.is_empty() {
-        for client_entity in existing_clients.iter() {
+        for client_entity in reconnect_candidates.iter() {
             commands.trigger(Connect {
                 entity: client_entity,
             });

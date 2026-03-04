@@ -1,11 +1,16 @@
+use crate::ClientGameState;
 use crate::camera::PlayerCamera;
 
 use avian3d::prelude::*;
 use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
 use bevy::prelude::*;
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use leafwing_input_manager::prelude::ActionState;
 
+use lightyear::prelude::{Controlled, Predicted};
 use shared::{
     components::health::Health,
+    inputs::input::PlayerAction,
     navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
     protocol::{CharacterMarker, PlayerId},
 };
@@ -13,15 +18,9 @@ use std::time::Duration;
 
 pub struct ClientDebugPlugin;
 
-#[derive(Resource, Debug)]
+#[derive(Resource, Debug, Default)]
 struct DebugViewState {
     enabled: bool,
-}
-
-impl Default for DebugViewState {
-    fn default() -> Self {
-        Self { enabled: true }
-    }
 }
 
 impl Plugin for ClientDebugPlugin {
@@ -35,20 +34,41 @@ impl Plugin for ClientDebugPlugin {
                 },
                 text_color: Color::srgb(0.2, 1.0, 0.2),
                 refresh_interval: Duration::from_millis(200),
-                enabled: true,
+                enabled: false,
                 frame_time_graph_config: FrameTimeGraphConfig {
                     enabled: false,
                     ..default()
                 },
             },
         });
+        app.add_systems(OnEnter(ClientGameState::Playing), spawn_debug_options_ui);
+        app.add_systems(OnExit(ClientGameState::Playing), despawn_debug_options_ui);
         app.add_systems(Update, toggle_debug_view);
         app.add_systems(
             Update,
-            (debug_navigation_paths, debug_npc_health_gizmos).run_if(debug_view_enabled),
+            update_debug_options_visibility.run_if(in_state(ClientGameState::Playing)),
+        );
+        app.add_systems(
+            Update,
+            (
+                debug_navigation_paths,
+                debug_npc_health_gizmos,
+                update_debug_options_text,
+            )
+                .run_if(in_state(ClientGameState::Playing))
+                .run_if(debug_view_enabled),
         );
     }
 }
+
+#[derive(Component)]
+struct DebugOptionsRoot;
+
+#[derive(Component)]
+struct DebugCursorStatusText;
+
+#[derive(Component)]
+struct DebugInputStatusText;
 
 fn debug_view_enabled(debug_view_state: Res<DebugViewState>) -> bool {
     debug_view_state.enabled
@@ -62,6 +82,120 @@ fn toggle_debug_view(
     if keys.just_pressed(KeyCode::KeyH) || keys.just_pressed(KeyCode::F3) {
         debug_view_state.enabled = !debug_view_state.enabled;
         fps_overlay_config.enabled = debug_view_state.enabled;
+    }
+}
+
+fn spawn_debug_options_ui(mut commands: Commands) {
+    commands
+        .spawn((
+            Name::new("DebugOptionsOverlay"),
+            DebugOptionsRoot,
+            Visibility::Hidden,
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(16.0),
+                top: Val::Px(16.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(4.0),
+                padding: UiRect::all(Val::Px(10.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.85)),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("Debug Options"),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+            ));
+
+            parent.spawn((
+                DebugCursorStatusText,
+                Text::new("Cursor: --"),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+            ));
+
+            parent.spawn((
+                DebugInputStatusText,
+                Text::new("Input: --"),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+            ));
+
+            parent.spawn((
+                Text::new("LMB: Lock cursor | Esc: Unlock cursor"),
+                TextFont {
+                    font_size: 13.0,
+                    ..default()
+                },
+            ));
+        });
+}
+
+fn despawn_debug_options_ui(
+    mut commands: Commands,
+    debug_ui_query: Query<Entity, With<DebugOptionsRoot>>,
+) {
+    for entity in &debug_ui_query {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn update_debug_options_visibility(
+    debug_view_state: Res<DebugViewState>,
+    mut ui_query: Query<&mut Visibility, With<DebugOptionsRoot>>,
+) {
+    if let Ok(mut visibility) = ui_query.single_mut() {
+        *visibility = if debug_view_state.enabled {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+}
+
+fn update_debug_options_text(
+    mut cursor_text_query: Query<
+        &mut Text,
+        (With<DebugCursorStatusText>, Without<DebugInputStatusText>),
+    >,
+    mut input_text_query: Query<
+        &mut Text,
+        (With<DebugInputStatusText>, Without<DebugCursorStatusText>),
+    >,
+    cursor_options_query: Query<&CursorOptions, With<PrimaryWindow>>,
+    player_actions: Query<
+        &ActionState<PlayerAction>,
+        (With<PlayerId>, With<Predicted>, With<Controlled>),
+    >,
+) {
+    if let Ok(mut text) = cursor_text_query.single_mut() {
+        let is_locked = cursor_options_query
+            .single()
+            .is_ok_and(|cursor_options| cursor_options.grab_mode == CursorGrabMode::Locked);
+        **text = if is_locked {
+            "Cursor: Locked".to_string()
+        } else {
+            "Cursor: Unlocked".to_string()
+        };
+    }
+
+    if let Ok(mut text) = input_text_query.single_mut() {
+        let input_enabled = player_actions
+            .single()
+            .is_ok_and(|action_state| !action_state.disabled());
+        **text = if input_enabled {
+            "Input: Enabled".to_string()
+        } else {
+            "Input: Blocked".to_string()
+        };
     }
 }
 

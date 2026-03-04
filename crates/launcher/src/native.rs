@@ -5,6 +5,7 @@ use clap::{Parser, ValueEnum};
 use client::create_client_app;
 use client::lobby::AutoStart;
 use server::create_server_app;
+use server::lobby::AutoStartOnLobbyReady;
 use shared::{GymMode, NetworkMode};
 
 #[derive(Parser)]
@@ -38,6 +39,10 @@ struct Cli {
     auto_join: bool,
 
     #[arg(long, default_value_t = false)]
+    #[arg(help = "Run client and server in one process (local host mode)")]
+    auto_host: bool,
+
+    #[arg(long, default_value_t = false)]
     #[arg(help = "Automatically start the game when hosting (requires --auto-host)")]
     auto_start: bool,
 
@@ -62,20 +67,29 @@ pub fn run() {
 
     match cli.mode {
         Mode::Client => {
-            let mut client_app = create_client_app(
-                cli.client_id,
-                "../../assets".to_string(),
-                cli.headless,
-                NetworkMode::Udp,
-            );
-            client_app.add_plugins(LocalMenuPlugin);
+            let mut client_app = if cli.auto_host {
+                create_host_app(cli.headless, "../../assets".to_string())
+            } else {
+                let mut app = create_client_app(
+                    cli.client_id,
+                    "../../assets".to_string(),
+                    cli.headless,
+                    NetworkMode::Udp,
+                );
+                app.add_plugins(LocalMenuPlugin);
+                app
+            };
+
             client_app.insert_resource(GymMode(cli.gym));
 
             if cli.auto_start {
                 client_app.insert_resource(AutoStart(true));
+                if cli.auto_host {
+                    client_app.insert_resource(AutoStartOnLobbyReady(true));
+                }
             }
 
-            if cli.auto_join {
+            if cli.auto_join && !cli.auto_host {
                 client_app.insert_resource(AutoJoin(true));
             }
 
@@ -114,6 +128,11 @@ pub fn run() {
 
             if cli.gym {
                 host_app.insert_resource(GymMode(cli.gym));
+            }
+
+            if cli.auto_start {
+                host_app.insert_resource(AutoStart(true));
+                host_app.insert_resource(AutoStartOnLobbyReady(true));
             }
 
             if let Some(stop_after_seconds) = cli.stop_after

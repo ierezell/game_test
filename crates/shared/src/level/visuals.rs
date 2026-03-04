@@ -1,7 +1,10 @@
 use bevy::prelude::*;
 
-use crate::level::generation::{LevelGraph, Zone, ZoneId, ZoneType};
-use crate::navigation::NavigationObstacle;
+use crate::level::generation::{
+    LevelGraph, WALL_SIDE_EAST, WALL_SIDE_NORTH, WALL_SIDE_SOUTH, WALL_SIDE_WEST, WALL_THICKNESS,
+    Zone, ZoneId, ZoneType, collect_zone_wall_segments,
+};
+
 #[derive(Component, Debug)]
 pub struct ZoneVisual {
     pub zone_id: ZoneId,
@@ -27,7 +30,7 @@ fn spawn_zone_lighting(commands: &mut Commands, zone: &Zone) {
             intensity: 42000.0,
             range: zone.size.x.max(zone.size.z) * 0.8,
             radius: 1.5,
-            shadows_enabled: true,
+            shadows_enabled: false,
             ..default()
         },
         Transform::from_translation(zone.position + Vec3::new(0.0, zone.size.y * 0.4, 0.0)),
@@ -37,7 +40,7 @@ fn spawn_zone_lighting(commands: &mut Commands, zone: &Zone) {
     let use_haze = matches!(
         zone.zone_type,
         ZoneType::Utility | ZoneType::Industrial | ZoneType::Storage | ZoneType::Corridor
-    ) && zone.id.0 % 2 == 0;
+    ) && zone.id.0.is_multiple_of(2);
 
     if use_haze {
         let corner_offsets = [
@@ -109,6 +112,7 @@ pub fn build_zone_visual(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     zone: &Zone,
+    level_graph: &LevelGraph,
 ) {
     let floor_thickness = 0.5;
     let floor_position = zone.position + Vec3::new(0.0, -floor_thickness / 2.0, 0.0);
@@ -136,36 +140,65 @@ pub fn build_zone_visual(
         Name::new(format!("Ceiling_Zone_{}", zone.id.0)),
     ));
 
-    let wall_thickness = 0.5;
-    let wall_positions = [
+    let wall_segments = collect_zone_wall_segments(zone, level_graph);
+    let half_x = zone.size.x * 0.5;
+    let half_z = zone.size.z * 0.5;
+
+    let side_specs = [
         (
-            Vec3::new(zone.size.x / 2.0, zone.size.y / 2.0, 0.0),
-            Vec3::new(wall_thickness, zone.size.y, zone.size.z),
+            WALL_SIDE_EAST,
+            Vec3::new(half_x, zone.size.y * 0.5, 0.0),
+            true,
+            "East",
         ),
         (
-            Vec3::new(-zone.size.x / 2.0, zone.size.y / 2.0, 0.0),
-            Vec3::new(wall_thickness, zone.size.y, zone.size.z),
+            WALL_SIDE_WEST,
+            Vec3::new(-half_x, zone.size.y * 0.5, 0.0),
+            true,
+            "West",
         ),
         (
-            Vec3::new(0.0, zone.size.y / 2.0, zone.size.z / 2.0),
-            Vec3::new(zone.size.x, zone.size.y, wall_thickness),
+            WALL_SIDE_NORTH,
+            Vec3::new(0.0, zone.size.y * 0.5, half_z),
+            false,
+            "North",
         ),
         (
-            Vec3::new(0.0, zone.size.y / 2.0, -zone.size.z / 2.0),
-            Vec3::new(zone.size.x, zone.size.y, wall_thickness),
+            WALL_SIDE_SOUTH,
+            Vec3::new(0.0, zone.size.y * 0.5, -half_z),
+            false,
+            "South",
         ),
     ];
 
-    for (i, (offset, wall_size)) in wall_positions.iter().enumerate() {
-        let wall_position = zone.position + zone.rotation * *offset;
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::from_size(*wall_size))),
-            MeshMaterial3d(materials.add(wall_material.clone())),
-            Transform::from_translation(wall_position).with_rotation(zone.rotation),
-            NavigationObstacle,
-            ZoneVisual { zone_id: zone.id },
-            Name::new(format!("Wall_{}_Zone_{}", i, zone.id.0)),
-        ));
+    for (side_index, wall_anchor, span_on_z, side_name) in side_specs {
+        for (segment_index, (segment_center, segment_length)) in
+            wall_segments[side_index].iter().enumerate()
+        {
+            let local_offset = if span_on_z {
+                wall_anchor + Vec3::new(0.0, 0.0, *segment_center)
+            } else {
+                wall_anchor + Vec3::new(*segment_center, 0.0, 0.0)
+            };
+
+            let wall_size = if span_on_z {
+                Vec3::new(WALL_THICKNESS, zone.size.y, *segment_length)
+            } else {
+                Vec3::new(*segment_length, zone.size.y, WALL_THICKNESS)
+            };
+
+            let wall_position = zone.position + zone.rotation * local_offset;
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::from_size(wall_size))),
+                MeshMaterial3d(materials.add(wall_material.clone())),
+                Transform::from_translation(wall_position).with_rotation(zone.rotation),
+                ZoneVisual { zone_id: zone.id },
+                Name::new(format!(
+                    "Wall_{}_{}_Zone_{}",
+                    side_name, segment_index, zone.id.0
+                )),
+            ));
+        }
     }
 
     // Add lighting to the zone
@@ -200,7 +233,13 @@ pub fn build_level_visuals(
     ));
 
     for zone in level_graph.zones.values() {
-        build_zone_visual(&mut commands, &mut meshes, &mut materials, zone);
+        build_zone_visual(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            zone,
+            level_graph,
+        );
     }
 
     info!("Level visuals built successfully");

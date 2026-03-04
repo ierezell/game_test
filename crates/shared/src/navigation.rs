@@ -2,6 +2,8 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use lightyear::prelude::{InterpolationTarget, NetworkTarget, Replicate};
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
+use vleue_navigator::prelude::{ManagedNavMesh, NavMesh, NavMeshStatus};
 
 #[derive(Component, Clone, Debug)]
 pub struct NavigationObstacle;
@@ -10,7 +12,10 @@ pub struct NavigationPlugin;
 
 impl Plugin for NavigationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (patrol_system, movement_system));
+        app.add_systems(
+            Update,
+            (patrol_system, refresh_navigation_paths, movement_system).chain(),
+        );
     }
 }
 
@@ -19,6 +24,27 @@ pub struct SimpleNavigationAgent {
     pub speed: f32,
     pub arrival_threshold: f32,
     pub current_target: Option<Vec3>,
+}
+
+#[derive(Component, Clone, Debug, Default)]
+pub struct NavigationPathState {
+    pub target: Option<Vec3>,
+    pub current_waypoint: Option<Vec3>,
+    pub remaining_waypoints: Vec<Vec3>,
+}
+
+impl NavigationPathState {
+    pub fn clear(&mut self) {
+        self.target = None;
+        self.current_waypoint = None;
+        self.remaining_waypoints.clear();
+    }
+
+    pub fn assign_path(&mut self, target: Vec3, waypoints: Vec<Vec3>) {
+        self.target = Some(target);
+        self.remaining_waypoints = waypoints.into_iter().rev().collect();
+        self.current_waypoint = self.remaining_waypoints.pop();
+    }
 }
 
 impl SimpleNavigationAgent {
@@ -118,6 +144,17 @@ fn patrol_system(
     time: Res<Time>,
 ) {
     for (entity, mut nav_agent, mut patrol_state, patrol_route, position) in agents.iter_mut() {
+        if nav_agent.current_target.is_none() {
+            if let Some((next_target, next_index)) = patrol_route
+                .get_next_target(patrol_state.current_target_index, &mut patrol_state.forward)
+            {
+                nav_agent.current_target = Some(next_target);
+                patrol_state.current_target_index = next_index;
+                patrol_state.wait_timer = 0.0;
+            }
+            continue;
+        }
+
         // Update wait timer
         patrol_state.wait_timer += time.delta_secs();
 
@@ -152,36 +189,130 @@ fn patrol_system(
     }
 }
 
+fn refresh_navigation_paths(
+    mut agents: Query<(
+        Entity,
+        &Position,
+        &mut SimpleNavigationAgent,
+        &mut NavigationPathState,
+    )>,
+    navmesh: Query<(&ManagedNavMesh, Ref<NavMeshStatus>)>,
+    navmeshes: Res<Assets<NavMesh>>,
+) {
+    let Ok((navmesh_handle, status)) = navmesh.single() else {
+        return;
+    };
+
+    if *status != NavMeshStatus::Built {
+        return;
+    }
+
+    let Some(navmesh) = navmeshes.get(navmesh_handle.deref()) else {
+        return;
+    };
+
+    for (entity, position, mut nav_agent, mut path_state) in agents.iter_mut() {
+        let Some(target) = nav_agent.current_target else {
+            path_state.clear();
+            continue;
+        };
+
+        let should_rebuild = path_state.target != Some(target)
+            || path_state.current_waypoint.is_none()
+            || status.is_changed();
+
+        if !should_rebuild {
+            continue;
+        }
+
+        if !navmesh.transformed_is_in_mesh(position.0) || !navmesh.transformed_is_in_mesh(target) {
+            warn!(
+                "Entity {:?}: target {:?} is outside navmesh, dropping navigation target",
+                entity, target
+            );
+            nav_agent.current_target = None;
+            path_state.clear();
+            continue;
+        }
+
+        let Some(path) = navmesh.transformed_path(position.0, target) else {
+            warn!(
+                "Entity {:?}: no navmesh path from {:?} to {:?}, dropping navigation target",
+                entity, position.0, target
+            );
+            nav_agent.current_target = None;
+            path_state.clear();
+            continue;
+        };
+
+        let waypoint_threshold = (nav_agent.arrival_threshold * 0.5).max(0.1);
+        let waypoints: Vec<Vec3> = path
+            .path
+            .into_iter()
+            .filter(|waypoint| planar_distance(position.0, *waypoint) > waypoint_threshold)
+            .collect();
+
+        path_state.assign_path(target, waypoints);
+    }
+}
+
 /// Simple movement system for navigation agents using Avian3D physics
 fn movement_system(
-    mut agents: Query<(&mut Position, &mut Rotation, &SimpleNavigationAgent)>,
+    mut agents: Query<(
+        &mut Position,
+        &mut Rotation,
+        &SimpleNavigationAgent,
+        Option<&mut NavigationPathState>,
+    )>,
     time: Res<Time>,
 ) {
-    for (mut position, mut rotation, nav_agent) in agents.iter_mut() {
-        if let Some(target) = nav_agent.current_target {
-            let current_pos = position.0;
-            let direction = (target - current_pos).normalize();
+    for (mut position, mut rotation, nav_agent, mut path_state) in agents.iter_mut() {
+        let current_pos = position.0;
 
-            if direction.is_finite() {
-                let movement = direction * nav_agent.speed * time.delta_secs();
-                let new_position = current_pos + movement;
+        let movement_target = if let Some(path_state) = path_state.as_deref_mut() {
+            if nav_agent.current_target != path_state.target {
+                path_state.clear();
+            }
 
-                // Update position (keep Y stable)
-                position.0.x = new_position.x;
-                position.0.z = new_position.z;
-
-                // Rotate to face movement direction
-                if direction.length() > 0.01 {
-                    let look_direction = Vec3::new(direction.x, 0.0, direction.z);
-                    if look_direction.length() > 0.01 {
-                        let target_rotation =
-                            Quat::from_rotation_y(look_direction.x.atan2(look_direction.z));
-                        rotation.0 = target_rotation;
-                    }
+            while let Some(waypoint) = path_state.current_waypoint {
+                if planar_distance(current_pos, waypoint) <= nav_agent.arrival_threshold {
+                    path_state.current_waypoint = path_state.remaining_waypoints.pop();
+                } else {
+                    break;
                 }
             }
+
+            path_state.current_waypoint
+        } else {
+            nav_agent.current_target
+        };
+
+        if let Some(target) = movement_target {
+            let planar_offset = Vec3::new(target.x - current_pos.x, 0.0, target.z - current_pos.z);
+            let distance = planar_offset.length();
+            if distance <= 0.001 {
+                continue;
+            }
+
+            let direction = planar_offset / distance;
+            if !direction.is_finite() {
+                continue;
+            }
+
+            let step = nav_agent.speed * time.delta_secs();
+            let movement = direction * step.min(distance);
+
+            position.0.x = current_pos.x + movement.x;
+            position.0.z = current_pos.z + movement.z;
+
+            let target_rotation = Quat::from_rotation_y(direction.x.atan2(direction.z));
+            rotation.0 = target_rotation;
         }
     }
+}
+
+fn planar_distance(a: Vec3, b: Vec3) -> f32 {
+    Vec2::new(a.x, a.z).distance(Vec2::new(b.x, b.z))
 }
 
 /// Helper function to set up patrol behavior
@@ -194,6 +325,7 @@ pub fn setup_patrol(commands: &mut Commands, entity: Entity, patrol_points: Vec<
 
     commands.entity(entity).insert((
         nav_agent,
+        NavigationPathState::default(),
         PatrolState::default(),
         patrol_route,
         Replicate::to_clients(NetworkTarget::All),
@@ -299,6 +431,9 @@ mod tests {
             "Adjusted position should be moved away from obstacle, got {:?}",
             adjusted
         );
-        assert_eq!(adjusted.y, 1.0, "Adjusted spawn Y should be normalized to 1.0");
+        assert_eq!(
+            adjusted.y, 1.0,
+            "Adjusted spawn Y should be normalized to 1.0"
+        );
     }
 }

@@ -106,7 +106,7 @@ fn auto_start_game_when_lobby_ready(
         return;
     };
 
-    if lobby.players.len() >= 2 {
+    if !lobby.players.is_empty() {
         transition_to_loading(&mut commands, &mut sender, server.into_inner());
     }
 }

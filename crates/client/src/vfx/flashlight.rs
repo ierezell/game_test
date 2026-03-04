@@ -79,7 +79,7 @@ fn spawn_flashlight_beam(
                     intensity: beam_intensity,
                     range: flashlight.range,
                     radius: 0.1,
-                    shadows_enabled: true,
+                    shadows_enabled: is_controlled,
                     outer_angle: flashlight.outer_angle,
                     inner_angle: flashlight.inner_angle,
                     ..default()

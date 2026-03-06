@@ -1,4 +1,4 @@
-use crate::inputs::input::get_player_input_map;
+use crate::inputs::input_map::get_player_input_map;
 
 use bevy::app::Update;
 use bevy::prelude::{
@@ -80,7 +80,7 @@ fn handle_interpolated_npcs_setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    npc_query: Query<Entity, (With<Interpolated>, Without<PlayerId>, Without<Mesh3d>)>,
+    npc_query: Query<Entity, (With<CharacterMarker>, Without<PlayerId>, Without<Mesh3d>)>,
 ) {
     for entity in npc_query.iter() {
         let color = Color::srgb(0.5, 0.5, 0.5);

@@ -5,8 +5,9 @@ use bevy::prelude::{
 use bevy::window::PresentMode;
 use client::{
     ClientGameState, Headless, LocalPlayerId, camera::ClientCameraPlugin, debug::ClientDebugPlugin,
-    entities::ClientEntitiesPlugin, game::ClientGameCyclePlugin, inputs::ClientInputPlugin,
-    lobby::ClientLobbyPlugin, network::ClientNetworkPlugin, vfx::ClientVFXPlugin,
+    entities::ClientEntitiesPlugin, game::ClientGameCyclePlugin, hud::ClientHudPlugin,
+    inputs::ClientInputPlugin, lobby::ClientLobbyPlugin, network::ClientNetworkPlugin,
+    vfx::ClientVFXPlugin,
 };
 use lightyear::prelude::server::ServerPlugins;
 use std::time::Duration;
@@ -18,8 +19,8 @@ use bevy::render::{
 };
 
 use server::{
-    ServerGameState, entities::ServerEntitiesPlugin, lobby::ServerLobbyPlugin,
-    network::ServerNetworkPlugin,
+    ServerGameState, debug::ServerDebugPlugin, entities::ServerEntitiesPlugin,
+    lobby::ServerLobbyPlugin, network::ServerNetworkPlugin,
 };
 use shared::{NetworkMode, SharedPlugin};
 
@@ -93,8 +94,7 @@ pub fn create_host_app(headless: bool, asset_path: String) -> App {
                 .set(AssetPlugin {
                     file_path: asset_path,
                     ..Default::default()
-                })
-                .disable::<LogPlugin>(),
+                }),
         );
     }
 
@@ -105,6 +105,7 @@ pub fn create_host_app(headless: bool, asset_path: String) -> App {
     host_app.add_plugins(ServerNetworkPlugin);
     host_app.add_plugins(ServerLobbyPlugin);
     host_app.add_plugins(ServerEntitiesPlugin);
+    host_app.add_plugins(ServerDebugPlugin);
     host_app.init_state::<ServerGameState>();
     host_app.insert_state(ServerGameState::Lobby);
 
@@ -126,6 +127,7 @@ pub fn create_host_app(headless: bool, asset_path: String) -> App {
     host_app.add_plugins(ClientEntitiesPlugin);
     host_app.add_plugins(ClientLobbyPlugin);
     host_app.add_plugins(ClientGameCyclePlugin);
+    host_app.add_plugins(ClientHudPlugin);
 
     host_app.init_state::<ClientGameState>();
     host_app.insert_state(ClientGameState::Lobby);

@@ -1,9 +1,9 @@
-use crate::AutoJoin;
 use crate::host::create_host_app;
-use crate::local_menu::LocalMenuPlugin;
 use clap::{Parser, ValueEnum};
+use client::AutoJoin;
 use client::create_client_app;
 use client::lobby::AutoStart;
+use client::local_menu::LocalMenuPlugin;
 use server::create_server_app;
 use server::lobby::AutoStartOnLobbyReady;
 use shared::{GymMode, NetworkMode};

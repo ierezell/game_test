@@ -8,11 +8,11 @@ use std::time::Duration;
 use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
     Client, Connected, ControlledBy, DeltaManager, Disconnected, Link, LinkOf, Linked, LocalAddr,
-    LocalId, NetworkTarget, PeerId, RemoteId, Replicate, ReplicationReceiver,
-    ReplicationSender, SendUpdatesMode, Server,
-    ServerMultiMessageSender,
+    LocalId, NetworkTarget, PeerId, RemoteId, Replicate, ReplicationReceiver, ReplicationSender,
+    SendUpdatesMode, Server, ServerMultiMessageSender,
     server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start, Started},
 };
+use shared::debug::debug_println;
 use shared::protocol::{LobbyControlChannel, LobbyState, PlayerId, StartLoadingGameEvent};
 use shared::{SERVER_BIND_ADDR, SHARED_SETTINGS};
 
@@ -28,7 +28,10 @@ impl Plugin for ServerNetworkPlugin {
             .get_resource::<NetworkMode>()
             .copied()
             .unwrap_or_default();
-        println!("ServerNetworkPlugin: building with mode {:?}", network_mode);
+        debug_println(format_args!(
+            "ServerNetworkPlugin: building with mode {:?}",
+            network_mode
+        ));
 
         match network_mode {
             NetworkMode::Udp => {
@@ -64,7 +67,8 @@ fn ensure_local_host_clientof_links(
         return;
     };
 
-    let mut existing_remote_ids: HashSet<PeerId> = existing_clientofs.iter().map(|id| id.0).collect();
+    let mut existing_remote_ids: HashSet<PeerId> =
+        existing_clientofs.iter().map(|id| id.0).collect();
 
     for (link_of, local_id) in host_clients.iter() {
         if link_of.server != server_entity {
@@ -101,10 +105,10 @@ fn startup_server_crossbeam(mut commands: Commands) {
     let server_entity = commands
         .spawn((Name::new("Server"), Server::default(), Started))
         .id();
-    println!(
+    debug_println(format_args!(
         "ServerNetworkPlugin: spawned Server entity {:?}",
         server_entity
-    );
+    ));
     commands.trigger(Start {
         entity: server_entity,
     });
@@ -116,10 +120,10 @@ fn startup_server_local(mut commands: Commands) {
     let server_entity = commands
         .spawn((Name::new("Server"), Server::default(), Started))
         .id();
-    println!(
+    debug_println(format_args!(
         "ServerNetworkPlugin: spawned Server entity {:?} in Local mode (HostServer)",
         server_entity
-    );
+    ));
     commands.trigger(Start {
         entity: server_entity,
     });
@@ -173,26 +177,26 @@ fn handle_connected(
     if let Some((lobby_entity, mut lobby_state)) = lobby_query.iter_mut().next() {
         // Lobby exists, add player if not already present
         if !lobby_state.players.contains(&client_id_bits) {
-            println!(
+            debug_println(format_args!(
                 "DEBUG: Server accepted connection from Client_{}",
                 client_id_bits
-            );
+            ));
             lobby_state.players.push(client_id_bits);
             commands
                 .entity(lobby_entity)
                 .insert(Replicate::to_clients(NetworkTarget::All));
 
             if lobby_state.players.len() == 1 {
-                println!("DEBUG: Client_{} became host", client_id_bits);
+                debug_println(format_args!("DEBUG: Client_{} became host", client_id_bits));
                 lobby_state.host_id = client_id_bits;
             }
 
             // If the game is already in progress, send the StartLoadingGameEvent to the newly connected client
             if *server_state.get() == ServerGameState::Playing {
-                println!(
+                debug_println(format_args!(
                     "DEBUG: Game already started, sending StartLoadingGameEvent to late-joining Client_{}",
                     client_id_bits
-                );
+                ));
 
                 sender
                     .send::<StartLoadingGameEvent, LobbyControlChannel>(
@@ -208,14 +212,17 @@ fn handle_connected(
                     });
             }
         } else {
-            println!("DEBUG: Client_{} already in lobby", client_id_bits);
+            debug_println(format_args!(
+                "DEBUG: Client_{} already in lobby",
+                client_id_bits
+            ));
         }
     } else {
         // No lobby exists, create it with this first client as host
-        println!(
+        debug_println(format_args!(
             "DEBUG: Creating lobby with Client_{} as first player and host",
             client_id_bits
-        );
+        ));
         commands.spawn((
             LobbyState {
                 players: vec![client_id_bits],

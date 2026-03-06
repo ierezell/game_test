@@ -1,4 +1,5 @@
 use crate::AutoJoin;
+use crate::ClientGameState;
 use bevy::{
     color::palettes::tailwind::SLATE_800,
     prelude::{
@@ -7,7 +8,6 @@ use bevy::{
         Query, Res, Text, TextFont, UiRect, Val, With, debug, default,
     },
 };
-use client::ClientGameState;
 
 pub struct LocalMenuPlugin;
 

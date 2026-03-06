@@ -1,19 +1,20 @@
 use crate::{ClientGameState, LocalPlayerId};
 
 use bevy::prelude::{
-    Add, App, Commands, CommandsStatesExt, Entity, IntoScheduleConfigs, Name, On, Plugin, Query, Remove, Res,
-    Resource, State, Update, With, Without, error, in_state, info,
+    Add, App, Commands, CommandsStatesExt, Entity, IntoScheduleConfigs, Name, On, Plugin, Query,
+    Remove, Res, Resource, State, Update, With, Without, error, in_state, info,
 };
 
 #[derive(Resource)]
 pub struct ServerAddr(pub std::net::SocketAddr);
 use lightyear::prelude::{
-    Authentication, Client, Connect, Connected, Connecting, Link, LocalAddr, PeerAddr, PredictionManager,
-    ReplicationReceiver, ReplicationSender, UdpIo,
+    Authentication, Client, Connect, Connected, Connecting, Link, LocalAddr, PeerAddr,
+    PredictionManager, ReplicationReceiver, ReplicationSender, UdpIo,
     client::{NetcodeClient, NetcodeConfig},
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+use shared::debug::debug_println;
 use shared::{SERVER_ADDR, SHARED_SETTINGS};
 
 #[derive(Resource)]
@@ -31,7 +32,10 @@ impl Plugin for ClientNetworkPlugin {
             .unwrap_or_default();
         match network_mode {
             NetworkMode::Udp => {
-                app.add_systems(Update, start_connection.run_if(in_state(ClientGameState::Lobby)));
+                app.add_systems(
+                    Update,
+                    start_connection.run_if(in_state(ClientGameState::Lobby)),
+                );
             }
             NetworkMode::Crossbeam => {
                 app.add_systems(
@@ -68,14 +72,13 @@ fn start_connection_crossbeam(
         return;
     }
 
-    println!(
+    debug_println(format_args!(
         "DEBUG: start_connection_crossbeam called for client {}",
         client_id.0
-    );
+    ));
 
     use lightyear::prelude::{
-        Linked, LocalId, PeerId, PingConfig, PingManager, RemoteId, ReplicationSender,
-        Transport,
+        Linked, LocalId, PeerId, PingConfig, PingManager, RemoteId, ReplicationSender, Transport,
     };
 
     // Clone the endpoint because we might need it again if we reconnect (though Res is borrowed)
@@ -122,10 +125,10 @@ fn start_connection_local(
         return;
     }
 
-    println!(
+    debug_println(format_args!(
         "DEBUG: start_connection_local called for client {}",
         client_id.0
-    );
+    ));
 
     // Local mode (HostClient): Create a Client entity linked to the Server entity.
     // Include explicit peer ids so the server can always resolve a RemoteId.
@@ -156,10 +159,10 @@ fn start_connection_local(
         .insert(Name::from(format!("HostClient {}", client_id.0)))
         .id();
 
-    println!(
+    debug_println(format_args!(
         "DEBUG: Created HostClient entity {:?} linked to Server entity {:?}",
         client_entity, server_entity
-    );
+    ));
 
     commands.trigger(Connect {
         entity: client_entity,
@@ -182,7 +185,10 @@ fn start_connection(
         return;
     }
 
-    println!("DEBUG: start_connection called for client {}", client_id.0);
+    debug_println(format_args!(
+        "DEBUG: start_connection called for client {}",
+        client_id.0
+    ));
 
     // Use a different port range to avoid conflicts with server
     let client_port = 5000 + client_id.0 as u16;
@@ -194,10 +200,10 @@ fn start_connection(
     } else {
         SERVER_ADDR
     };
-    println!(
+    debug_println(format_args!(
         "DEBUG: Client {} connecting to server at {}",
         client_id.0, server_addr
-    );
+    ));
 
     let auth = Authentication::Manual {
         server_addr,
@@ -215,10 +221,10 @@ fn start_connection(
 
     match NetcodeClient::new(auth, netcode_config) {
         Ok(netcode_client) => {
-            println!(
+            debug_println(format_args!(
                 "DEBUG: NetcodeClient created successfully for client {}",
                 client_id.0
-            );
+            ));
             let client_entity = commands
                 .spawn((
                     Client::default(),

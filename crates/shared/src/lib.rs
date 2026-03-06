@@ -1,4 +1,5 @@
 pub mod components;
+pub mod debug;
 pub mod entities;
 pub mod gym;
 pub mod inputs;

@@ -13,6 +13,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::Headless;
 use lightyear::prelude::{Client, Confirmed, MessageSender};
+use shared::debug::debug_println;
 use shared::protocol::{HostStartGameEvent, LobbyControlChannel, LobbyState};
 
 #[derive(Resource)]
@@ -78,16 +79,20 @@ fn handle_auto_start(
             // Require a MessageSender to be present (established link)
             if let Some(mut sender) = sender_q.iter_mut().next() {
                 if lobby_data.host_id == local_player_id.0 {
-                    println!("DEBUG: handle_auto_start sending HostStartGameEvent");
+                    debug_println(format_args!(
+                        "DEBUG: handle_auto_start sending HostStartGameEvent"
+                    ));
                     sender.send::<LobbyControlChannel>(HostStartGameEvent { requested: true });
                 }
             } else {
                 // No sender yet; wait until the network establishes it
-                println!("DEBUG: handle_auto_start - MessageSender not ready yet");
+                debug_println(format_args!(
+                    "DEBUG: handle_auto_start - MessageSender not ready yet"
+                ));
             }
         } else {
             // No lobby yet; will try again on next tick
-            println!("DEBUG: handle_auto_start - No LobbyState found");
+            debug_println(format_args!("DEBUG: handle_auto_start - No LobbyState found"));
         }
     }
 }

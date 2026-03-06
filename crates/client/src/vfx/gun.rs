@@ -1,3 +1,4 @@
+use avian3d::prelude::Position;
 use bevy::prelude::*;
 use shared::components::weapons::HitEvent;
 
@@ -19,16 +20,30 @@ fn show_hit_markers(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     hit_events: Query<&HitEvent, Added<HitEvent>>,
+    shooter_positions: Query<&Position>,
 ) {
     for hit_event in hit_events.iter() {
+        // Offset markers slightly toward the shooter so they stay visible on impact surfaces.
+        let marker_position = shooter_positions
+            .get(hit_event.shooter)
+            .map(|pos| {
+                let shot_direction = (hit_event.hit_point - pos.0).normalize_or_zero();
+                if shot_direction.length_squared() > 0.0 {
+                    hit_event.hit_point - (shot_direction * 0.08)
+                } else {
+                    hit_event.hit_point
+                }
+            })
+            .unwrap_or(hit_event.hit_point);
+
         commands.spawn((
-            Mesh3d(meshes.add(Sphere::new(0.1))),
+            Mesh3d(meshes.add(Sphere::new(0.14))),
             MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::srgb(1.0, 0.3, 0.0),
-                emissive: LinearRgba::rgb(10.0, 3.0, 0.0),
+                base_color: Color::srgb(0.2, 1.0, 0.9),
+                emissive: LinearRgba::rgb(2.0, 10.0, 9.0),
                 ..default()
             })),
-            Transform::from_translation(hit_event.hit_point),
+            Transform::from_translation(marker_position),
             HitMarker {
                 timer: Timer::from_seconds(0.2, TimerMode::Once),
             },

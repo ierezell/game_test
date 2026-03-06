@@ -29,6 +29,7 @@ mod ccc;
 
 mod gameplay;
 mod health;
+mod performance;
 mod world;
 
 fn update_all(server_app: &mut App, client_app1: &mut App, client_app2: &mut App) {

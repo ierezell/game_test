@@ -28,14 +28,15 @@ LIGHTYEAR 0.26.4 and BEVY 0.18
 For Lightyear (networking-client-server), you will read thoroughly the examples as they provide the best practices.
 https://github.com/cBournhonesque/lightyear/tree/main/examples
 
-# Yolo-Game Development Instructions
+# Development Instructions
 
 This is a GTFO-like multiplayer semi-cooperative survival horror game built in rust with Bevy game engine, Avian physics engine and lightyear.
 
 ## Development guidelines. 
-- Do no re-create existing files, try to modify it. 
-- Use `cargo check` and `cargo clippy` to verify the code. 
-- Use `cargo test -- --no-capture --test-threads=1` to test the code. 
+- Do not add logic on top to fix, first investigate the current one.
+- Do no re-create existing files, try to modify it.
+- Use `cargo check` and `cargo clippy` to verify the code.
+- Use `cargo test -- --no-capture --test-threads=1` to test the code.
 
 ## Key Features
 - **Combat System**: Realistic mechanics with different weapon types

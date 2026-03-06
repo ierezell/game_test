@@ -1,5 +1,5 @@
+pub mod debug;
 pub mod entities;
-pub mod input;
 pub mod lobby;
 pub mod network;
 pub mod render;
@@ -12,6 +12,7 @@ use bevy::window::{Window, WindowPlugin};
 use lightyear::prelude::server::ServerPlugins;
 use std::time::Duration;
 
+use crate::debug::ServerDebugPlugin;
 use crate::entities::ServerEntitiesPlugin;
 use crate::lobby::ServerLobbyPlugin;
 use crate::network::ServerNetworkPlugin;
@@ -70,6 +71,7 @@ pub fn create_server_app(headless: bool, network_mode: NetworkMode) -> App {
     app.add_plugins(ServerNetworkPlugin);
     app.add_plugins(ServerLobbyPlugin);
     app.add_plugins(ServerEntitiesPlugin);
+    app.add_plugins(ServerDebugPlugin);
     app.init_state::<ServerGameState>();
     app.insert_state(ServerGameState::Lobby);
 

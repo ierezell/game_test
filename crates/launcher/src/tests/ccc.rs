@@ -1,16 +1,16 @@
 use super::*;
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::prelude::{
-    Entity, GlobalTransform, IntoScheduleConfigs, Query, Res, Time, Transform, Update, Vec2,
-    Vec3, With,
+    Entity, GlobalTransform, IntoScheduleConfigs, Query, Res, Time, Transform, Update, Vec2, Vec3,
+    With,
 };
 use client::camera::PlayerCamera;
 use leafwing_input_manager::prelude::ActionState;
 use lightyear::prelude::{Controlled, PeerId, Predicted};
+use shared::entities::PlayerPhysicsBundle;
+use shared::inputs::input::PlayerAction;
 use shared::inputs::movement::GroundState;
 use shared::protocol::CharacterMarker;
-use shared::inputs::input::PlayerAction;
-use shared::entities::PlayerPhysicsBundle;
 use shared::protocol::PlayerId;
 
 fn integrate_position_from_velocity(
@@ -26,25 +26,45 @@ fn spawn_local_player_for_ccc(client_app: &mut App, player_id: u64) -> Entity {
     let mut action_state = ActionState::<PlayerAction>::default();
     action_state.enable();
 
-    client_app.world_mut().spawn((
-        PlayerId(PeerId::Netcode(player_id)),
-        Predicted,
-        Controlled,
-        CharacterMarker,
-        Position::new(Vec3::new(0.0, 2.0, 0.0)),
-        Rotation::default(),
-        PlayerPhysicsBundle::default(),
-        Transform::from_xyz(0.0, 2.0, 0.0),
-        GlobalTransform::IDENTITY,
-        LinearVelocity::default(),
-        GroundState {
-            is_grounded: true,
-            ground_normal: Vec3::Y,
-            ground_distance: 0.0,
-            ground_tick: 0,
-        },
-        action_state,
-    )).id()
+    let player_entity = client_app
+        .world_mut()
+        .spawn((
+            PlayerId(PeerId::Netcode(player_id)),
+            Predicted,
+            Controlled,
+            CharacterMarker,
+            Position::new(Vec3::new(0.0, 2.0, 0.0)),
+            Rotation::default(),
+            PlayerPhysicsBundle::default(),
+            Transform::from_xyz(0.0, 2.0, 0.0),
+            GlobalTransform::IDENTITY,
+            LinearVelocity::default(),
+            GroundState {
+                is_grounded: true,
+                ground_normal: Vec3::Y,
+                ground_distance: 0.0,
+                ground_tick: 0,
+            },
+            action_state,
+        ))
+        .id();
+
+    // Let observer-based spawn systems run so test setup matches gameplay flow.
+    for _ in 0..4 {
+        update_single_app(client_app, Duration::from_millis(16));
+    }
+
+    let has_player_camera = {
+        let world = client_app.world_mut();
+        let mut query = world.query_filtered::<Entity, With<PlayerCamera>>();
+        query.iter(world).next().is_some()
+    };
+    assert!(
+        has_player_camera,
+        "expected PlayerCamera to be spawned by camera systems after player spawn"
+    );
+
+    player_entity
 }
 
 fn set_client_move_input(client_app: &mut App, player_entity: Entity, axis: Vec2) {
@@ -87,10 +107,6 @@ fn test_ccc_mouse_look_rotates_character_and_camera_end_to_end() {
     );
 
     let local_player_entity = spawn_local_player_for_ccc(&mut client_app, 1);
-
-    for _ in 0..6 {
-        update_single_app(&mut client_app, Duration::from_millis(16));
-    }
 
     let initial_local_rotation = client_app
         .world()
@@ -185,10 +201,6 @@ fn test_ccc_move_input_moves_character_and_camera_end_to_end() {
     );
 
     let local_player_entity = spawn_local_player_for_ccc(&mut client_app, 1);
-
-    for _ in 0..6 {
-        update_single_app(&mut client_app, Duration::from_millis(16));
-    }
 
     let initial_local_position = client_app
         .world()

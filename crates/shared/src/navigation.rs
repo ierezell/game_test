@@ -1,4 +1,5 @@
 use avian3d::prelude::*;
+use bevy::ecs::query::QueryFilter;
 use bevy::prelude::*;
 use lightyear::prelude::{InterpolationTarget, NetworkTarget, Replicate};
 use serde::{Deserialize, Serialize};
@@ -155,9 +156,6 @@ fn patrol_system(
             continue;
         }
 
-        // Update wait timer
-        patrol_state.wait_timer += time.delta_secs();
-
         // Check if we've reached the current target
         let current_target = patrol_route.points.get(patrol_state.current_target_index);
         let reached_target = if let Some(target_pos) = current_target {
@@ -168,10 +166,12 @@ fn patrol_system(
             false
         };
 
-        // If we've reached the target and waited long enough, move to next target
-        if reached_target && patrol_state.wait_timer >= patrol_state.wait_duration {
-            if let Some((next_target, next_index)) = patrol_route
-                .get_next_target(patrol_state.current_target_index, &mut patrol_state.forward)
+        if reached_target {
+            patrol_state.wait_timer += time.delta_secs();
+
+            if patrol_state.wait_timer >= patrol_state.wait_duration
+                && let Some((next_target, next_index)) = patrol_route
+                    .get_next_target(patrol_state.current_target_index, &mut patrol_state.forward)
             {
                 debug!(
                     "Entity {:?}: Moving to next patrol target: {:?} (index {})",
@@ -182,8 +182,7 @@ fn patrol_system(
                 patrol_state.current_target_index = next_index;
                 patrol_state.wait_timer = 0.0;
             }
-        } else if !reached_target {
-            // Still moving towards target, reset wait timer
+        } else {
             patrol_state.wait_timer = 0.0;
         }
     }
@@ -225,7 +224,12 @@ fn refresh_navigation_paths(
             continue;
         }
 
-        if !navmesh.transformed_is_in_mesh(position.0) || !navmesh.transformed_is_in_mesh(target) {
+        let nav_position = to_navmesh_plane(position.0);
+        let nav_target = to_navmesh_plane(target);
+
+        if !navmesh.transformed_is_in_mesh(nav_position)
+            || !navmesh.transformed_is_in_mesh(nav_target)
+        {
             warn!(
                 "Entity {:?}: target {:?} is outside navmesh, dropping navigation target",
                 entity, target
@@ -235,7 +239,7 @@ fn refresh_navigation_paths(
             continue;
         }
 
-        let Some(path) = navmesh.transformed_path(position.0, target) else {
+        let Some(path) = navmesh.transformed_path(nav_position, nav_target) else {
             warn!(
                 "Entity {:?}: no navmesh path from {:?} to {:?}, dropping navigation target",
                 entity, position.0, target
@@ -249,6 +253,7 @@ fn refresh_navigation_paths(
         let waypoints: Vec<Vec3> = path
             .path
             .into_iter()
+            .map(|waypoint| from_navmesh_plane(waypoint, position.0.y))
             .filter(|waypoint| planar_distance(position.0, *waypoint) > waypoint_threshold)
             .collect();
 
@@ -282,7 +287,8 @@ fn movement_system(
                 }
             }
 
-            path_state.current_waypoint
+            // Keep moving toward the high-level target if waypoints are temporarily unavailable.
+            path_state.current_waypoint.or(nav_agent.current_target)
         } else {
             nav_agent.current_target
         };
@@ -315,6 +321,15 @@ fn planar_distance(a: Vec3, b: Vec3) -> f32 {
     Vec2::new(a.x, a.z).distance(Vec2::new(b.x, b.z))
 }
 
+fn to_navmesh_plane(point: Vec3) -> Vec3 {
+    // vleue_navigator navmesh coordinates are on XY, while gameplay movement is on XZ.
+    Vec3::new(point.x, point.z, 0.0)
+}
+
+fn from_navmesh_plane(point: Vec3, world_y: f32) -> Vec3 {
+    Vec3::new(point.x, world_y, point.y)
+}
+
 /// Helper function to set up patrol behavior
 pub fn setup_patrol(commands: &mut Commands, entity: Entity, patrol_points: Vec<Vec3>, speed: f32) {
     let patrol_route = PatrolRoute::new(patrol_points.clone());
@@ -341,9 +356,9 @@ pub fn setup_patrol(commands: &mut Commands, entity: Entity, patrol_points: Vec<
     );
 }
 
-pub fn validate_spawn_position(
+pub fn validate_spawn_position<F: QueryFilter>(
     position: Vec3,
-    obstacles: &Query<&Position, With<NavigationObstacle>>,
+    obstacles: &Query<&Position, F>,
     agent_radius: f32,
 ) -> Vec3 {
     let mut adjusted_position = position;
@@ -365,9 +380,13 @@ pub fn validate_spawn_position(
 
 #[cfg(test)]
 mod tests {
-    use super::{NavigationObstacle, PatrolRoute, validate_spawn_position};
+    use super::{
+        NavigationObstacle, NavigationPathState, PatrolRoute, SimpleNavigationAgent,
+        from_navmesh_plane, movement_system, to_navmesh_plane, validate_spawn_position,
+    };
     use avian3d::prelude::Position;
-    use bevy::prelude::{App, Query, Resource, Vec3, With};
+    use avian3d::prelude::Rotation;
+    use bevy::prelude::{App, Query, Resource, Update, Vec3, With};
 
     #[derive(Resource, Default)]
     struct AdjustedSpawn(pub Option<Vec3>);
@@ -434,6 +453,70 @@ mod tests {
         assert_eq!(
             adjusted.y, 1.0,
             "Adjusted spawn Y should be normalized to 1.0"
+        );
+    }
+
+    #[test]
+    fn movement_falls_back_to_current_target_when_waypoint_missing() {
+        let mut app = App::new();
+        app.add_plugins(bevy::MinimalPlugins);
+        app.add_systems(Update, movement_system);
+
+        let start = Vec3::new(0.0, 1.0, 0.0);
+        let target = Vec3::new(10.0, 1.0, 0.0);
+
+        let entity = app
+            .world_mut()
+            .spawn((
+                Position::new(start),
+                Rotation::default(),
+                SimpleNavigationAgent {
+                    speed: 4.0,
+                    arrival_threshold: 0.5,
+                    current_target: Some(target),
+                },
+                NavigationPathState::default(),
+            ))
+            .id();
+
+        for _ in 0..4 {
+            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_millis(100),
+            ));
+            app.update();
+        }
+
+        let position = app
+            .world()
+            .get::<Position>(entity)
+            .expect("Entity should keep Position after movement")
+            .0;
+
+        assert!(
+            position.x > start.x + 0.01,
+            "Agent should move toward current_target even without a waypoint, start={:?}, end={:?}",
+            start,
+            position
+        );
+    }
+
+    #[test]
+    fn navmesh_plane_projection_preserves_world_xz() {
+        let world = Vec3::new(-18.999_315, 1.0, 21.413_212);
+        let nav = to_navmesh_plane(world);
+        let restored = from_navmesh_plane(nav, world.y);
+
+        assert!(
+            (restored.x - world.x).abs() < 0.0001,
+            "Projected/restore x should stay stable, world={:?}, restored={:?}",
+            world,
+            restored
+        );
+        assert!(
+            (restored.z - world.z).abs() < 0.0001,
+            "Projected/restore z should stay stable, world={:?}, restored={:?}",
+            world,
+            restored
         );
     }
 }

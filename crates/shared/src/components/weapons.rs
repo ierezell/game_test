@@ -1,5 +1,6 @@
 use crate::components::health::DamageEvent;
 use crate::inputs::input::PlayerAction;
+use crate::navigation::NavigationObstacle;
 use avian3d::prelude::{
     Collider, LinearVelocity, Position, RigidBody, Rotation, SpatialQueryFilter,
     SpatialQueryPipeline,
@@ -100,6 +101,7 @@ pub fn fire_gun_system(
         With<ControlledBy>,
     >,
     spatial_query: Res<SpatialQueryPipeline>,
+    obstacle_query: Query<(), With<NavigationObstacle>>,
     mut damage_writer: MessageWriter<DamageEvent>,
     time: Res<Time>,
 ) {
@@ -136,16 +138,33 @@ pub fn fire_gun_system(
             let eye_height = 1.5; // Approximate player eye height
             let shoot_origin = pos.0 + Vec3::new(0.0, eye_height, 0.0);
 
-            // Perform raycast
-            if let Some(hit) = spatial_query.cast_ray(
+            let primary_hit = spatial_query.cast_ray(
                 shoot_origin,
                 Dir3::new(direction).unwrap_or(Dir3::NEG_Z),
                 gun.range,
-                true, // solid hits only
+                false, // also detect hits when the ray starts inside or very close to a collider
                 &filter,
-            ) {
+            );
+
+            let resolved_hit = if let Some(hit) = primary_hit {
+                Some((hit, shoot_origin))
+            } else {
+                let assist_origin = pos.0 + Vec3::new(0.0, -0.8, 0.0);
+                spatial_query
+                    .cast_ray(
+                        assist_origin,
+                        Dir3::new(direction).unwrap_or(Dir3::NEG_Z),
+                        gun.range,
+                        false,
+                        &filter,
+                    )
+                    .filter(|hit| obstacle_query.get(hit.entity).is_ok())
+                    .map(|hit| (hit, assist_origin))
+            };
+
+            if let Some((hit, ray_origin)) = resolved_hit {
                 let hit_entity = hit.entity;
-                let hit_point = shoot_origin + direction * hit.distance;
+                let hit_point = ray_origin + direction * hit.distance;
 
                 info!(
                     "🔫 Gun hit entity {:?} at distance {:.2}m point {:?}",
@@ -268,9 +287,13 @@ pub fn process_hit_events(mut commands: Commands, hit_events: Query<(Entity, &Hi
 
 #[cfg(test)]
 mod tests {
-    use super::{Gun, shoot_direction};
-    use avian3d::prelude::Rotation;
-    use bevy::prelude::{Quat, Vec3};
+    use super::{Gun, HitEvent, fire_gun_system, shoot_direction};
+    use avian3d::prelude::{Collider, Position, RigidBody, Rotation};
+    use bevy::prelude::{App, MinimalPlugins, Quat, Timer, TimerMode, Vec3};
+    use leafwing_input_manager::prelude::ActionState;
+    use lightyear::prelude::ControlledBy;
+    use crate::components::health::HealthPlugin;
+    use crate::inputs::input::PlayerAction;
     use std::time::Duration;
 
     #[test]
@@ -326,5 +349,88 @@ mod tests {
 
         assert!(!gun.is_reloading);
         assert_eq!(gun.ammo_in_magazine, gun.magazine_size);
+    }
+
+    #[test]
+    fn gun_raycast_hits_static_box_and_emits_hit_event() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::asset::AssetPlugin::default());
+        app.add_plugins(bevy::scene::ScenePlugin);
+        app.add_plugins(bevy::mesh::MeshPlugin);
+        app.add_plugins(bevy::animation::AnimationPlugin);
+        app.add_plugins(avian3d::prelude::PhysicsDiagnosticsPlugin);
+        app.insert_resource(avian3d::collision::CollisionDiagnostics::default());
+        app.insert_resource(avian3d::dynamics::solver::SolverDiagnostics::default());
+        app.insert_resource(avian3d::spatial_query::SpatialQueryDiagnostics::default());
+        app.add_plugins(avian3d::prelude::PhysicsPlugins::default());
+        app.add_plugins(HealthPlugin);
+        app.add_systems(bevy::prelude::Update, fire_gun_system);
+
+        let owner = app.world_mut().spawn_empty().id();
+
+        let mut action_state = ActionState::<PlayerAction>::default();
+        action_state.enable();
+        let shooter = app.world_mut().spawn((
+            Position::new(Vec3::new(0.0, 0.5, 0.0)),
+            Rotation::default(),
+            Gun {
+                cooldown: Timer::from_seconds(0.0, TimerMode::Once),
+                ..Gun::default()
+            },
+            action_state,
+            ControlledBy {
+                owner,
+                lifetime: Default::default(),
+            },
+        )).id();
+
+        let obstacle = app.world_mut().spawn((
+            Position::new(Vec3::new(0.0, 1.5, -6.0)),
+            RigidBody::Static,
+            Collider::cuboid(1.5, 1.5, 1.5),
+        )).id();
+
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            Duration::from_millis(16),
+        ));
+        app.update();
+
+        {
+            let world = app.world_mut();
+            let mut action_state = world
+                .get_mut::<ActionState<PlayerAction>>(shooter)
+                .expect("Shooter should keep ActionState");
+            action_state.press(&PlayerAction::Shoot);
+        }
+
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            Duration::from_millis(16),
+        ));
+        app.update();
+
+        let mut hit_query = app.world_mut().query::<&HitEvent>();
+        let hit_events: Vec<HitEvent> = hit_query.iter(app.world()).cloned().collect();
+
+        assert!(
+            !hit_events.is_empty(),
+            "Shooting a static obstacle should produce at least one HitEvent"
+        );
+        assert!(
+            hit_events.iter().any(|event| event.hit_entity == obstacle),
+            "Expected at least one HitEvent against the obstacle entity {:?}, got {:?}",
+            obstacle,
+            hit_events
+        );
+
+        let shooter_gun = app
+            .world()
+            .get::<Gun>(shooter)
+            .expect("Shooter should still have Gun after firing");
+        assert_eq!(
+            shooter_gun.ammo_in_magazine,
+            shooter_gun.magazine_size.saturating_sub(1),
+            "Shooting should consume one ammo"
+        );
     }
 }

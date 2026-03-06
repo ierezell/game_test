@@ -1,6 +1,7 @@
 pub mod camera;
 pub mod debug;
 pub mod entities;
+pub mod local_menu;
 
 pub mod game;
 pub mod hud;
@@ -34,8 +35,12 @@ use bevy::state::app::AppExtStates;
 use bevy::window::{PresentMode, Window, WindowPlugin};
 
 use lightyear::prelude::client::ClientPlugins;
+use shared::debug::{client_debug_gizmos_enabled, debug_println};
 
 use std::time::Duration;
+
+#[derive(Resource)]
+pub struct AutoJoin(pub bool);
 
 #[derive(Resource)]
 pub struct LocalPlayerId(pub u64);
@@ -146,8 +151,10 @@ pub fn create_client_app(
     client_app.insert_state(ClientGameState::LocalMenu);
 
     if !headless {
-        client_app.add_plugins(FrameTimeDiagnosticsPlugin::default());
-        client_app.add_plugins(ClientDebugPlugin);
+        if client_debug_gizmos_enabled() {
+            client_app.add_plugins(FrameTimeDiagnosticsPlugin::default());
+            client_app.add_plugins(ClientDebugPlugin);
+        }
         client_app.add_plugins(ClientVFXPlugin);
         client_app.add_systems(Startup, log_active_render_adapter);
     }
@@ -158,17 +165,14 @@ pub fn create_client_app(
 fn log_active_render_adapter(adapter_info: Option<bevy::prelude::Res<RenderAdapterInfo>>) {
     if let Some(adapter_info) = adapter_info {
         let info = &adapter_info.0;
-        println!(
+        debug_println(format_args!(
             "RENDER ADAPTER: name='{}' backend={:?} device_type={:?} vendor={} device={} driver='{}'",
-            info.name,
-            info.backend,
-            info.device_type,
-            info.vendor,
-            info.device,
-            info.driver
-        );
+            info.name, info.backend, info.device_type, info.vendor, info.device, info.driver
+        ));
     } else {
-        println!("RENDER ADAPTER: unavailable (headless mode or renderer not initialized)");
+        debug_println(format_args!(
+            "RENDER ADAPTER: unavailable (headless mode or renderer not initialized)"
+        ));
     }
 }
 
@@ -179,14 +183,26 @@ mod tests {
 
     #[test]
     fn create_headless_client_initializes_lobby_state() {
-        let app = create_client_app(1, "../../../../assets".to_string(), true, NetworkMode::Local);
-        let state = app.world().resource::<bevy::prelude::State<ClientGameState>>();
+        let app = create_client_app(
+            1,
+            "../../../../assets".to_string(),
+            true,
+            NetworkMode::Local,
+        );
+        let state = app
+            .world()
+            .resource::<bevy::prelude::State<ClientGameState>>();
         assert_eq!(state.get(), &ClientGameState::LocalMenu);
     }
 
     #[test]
     fn create_client_normalizes_zero_id_to_one() {
-        let app = create_client_app(0, "../../../../assets".to_string(), true, NetworkMode::Local);
+        let app = create_client_app(
+            0,
+            "../../../../assets".to_string(),
+            true,
+            NetworkMode::Local,
+        );
         let local_id = app.world().resource::<super::LocalPlayerId>();
         assert_eq!(local_id.0, 1);
     }

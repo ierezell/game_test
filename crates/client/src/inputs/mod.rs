@@ -1,4 +1,4 @@
-pub mod input;
+pub mod input_map;
 pub mod window;
 
 use bevy::prelude::{App, Plugin};

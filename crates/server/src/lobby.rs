@@ -10,6 +10,7 @@ use lightyear::prelude::{
 
 use crate::ServerGameState;
 
+use shared::debug::debug_println;
 use shared::protocol::{
     GameSeed, HostStartGameEvent, LevelSeed, LobbyControlChannel, LobbyState, StartLoadingGameEvent,
 };
@@ -38,7 +39,7 @@ fn transition_to_loading(
     sender: &mut ServerMultiMessageSender,
     server: &Server,
 ) {
-    println!("DEBUG: Server transitioning to Loading state");
+    debug_println(format_args!("DEBUG: Server transitioning to Loading state"));
     commands.spawn(GameSeed { seed: 42 });
     commands.spawn((
         LevelSeed { seed: 42 },
@@ -76,10 +77,10 @@ fn host_start_game_event(
     for (remote_id, mut message_receiver) in message_receiver_query.iter_mut() {
         // There is one message receiver per connected client...
         if message_receiver.has_messages() {
-            println!(
+            debug_println(format_args!(
                 "DEBUG: Server received HostStartGameEvent from {:?}",
                 remote_id.0
-            );
+            ));
             trigger = true;
             message_receiver.receive().for_each(drop);
         }

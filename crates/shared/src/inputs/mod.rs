@@ -1,24 +1,82 @@
-use bevy::prelude::{FixedUpdate, IntoScheduleConfigs, Plugin, Update};
-
-use crate::inputs::{
-    look::update_player_rotation_from_input,
-    movement::{apply_movement, update_ground_detection},
+use bevy::prelude::{
+    Bundle, Component, GamepadAxis, GamepadButton, KeyCode, MouseButton, Plugin, Reflect, Vec2,
 };
+use bevy_enhanced_input::prelude::*;
+pub use bevy_enhanced_input::action::relationship::Actions;
 
-pub mod input;
-pub mod look;
 pub mod movement;
+pub mod look;
+
+#[derive(Component, Reflect)]
+pub struct PlayerActions;
+
+#[derive(InputAction)]
+#[action_output(Vec2)]
+pub struct Move;
+
+#[derive(InputAction)]
+#[action_output(Vec2)]
+pub struct Look;
+
+#[derive(InputAction)]
+#[action_output(bool)]
+pub struct Jump;
+
+#[derive(InputAction)]
+#[action_output(bool)]
+pub struct Sprint;
+
+#[derive(InputAction)]
+#[action_output(bool)]
+pub struct Shoot;
+
+#[derive(InputAction)]
+#[action_output(bool)]
+pub struct Aim;
+
+#[derive(InputAction)]
+#[action_output(bool)]
+pub struct Reload;
+
+#[derive(InputAction)]
+#[action_output(bool)]
+pub struct ToggleFlashlight;
+
+pub const PLAYER_CAPSULE_RADIUS: f32 = 0.5;
+pub const PLAYER_CAPSULE_HEIGHT: f32 = 1.5;
+pub const PITCH_LIMIT_RADIANS: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
 
 pub struct SharedInputPlugin;
 
 impl Plugin for SharedInputPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
-        // Movement systems (FixedUpdate for physics)
-        app.add_systems(
-            FixedUpdate,
-            (update_ground_detection, apply_movement).chain(),
-        );
-
-        app.add_systems(Update, update_player_rotation_from_input);
+        app.add_plugins(EnhancedInputPlugin)
+            .add_input_context::<PlayerActions>();
     }
+}
+pub fn get_player_actions() -> impl Bundle {
+    (
+        PlayerActions,
+        actions!(PlayerActions[
+            (Action::<Move>::new(), bindings![
+                (KeyCode::KeyW, SwizzleAxis::YXZ),
+                (KeyCode::KeyA, Negate::all()),
+                (KeyCode::KeyS, Negate::all(), SwizzleAxis::YXZ),
+                KeyCode::KeyD,
+                GamepadAxis::LeftStickX,
+                (GamepadAxis::LeftStickY, SwizzleAxis::YXZ),
+            ]),
+            (Action::<Look>::new(), bindings![
+                Binding::mouse_motion(),
+                GamepadAxis::RightStickX,
+                (GamepadAxis::RightStickY, SwizzleAxis::YXZ),
+            ]),
+            (Action::<Jump>::new(), bindings![KeyCode::Space, GamepadButton::South]),
+            (Action::<Sprint>::new(), bindings![KeyCode::ShiftLeft, GamepadButton::LeftTrigger2]),
+            (Action::<Shoot>::new(), bindings![MouseButton::Left, GamepadButton::RightTrigger2]),
+            (Action::<Aim>::new(), bindings![MouseButton::Right, GamepadButton::LeftTrigger2]),
+            (Action::<Reload>::new(), bindings![KeyCode::KeyR]),
+            (Action::<ToggleFlashlight>::new(), bindings![KeyCode::KeyF]),
+        ]),
+    )
 }

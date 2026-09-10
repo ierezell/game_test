@@ -4,7 +4,6 @@ use crate::{
         health::{Health, Respawnable},
         weapons::{Gun, Projectile, ProjectileGun},
     },
-    inputs::input::PlayerAction,
     inputs::movement::GroundState,
     navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
 };
@@ -17,11 +16,9 @@ use bevy::{
 
 use lightyear::prelude::{
     AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings,
-    InterpolationRegistrationExt, NetworkDirection, PeerId, PredictionRegistrationExt,
-    ReliableSettings, input::leafwing::InputPlugin,
+    InterpolationRegistrationExt, NetworkDirection, PeerId, ReliableSettings,
+    PredictionBuilderExt,
 };
-
-use lightyear::input::config::InputConfig;
 
 use serde::{Deserialize, Serialize};
 
@@ -74,53 +71,55 @@ pub struct LobbyControlChannel;
 pub struct ProtocolPlugin;
 impl Plugin for ProtocolPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(InputPlugin::<PlayerAction> {
-            config: InputConfig::<PlayerAction> {
-                rebroadcast_inputs: true,
-                lag_compensation: true,
-                ..default()
-            },
-        });
-
         app.insert_resource(avian3d::physics_transform::PhysicsTransformConfig {
             transform_to_position: false,
             position_to_transform: true,
             ..default()
         });
 
-        app.register_component::<PlayerId>();
-        app.register_component::<Name>();
-        app.register_component::<PlayerColor>();
-        app.register_component::<GameSeed>();
-        app.register_component::<LevelSeed>();
-        app.register_component::<CharacterMarker>();
+        app.component::<PlayerId>().replicate();
+        app.component::<Name>().replicate();
+        app.component::<PlayerColor>().replicate();
+        app.component::<GameSeed>().replicate();
+        app.component::<LevelSeed>().replicate();
+        app.component::<CharacterMarker>().replicate();
 
-        app.register_component::<Rotation>()
-            .add_prediction()
-            .add_linear_interpolation();
+        app.component::<Rotation>()
+            .replicate()
+            .predict()
+            .add_linear_interpolation()
+            .add_correction_fn(|start: Rotation, end: Rotation, t| {
+                start.slerp(end, t)
+            });
 
-        app.register_component::<Position>()
-            .add_prediction()
-            .add_linear_interpolation();
+        app.component::<Position>()
+            .replicate()
+            .predict()
+            .add_linear_interpolation()
+            .add_correction_fn(|start: Position, end: Position, t| {
+                Position(start.0.lerp(end.0, t))
+            });
 
-        app.register_component::<LinearVelocity>().add_prediction();
-        app.register_component::<GroundState>(); // Server authoritative
+        app.component::<LinearVelocity>().replicate().predict();
+
+        app.component::<GroundState>().replicate().predict();
 
         // Health and weapon components
-        app.register_component::<Health>().add_prediction();
-        app.register_component::<Respawnable>();
-        app.register_component::<Gun>().add_prediction();
-        app.register_component::<ProjectileGun>().add_prediction();
-        app.register_component::<Projectile>().add_prediction();
+        app.component::<Health>().replicate().predict();
+        app.component::<Respawnable>().replicate();
+        app.component::<Gun>().replicate().predict();
+        app.component::<ProjectileGun>().replicate().predict();
+        app.component::<Projectile>().replicate().predict();
 
-        app.register_component::<PlayerFlashlight>()
-            .add_prediction();
+        app.component::<PlayerFlashlight>()
+            .replicate()
+            .predict();
 
-        app.register_component::<SimpleNavigationAgent>();
-        app.register_component::<PatrolRoute>();
-        app.register_component::<PatrolState>();
+        app.component::<SimpleNavigationAgent>().replicate();
+        app.component::<PatrolRoute>().replicate();
+        app.component::<PatrolState>().replicate();
 
-        app.register_component::<LobbyState>();
+        app.component::<LobbyState>().replicate();
 
         app.add_channel::<LobbyControlChannel>(ChannelSettings {
             mode: ChannelMode::OrderedReliable(ReliableSettings::default()),

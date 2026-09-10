@@ -1,4 +1,4 @@
-use crate::inputs::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
+use crate::inputs::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
 use crate::protocol::{CharacterMarker, PlayerColor, PlayerId};
 use avian3d::prelude::Position;
 use bevy::prelude::{

@@ -7,6 +7,7 @@ use bevy::{
         Entity, FlexDirection, JustifyContent, Name, Node, On, OnEnter, OnExit, Plugin, Pointer,
         Query, Res, Text, TextFont, UiRect, Val, With, debug, default,
     },
+    text::FontSize,
 };
 
 pub struct LocalMenuPlugin;
@@ -87,11 +88,11 @@ fn spawn_main_menu_ui(mut commands: Commands, q_main_menu: Query<Entity, With<Ma
                 .spawn((
                     Text::new("Yolo Game"),
                     TextFont {
-                        font_size: 30.,
+                        font_size: FontSize::Px(30.0),
                         ..default()
                     },
                     Node {
-                        padding: UiRect::bottom(Val::Px(50.)),
+                        padding: UiRect::bottom(Val::Px(50.0)),
                         ..default()
                     },
                 ))

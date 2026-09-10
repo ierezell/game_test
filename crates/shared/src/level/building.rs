@@ -2,7 +2,7 @@ use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::prelude::{
 	Color, Commands, Component, Name, PointLight, Quat, Vec2, Vec3, default, info,
 };
-use lightyear::prelude::{InterpolationTarget, NetworkTarget, Replicate};
+use lightyear::prelude::{NetworkTarget, Replicate};
 use vleue_navigator::prelude::{ManagedNavMesh, NavMeshSettings, NavMeshUpdateMode, Triangulation};
 
 use crate::components::health::{Health, Respawnable};
@@ -79,7 +79,7 @@ pub fn spawn_procedural_connection_lights(commands: &mut Commands, level_graph: 
 				intensity: 20000.0,
 				range: 16.0,
 				radius: 0.6,
-				shadows_enabled: false,
+				shadow_maps_enabled: false,
 				..default()
 			},
 			bevy::prelude::Transform::from_translation(
@@ -149,7 +149,6 @@ pub fn spawn_procedural_enemies(commands: &mut Commands, level_graph: &LevelGrap
 				Health::basic(),
 				Respawnable::with_position(4.0, spawn_position),
 				Replicate::to_clients(NetworkTarget::All),
-				InterpolationTarget::to_clients(NetworkTarget::All),
 				CharacterMarker,
 				ProceduralEnemyMarker,
 				NpcPhysicsBundle::default(),
@@ -183,6 +182,7 @@ mod tests {
 	use crate::level::generation::{LevelConfig, LevelGraph, generate_level};
 	use crate::navigation::{PatrolRoute, SimpleNavigationAgent};
 	use bevy::prelude::{App, Commands, MinimalPlugins, Res, Resource, Update};
+	use bevy::state::app::StatesPlugin;
 	use lightyear::prelude::server::ServerPlugins;
 	use std::time::Duration;
 
@@ -197,6 +197,7 @@ mod tests {
 	fn procedural_runtime_content_spawns_navmesh_lights_and_enemies() {
 		let mut app = App::new();
 		app.add_plugins(MinimalPlugins);
+		app.add_plugins(StatesPlugin);
 		app.add_plugins(ServerPlugins {
 			tick_duration: Duration::from_millis(16),
 		});
@@ -207,7 +208,7 @@ mod tests {
 			max_depth: 7,
 		})));
 		app.add_systems(Update, build_runtime_content_system);
-
+		app.finish();
 		app.update();
 
 		let world = app.world_mut();
@@ -250,6 +251,7 @@ mod tests {
 	fn procedural_enemies_get_patrol_navigation_components() {
 		let mut app = App::new();
 		app.add_plugins(MinimalPlugins);
+		app.add_plugins(StatesPlugin);
 		app.add_plugins(ServerPlugins {
 			tick_duration: Duration::from_millis(16),
 		});
@@ -260,7 +262,7 @@ mod tests {
 			max_depth: 6,
 		})));
 		app.add_systems(Update, build_runtime_content_system);
-
+		app.finish();
 		app.update();
 
 		let world = app.world_mut();
@@ -289,4 +291,3 @@ mod tests {
 		);
 	}
 }
-

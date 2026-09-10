@@ -3,6 +3,7 @@ use bevy::prelude::{
     Node, OnEnter, OnExit, Plugin, PositionType, Query, Res, Text, TextFont, Update, Val, With,
     in_state,
 };
+use bevy::text::FontSize;
 use shared::components::weapons::Gun;
 use shared::protocol::PlayerId;
 
@@ -56,7 +57,7 @@ fn spawn_hud(mut commands: Commands) {
                 Name::new("Crosshair"),
                 Text::new("+"),
                 TextFont {
-                    font_size: 32.0,
+                    font_size: FontSize::Px(32.0),
                     ..Default::default()
                 },
                 Node {
@@ -85,7 +86,7 @@ fn spawn_hud(mut commands: Commands) {
                         AmmoText,
                         Text::new("Ammo: -- / --"),
                         TextFont {
-                            font_size: 22.0,
+                            font_size: FontSize::Px(22.0),
                             ..Default::default()
                         },
                         Node {

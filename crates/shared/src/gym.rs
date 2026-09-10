@@ -12,10 +12,7 @@ use bevy::prelude::{
     Assets, Commands, Component, Cuboid, Dir3, Mesh, Mesh3d, MeshMaterial3d, Name, Plane3d, Query,
     Ref, Res, ResMut, StandardMaterial, Vec2, Vec3, With, Without, default,
 };
-use rand::Rng;
-use std::ops::Deref;
-
-use lightyear::prelude::{InterpolationTarget, NetworkTarget, Replicate};
+use lightyear::prelude::{NetworkTarget, Replicate};
 use serde::{Deserialize, Serialize};
 use vleue_navigator::prelude::*;
 
@@ -36,12 +33,12 @@ pub struct LevelDoneMarker;
 #[derive(Component, Clone, Debug, Default)]
 pub struct GymRandomWanderer;
 
-fn random_gym_floor_point(rng: &mut impl rand::Rng) -> Vec3 {
+fn random_gym_floor_point() -> Vec3 {
     let sample_extent = ROOM_HALF_EXTENT - GYM_TARGET_MARGIN;
     Vec3::new(
-        rng.random_range(-sample_extent..sample_extent),
+        rand::random_range(-sample_extent..sample_extent),
         1.0,
-        rng.random_range(-sample_extent..sample_extent),
+        rand::random_range(-sample_extent..sample_extent),
     )
 }
 
@@ -189,15 +186,13 @@ pub fn spawn_gym_patrolling_npc_entities(
     gym_debug_info(format_args!(
         "Spawning {} patrolling NPC(s) for gym mode",
         npc_specs.len()
-    ));
-
-    let mut rng = rand::rng();
+    )    );
 
     for (name, spawn_position, speed) in npc_specs {
         let validated_spawn = validate_spawn_position(spawn_position, &obstacles, 0.5);
         let mut nav_agent = SimpleNavigationAgent::new(speed);
         nav_agent.arrival_threshold = 2.0;
-        nav_agent.current_target = Some(random_gym_floor_point(&mut rng));
+        nav_agent.current_target = Some(random_gym_floor_point());
 
         let enemy = commands
             .spawn((
@@ -208,7 +203,6 @@ pub fn spawn_gym_patrolling_npc_entities(
                 Health::basic(),
                 Respawnable::with_position(2.0, validated_spawn),
                 Replicate::to_clients(NetworkTarget::All),
-                InterpolationTarget::to_clients(NetworkTarget::All),
                 CharacterMarker,
                 NpcPhysicsBundle::default(),
                 nav_agent,
@@ -248,13 +242,12 @@ pub fn update_gym_wandering_npc_targets(
         .ok()
         .and_then(|(navmesh_handle, status)| {
             if *status == NavMeshStatus::Built {
-                navmeshes.get(navmesh_handle.deref())
+                navmeshes.get(navmesh_handle)
             } else {
                 None
             }
         });
 
-    let mut rng = rand::rng();
     let sample_extent = ROOM_HALF_EXTENT - GYM_TARGET_MARGIN;
 
     for (position, mut nav_agent) in &mut npc_query {
@@ -274,9 +267,9 @@ pub fn update_gym_wandering_npc_targets(
         let mut rejected_no_path = 0usize;
         for _ in 0..GYM_TARGET_SAMPLE_ATTEMPTS {
             let raw_candidate = Vec3::new(
-                rng.random_range(-sample_extent..sample_extent),
+                rand::random_range(-sample_extent..sample_extent),
                 1.0,
-                rng.random_range(-sample_extent..sample_extent),
+                rand::random_range(-sample_extent..sample_extent),
             );
             let candidate = validate_spawn_position(raw_candidate, &gym_obstacles, 1.0);
             let nav_candidate = to_navmesh_plane(candidate);

@@ -26,6 +26,26 @@ pub const SERVER_BIND_ADDR: SocketAddr = SocketAddr::new(
     std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
     8080,
 );
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct ServerBindAddr(pub SocketAddr);
+
+impl Default for ServerBindAddr {
+    fn default() -> Self {
+        ServerBindAddr(SERVER_BIND_ADDR)
+    }
+}
+
+impl From<ServerBindAddr> for SocketAddr {
+    fn from(addr: ServerBindAddr) -> Self {
+        addr.0
+    }
+}
+
+impl From<SocketAddr> for ServerBindAddr {
+    fn from(addr: SocketAddr) -> Self {
+        ServerBindAddr(addr)
+    }
+}
 pub struct SharedSettings {
     pub private_key: [u8; 32],
     pub protocol_id: u64,

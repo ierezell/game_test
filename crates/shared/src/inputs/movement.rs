@@ -1,22 +1,23 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use leafwing_input_manager::prelude::ActionState;
+use bevy_enhanced_input::prelude::{Action, Actions};
 use serde::{Deserialize, Serialize};
 
-use crate::inputs::input::PlayerAction;
+use crate::inputs::{Move, Jump, Sprint, PlayerActions};
+use crate::inputs::look::update_player_rotation_from_input;
 
 pub const WALK_SPEED: f32 = 20.0;
 pub const RUN_SPEED: f32 = 40.0;
 pub const AIR_SPEED_CAP: f32 = 15.0;
-pub const AIR_ACCELERATION: f32 = 15.0;
+pub const AIR_ACCELERATION: f32 = 25.0;
 pub const MAX_AIR_SPEED: f32 = 50.0;
-pub const ACCELERATION: f32 = 4.0;
-pub const FRICTION: f32 = 10.0;
+pub const ACCELERATION: f32 = 14.0;
+pub const FRICTION: f32 = 15.0;
 pub const JUMP_SPEED: f32 = 8.5;
 pub const GRAVITY: f32 = 9.1;
 pub const TRACTION_NORMAL_CUTOFF: f32 = 0.7;
-pub const FRICTION_SPEED_CUTOFF: f32 = 0.1;
-pub const STOP_SPEED: f32 = 1.0;
+pub const FRICTION_SPEED_CUTOFF: f32 = 0.5;
+pub const STOP_SPEED: f32 = 5.0;
 pub const GROUNDED_DISTANCE: f32 = 0.3;
 
 /// Ground detection state - separated for testability
@@ -33,7 +34,7 @@ pub fn detect_ground(
     collider: &Collider,
     position: Vec3,
     rotation: Quat,
-    spatial_query: &SpatialQueryPipeline,
+    spatial_query: &SpatialQuery,
 ) -> GroundState {
     let filter = SpatialQueryFilter::default().with_excluded_entities([entity]);
     let detection_distance = GROUNDED_DISTANCE.max(2.0);
@@ -53,7 +54,7 @@ pub fn detect_ground(
             is_grounded: is_grounded && has_traction,
             ground_normal: hit.normal1,
             ground_distance: hit.distance,
-            ground_tick: 0, // Will be updated by caller
+            ground_tick: 0,
         }
     } else {
         GroundState::default()
@@ -110,13 +111,14 @@ pub fn clamp_max_velocity(velocity: &mut LinearVelocity, max_velocity: f32) {
 }
 
 pub fn get_wish_direction(
-    input: Vec2,
+    input: &Action<Move>,
     yaw: f32,
     forward_speed: f32,
     side_speed: f32,
 ) -> (Vec3, f32) {
-    let forward = Vec3::new(0.0, 0.0, -input.y);
-    let right = Vec3::new(input.x, 0.0, 0.0);
+    let input_vec: Vec2 = **input;
+    let forward = Vec3::new(0.0, 0.0, -input_vec.y);
+    let right = Vec3::new(input_vec.x, 0.0, 0.0);
 
     let move_to_world = Mat3::from_rotation_y(yaw);
     let world_forward = move_to_world * forward * forward_speed;
@@ -133,7 +135,7 @@ pub fn get_wish_direction(
 }
 
 pub fn update_ground_detection(
-    spatial_query: Res<SpatialQueryPipeline>,
+    spatial_query: SpatialQuery,
     mut query: Query<(Entity, &Position, &Rotation, &Collider, &mut GroundState)>,
 ) {
     for (entity, position, rotation, collider, mut ground_state) in query.iter_mut() {
@@ -152,24 +154,78 @@ pub fn update_ground_detection(
 }
 
 /// System: Apply movement based on input and ground state
+///
+/// Supports two Action<T> access patterns:
+/// 1. Production: `Action<T>` spawned as related children of `Actions<PlayerActions>`
+///    via the `actions!` macro — resolved by iterating the relationship.
+/// 2. Legacy/test: `Action<T>` placed directly as a component on the entity
+///    — resolved via a fallback query on the entity itself.
 pub fn apply_movement(
     time: Res<Time>,
-    mut query: Query<(
-        &ActionState<PlayerAction>,
-        &GroundState,
-        &Rotation,
-        &mut LinearVelocity,
-    )>,
+    mut player_query: Query<
+        (
+            Option<&Actions<PlayerActions>>,
+            Entity,
+            &GroundState,
+            &Rotation,
+            &mut LinearVelocity,
+        ),
+        With<PlayerActions>,
+    >,
+    move_query: Query<&Action<Move>>,
+    sprint_query: Query<&Action<Sprint>>,
+    jump_query: Query<&Action<Jump>>,
 ) {
     let dt = time.delta_secs();
 
-    for (action_state, ground_state, rotation, mut velocity) in query.iter_mut() {
-        // Get input
-        let move_input = if action_state.disabled() {
-            Vec2::ZERO
+    for (actions, entity, ground_state, rotation, mut velocity) in player_query.iter_mut() {
+        // In bevy_enhanced_input 0.26, `actions!` spawns each `Action<T>` as a
+        // *related child* of the `Actions<PlayerActions>` context rather than as
+        // a component on the player entity. Read them back through the
+        // relationship; otherwise WASD/mouse look never reach the movement code
+        // at runtime (the parent entity has no `Action<T>` of its own).
+        //
+        // When `actions` is `None` (tests that insert `Action<T>` directly on the
+        // entity without the `actions!` macro), fall back to reading them from
+        // the entity itself.
+        let mut move_action: Option<&Action<Move>> = None;
+        let mut is_sprinting = false;
+        let mut is_jumping = false;
+
+        if let Some(actions) = actions {
+            for action_entity in actions.iter() {
+                if move_action.is_none() {
+                    if let Ok(action) = move_query.get(action_entity) {
+                        move_action = Some(action);
+                    }
+                }
+                if let Ok(sprint) = sprint_query.get(action_entity) {
+                    is_sprinting = **sprint;
+                }
+                if let Ok(jump) = jump_query.get(action_entity) {
+                    is_jumping = **jump;
+                }
+            }
         } else {
-            action_state.axis_pair(&PlayerAction::Move)
+            // Legacy/test path: Action<T> components are directly on the entity
+            if let Ok(action) = move_query.get(entity) {
+                move_action = Some(action);
+            }
+            if let Ok(sprint) = sprint_query.get(entity) {
+                is_sprinting = **sprint;
+            }
+            if let Ok(jump) = jump_query.get(entity) {
+                is_jumping = **jump;
+            }
+        }
+
+        let Some(move_action) = move_action else {
+            continue;
         };
+
+        // Get movement input from bevy_enhanced_input - deref to output type
+        let move_input: Vec2 = **move_action;
+
         let (yaw, _, _) = rotation.0.to_euler(EulerRot::YXZ);
 
         // DEBUG: Log when movement is applied
@@ -182,11 +238,9 @@ pub fn apply_movement(
                 velocity.0
             );
         }
-        let is_sprinting = !action_state.disabled() && action_state.pressed(&PlayerAction::Sprint);
-        let is_jumping = !action_state.disabled() && action_state.pressed(&PlayerAction::Jump);
 
         // Calculate wish direction using camera yaw for camera-relative movement
-        let (wish_direction, mut wish_speed) = get_wish_direction(move_input, yaw, 100.0, 60.0);
+        let (wish_direction, mut wish_speed) = get_wish_direction(move_action, yaw, 100.0, 60.0);
 
         // Apply speed limits
         let max_speed = if is_sprinting { RUN_SPEED } else { WALK_SPEED };
@@ -231,20 +285,78 @@ pub fn apply_movement(
     }
 }
 
+/// Integrate `LinearVelocity` into avian `Position` and mirror the result onto
+/// the bevy `Transform` so that child entities (e.g. the first-person camera)
+/// follow the character.
+///
+/// This only touches entities that are *not* driven by avian's own simulation
+/// (`RigidBody::Dynamic`/`Static`/`Kinematic`). For simulated bodies avian
+/// advances the position itself and `PhysicsTransformConfig` syncs it back to
+/// the `Transform`, so we leave them alone here to avoid double integration.
+pub fn integrate_position_from_velocity(
+    time: Res<Time>,
+    mut query: Query<
+        (&mut Position, &Rotation, &LinearVelocity, Option<&mut Transform>),
+        Without<RigidBody>,
+    >,
+) {
+    let dt = time.delta_secs();
+    for (mut position, rotation, velocity, mut transform) in query.iter_mut() {
+        position.0 += velocity.0 * dt;
+        if let Some(transform) = transform.as_mut() {
+            transform.translation = position.0;
+            transform.rotation = rotation.0;
+        }
+    }
+}
+
+/// Wires the character movement systems into the app.
+///
+/// `headless` disables the mouse-driven camera look so headless / server-less
+/// runs do not try to consume live cursor input. Movement, ground detection and
+/// transform integration always run (they can be driven by injected actions,
+/// e.g. in tests or by an RL agent).
+pub struct MovementPlugin {
+    pub headless: bool,
+}
+
+impl MovementPlugin {
+    pub fn new(headless: bool) -> Self {
+        Self { headless }
+    }
+}
+
+impl Plugin for MovementPlugin {
+    fn build(&self, app: &mut App) {
+        let headless = self.headless;
+        app.add_systems(
+            FixedUpdate,
+            (
+                update_ground_detection,
+                update_player_rotation_from_input.run_if(move || !headless),
+                apply_movement,
+                integrate_position_from_velocity,
+            )
+                .chain(),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         GroundState, LinearVelocity, apply_ground_friction, calculate_acceleration,
         clamp_max_velocity, get_wish_direction,
     };
-    use crate::inputs::input::PlayerAction;
+    use crate::inputs::{Jump, Move, PlayerActions, Sprint, get_player_actions};
     use crate::inputs::look::update_player_rotation_from_input;
     use crate::protocol::{CharacterMarker, PlayerId};
     use avian3d::prelude::{Position, Rotation};
     use bevy::prelude::{
-        App, FixedUpdate, IntoScheduleConfigs, MinimalPlugins, Res, Time, Update, Vec2, Vec3,
+        App, FixedUpdate, GamepadAxis, IntoScheduleConfigs, KeyCode, MinimalPlugins, Quat,
+        Res, Time, Update, Vec2, Vec3,
     };
-    use leafwing_input_manager::prelude::ActionState;
+    use bevy_enhanced_input::prelude::*;
     use lightyear::prelude::{Controlled, PeerId, Predicted};
 
     fn integrate_position(
@@ -259,6 +371,175 @@ mod tests {
     fn step(app: &mut App, dt: std::time::Duration) {
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(dt));
         app.update();
+    }
+
+    /// Regression test for WASD binding bug: in bevy_enhanced_input 0.26,
+    /// binding individual KeyCode entries to a DualAxis (Vec2) action without
+    /// modifiers causes each key's Bool value to convert to Vec2::X. This means
+    /// pressing W, A, S, or D all produced Vec2::X (rightward movement) instead
+    /// of proper forward/left/backward/right directions.
+    ///
+    /// This test verifies that get_wish_direction correctly interprets each
+    /// WASD-style input vector as orthogonal movement when yaw = 0:
+    ///   W (0, +1) → forward (-Z)
+    ///   A (-1, 0) → left (-X)
+    ///   S (0, -1) → backward (+Z)
+    ///   D (+1, 0) → right (+X)
+    #[test]
+    fn wasd_input_vectors_produce_orthogonal_directions() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(EnhancedInputPlugin)
+            .add_input_context::<PlayerActions>()
+            .finish();
+
+        let entity = app.world_mut().spawn((
+            PlayerActions,
+            Action::<Move>::default(),
+        )).id();
+
+        let yaw = 0.0;
+
+        // W → forward (-Z)
+        {
+            let mut action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
+            **action = Vec2::new(0.0, 1.0);
+            let (dir, speed) = get_wish_direction(&*action, yaw, 100.0, 60.0);
+            assert!(speed > 0.0);
+            assert!(dir.x.abs() < 0.1, "W should not produce X movement");
+            assert!(dir.z < -0.9, "W should move along -Z (forward), got {:?}", dir);
+        }
+
+        // A → left (-X)
+        {
+            let mut action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
+            **action = Vec2::new(-1.0, 0.0);
+            let (dir, speed) = get_wish_direction(&*action, yaw, 100.0, 60.0);
+            assert!(speed > 0.0);
+            assert!(dir.x < -0.9, "A should move along -X (left), got {:?}", dir);
+            assert!(dir.z.abs() < 0.1, "A should not produce Z movement");
+        }
+
+        // S → backward (+Z)
+        {
+            let mut action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
+            **action = Vec2::new(0.0, -1.0);
+            let (dir, speed) = get_wish_direction(&*action, yaw, 100.0, 60.0);
+            assert!(speed > 0.0);
+            assert!(dir.x.abs() < 0.1, "S should not produce X movement");
+            assert!(dir.z > 0.9, "S should move along +Z (backward), got {:?}", dir);
+        }
+
+        // D → right (+X)
+        {
+            let mut action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
+            **action = Vec2::new(1.0, 0.0);
+            let (dir, speed) = get_wish_direction(&*action, yaw, 100.0, 60.0);
+            assert!(speed > 0.0);
+            assert!(dir.x > 0.9, "D should move along +X (right), got {:?}", dir);
+            assert!(dir.z.abs() < 0.1, "D should not produce Z movement");
+        }
+    }
+
+    /// Regression test for the WASD KeyCode binding bug in bevy_enhanced_input 0.26.
+    /// Verifies that the production get_player_actions() bundle correctly maps:
+    ///   W → +Y (via SwizzleAxis::YXZ)
+    ///   A → -X (via Negate)
+    ///   S → -Y (via Negate + SwizzleAxis::YXZ)
+    ///   D → +X (no modifier)
+    /// Without these modifiers, all keys would default to Vec2::X (+X), causing
+    /// all WASD keys to move the character rightward.
+    #[test]
+    fn production_wasd_bindings_have_correct_axis_modifiers() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(EnhancedInputPlugin)
+            .add_input_context::<PlayerActions>()
+            .finish();
+
+        let entity = app.world_mut().spawn(get_player_actions()).id();
+
+        let actions = app
+            .world()
+            .get::<Actions<PlayerActions>>(entity)
+            .expect("PlayerActions entity should have Actions relationship");
+
+        let move_action_entity = *actions
+            .iter()
+            .find(|e| app.world().get::<Action<Move>>(**e).is_some())
+            .expect("Move action should exist as a related child entity");
+
+        let bindings = app
+            .world()
+            .get::<Bindings>(move_action_entity)
+            .expect("Move action should have Bindings relationship");
+
+        let binding_count = bindings.iter().count();
+        assert!(
+            binding_count >= 4,
+            "Move action should have at least 4 key bindings (W,A,S,D), got {}",
+            binding_count
+        );
+
+        let mut found_w = false;
+        let mut found_a = false;
+        let mut found_s = false;
+        let mut found_d = false;
+
+        for &binding_entity in bindings.iter() {
+            let binding = app.world().get::<Binding>(binding_entity);
+            if binding.is_none() {
+                continue;
+            }
+
+            let binding_key = match binding.unwrap() {
+                Binding::Keyboard { key, .. } => Some(key),
+                _ => None,
+            };
+
+            let has_swizzle_yxz = app
+                .world()
+                .get::<SwizzleAxis>(binding_entity)
+                .is_some_and(|s| matches!(s, SwizzleAxis::YXZ));
+            let has_negate = app.world().get::<Negate>(binding_entity).is_some();
+
+            match binding_key {
+                Some(KeyCode::KeyW) => {
+                    found_w = true;
+                    assert!(
+                        has_swizzle_yxz,
+                        "W binding must have SwizzleAxis::YXZ to map to Y axis"
+                    );
+                }
+                Some(KeyCode::KeyA) => {
+                    found_a = true;
+                    assert!(
+                        has_negate,
+                        "A binding must have Negate to produce -X (left)"
+                    );
+                }
+                Some(KeyCode::KeyS) => {
+                    found_s = true;
+                    assert!(
+                        has_negate && has_swizzle_yxz,
+                        "S binding must have both Negate and SwizzleAxis::YXZ"
+                    );
+                }
+                Some(KeyCode::KeyD) => {
+                    found_d = true;
+                    assert!(
+                        !has_swizzle_yxz && !has_negate,
+                        "D binding should have no modifiers (default +X)"
+                    );
+                }
+                _ => {}
+            }
+        }
+
+        assert!(found_w, "W binding not found");
+        assert!(found_a, "A binding not found");
+        assert!(found_s, "S binding not found");
+        assert!(found_d, "D binding not found");
     }
 
     #[test]
@@ -289,8 +570,33 @@ mod tests {
 
     #[test]
     fn wish_direction_uses_yaw_rotation() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(EnhancedInputPlugin)
+            .add_input_context::<PlayerActions>()
+            .finish();
+
+        let entity = app.world_mut().spawn((
+            PlayerActions,
+            actions!(PlayerActions[
+                (Action::<Move>::new(), bindings![
+                    (KeyCode::KeyW, SwizzleAxis::YXZ),
+                    (KeyCode::KeyA, Negate::all()),
+                    (KeyCode::KeyS, Negate::all(), SwizzleAxis::YXZ),
+                    KeyCode::KeyD,
+                    GamepadAxis::LeftStickX,
+                    (GamepadAxis::LeftStickY, SwizzleAxis::YXZ),
+                ]),
+            ]),
+            Action::<Move>::default(),
+        )).id();
+
+        let mut move_action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
+        **move_action = Vec2::new(0.0, 1.0);
+
+        let action_ref = app.world().get::<Action<Move>>(entity).unwrap();
         let (dir, speed) = get_wish_direction(
-            Vec2::new(0.0, 1.0),
+            action_ref,
             std::f32::consts::FRAC_PI_2,
             100.0,
             60.0,
@@ -307,36 +613,38 @@ mod tests {
     fn keyboard_forward_then_mouse_turn_then_forward_changes_path() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
+        app.add_plugins(EnhancedInputPlugin)
+            .add_input_context::<PlayerActions>()
+            .finish();
         app.add_systems(Update, update_player_rotation_from_input);
         app.add_systems(
             FixedUpdate,
             (super::apply_movement, integrate_position).chain(),
         );
 
-        let mut action_state = ActionState::<PlayerAction>::default();
-        action_state.enable();
-        action_state.set_axis_pair(&PlayerAction::Move, Vec2::new(0.0, 1.0));
-        action_state.set_axis_pair(&PlayerAction::Look, Vec2::ZERO);
+        let entity = app.world_mut().spawn((
+            PlayerActions,
+            Action::<Move>::default(),
+            Action::<Sprint>::default(),
+            Action::<Jump>::default(),
+            PlayerId(PeerId::Netcode(1)),
+            Predicted,
+            Controlled,
+            CharacterMarker,
+            GroundState {
+                is_grounded: true,
+                ground_normal: Vec3::Y,
+                ground_distance: 0.0,
+                ground_tick: 1,
+            },
+            LinearVelocity(Vec3::ZERO),
+            Position::new(Vec3::ZERO),
+            Rotation::default(),
+        )).id();
 
-        let player = app
-            .world_mut()
-            .spawn((
-                PlayerId(PeerId::Netcode(1)),
-                Predicted,
-                Controlled,
-                action_state,
-                GroundState {
-                    is_grounded: true,
-                    ground_normal: Vec3::Y,
-                    ground_distance: 0.0,
-                    ground_tick: 1,
-                },
-                LinearVelocity(Vec3::ZERO),
-                Position::new(Vec3::ZERO),
-                Rotation::default(),
-                CharacterMarker,
-            ))
-            .id();
+        // Set movement input
+        let mut move_action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
+        **move_action = Vec2::new(0.0, 1.0);
 
         for _ in 0..30 {
             step(&mut app, std::time::Duration::from_millis(16));
@@ -344,7 +652,7 @@ mod tests {
 
         let pos_after_first_forward = app
             .world()
-            .get::<Position>(player)
+            .get::<Position>(entity)
             .expect("Player should have Position")
             .0;
         assert!(
@@ -352,21 +660,16 @@ mod tests {
             "First forward movement should move mostly on -Z axis"
         );
 
+        // Simulate mouse turn (yaw rotation)
         {
-            let world = app.world_mut();
-            let mut action = world
-                .get_mut::<ActionState<PlayerAction>>(player)
-                .expect("Player should have ActionState");
-            action.set_axis_pair(&PlayerAction::Look, Vec2::new(-785.0, 0.0));
+            let mut rotation = app.world_mut().get_mut::<Rotation>(entity).unwrap();
+            rotation.0 = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
         }
+
         step(&mut app, std::time::Duration::from_millis(16));
         {
-            let world = app.world_mut();
-            let mut action = world
-                .get_mut::<ActionState<PlayerAction>>(player)
-                .expect("Player should have ActionState");
-            action.set_axis_pair(&PlayerAction::Look, Vec2::ZERO);
-            action.set_axis_pair(&PlayerAction::Move, Vec2::new(0.0, 1.0));
+            let mut move_action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
+            **move_action = Vec2::new(0.0, 1.0);
         }
 
         for _ in 0..30 {
@@ -375,7 +678,7 @@ mod tests {
 
         let pos_after_second_forward = app
             .world()
-            .get::<Position>(player)
+            .get::<Position>(entity)
             .expect("Player should still have Position")
             .0;
 

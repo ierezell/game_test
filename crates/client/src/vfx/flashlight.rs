@@ -1,8 +1,8 @@
 use bevy::prelude::*;
-use leafwing_input_manager::prelude::ActionState;
+use bevy_enhanced_input::prelude::*;
 use lightyear::prelude::{Controlled, Interpolated, Predicted};
 use shared::components::flashlight::PlayerFlashlight;
-use shared::inputs::input::{PLAYER_CAPSULE_HEIGHT, PlayerAction};
+use shared::inputs::{PLAYER_CAPSULE_HEIGHT, ToggleFlashlight};
 use shared::protocol::PlayerId;
 
 pub struct ClientFlashlightPlugin;
@@ -15,36 +15,27 @@ struct HasFlashlightBeam;
 
 impl Plugin for ClientFlashlightPlugin {
     fn build(&self, app: &mut App) {
+        app.add_observer(handle_flashlight_toggle);
         app.add_systems(
             Update,
             (
-                handle_flashlight_toggle,
                 spawn_flashlight_beam,
                 update_flashlight_beam,
-            )
-                .chain(),
+            ),
         );
     }
 }
 
 fn handle_flashlight_toggle(
-    mut player_query: Query<
-        (&mut PlayerFlashlight, &ActionState<PlayerAction>),
-        (With<Predicted>, With<Controlled>, With<PlayerId>),
-    >,
+    trigger: On<Fire<ToggleFlashlight>>,
+    mut flashlight_query: Query<&mut PlayerFlashlight>,
 ) {
-    for (mut flashlight, action_state) in player_query.iter_mut() {
-        if action_state.disabled() {
-            continue;
-        }
-
-        if action_state.just_pressed(&PlayerAction::ToggleFlashlight) {
-            flashlight.toggle();
-            info!(
-                "🔦 Flashlight toggled: {}",
-                if flashlight.is_on { "ON" } else { "OFF" }
-            );
-        }
+    if let Ok(mut flashlight) = flashlight_query.get_mut(trigger.action.entity()) {
+        flashlight.toggle();
+        info!(
+            "🔦 Flashlight toggled: {}",
+            if flashlight.is_on { "ON" } else { "OFF" }
+        );
     }
 }
 
@@ -79,7 +70,7 @@ fn spawn_flashlight_beam(
                     intensity: beam_intensity,
                     range: flashlight.range,
                     radius: 0.1,
-                    shadows_enabled: is_controlled,
+                    shadow_maps_enabled: is_controlled,
                     outer_angle: flashlight.outer_angle,
                     inner_angle: flashlight.inner_angle,
                     ..default()

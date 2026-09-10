@@ -1,16 +1,18 @@
 use avian3d::prelude::Rotation;
-use bevy::prelude::{EulerRot, Quat, Query, Vec2, With};
-use leafwing_input_manager::prelude::ActionState;
+use bevy::prelude::{Entity, EulerRot, Quat, Query, Vec2, With};
+use bevy_enhanced_input::action::Action;
+use bevy_enhanced_input::prelude::Actions;
 
 use crate::{
-    inputs::input::{PITCH_LIMIT_RADIANS, PlayerAction},
+    inputs::{PITCH_LIMIT_RADIANS, Look, PlayerActions},
     protocol::{CharacterMarker, PlayerId},
 };
+
 const LOOK_DEADZONE_SQUARED: f32 = 0.000001;
 pub const MOUSE_SENSIVITY: f32 = 0.0007;
 
-pub fn get_mouse_look_delta(action_state: &ActionState<PlayerAction>) -> Vec2 {
-    let look_input = action_state.axis_pair(&PlayerAction::Look);
+pub fn get_mouse_look_delta(action: &Action<Look>) -> Vec2 {
+    let look_input: Vec2 = **action;
     if look_input.length_squared() < LOOK_DEADZONE_SQUARED {
         Vec2::ZERO
     } else {
@@ -28,20 +30,40 @@ pub fn apply_look_delta(current_rotation: Quat, mouse_delta: Vec2) -> Quat {
     Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0)
 }
 
+/// Update the player's rotation based on mouse look input.
+///
+/// Supports two Action<T> access patterns:
+/// 1. Production: `Action<Look>` spawned as a related child of `Actions<PlayerActions>`
+///    via the `actions!` macro — resolved by iterating the relationship.
+/// 2. Legacy/test: `Action<Look>` placed directly as a component on the entity
+///    — resolved via a fallback query on the entity itself.
 pub fn update_player_rotation_from_input(
     mut player_query: Query<
-        (&ActionState<PlayerAction>, &mut Rotation),
-        (With<CharacterMarker>, With<PlayerId>),
+        (
+            Option<&Actions<PlayerActions>>,
+            Entity,
+            &mut Rotation,
+        ),
+        (With<PlayerActions>, With<CharacterMarker>, With<PlayerId>),
     >,
+    look_query: Query<&Action<Look>>,
 ) {
-    for (action_state, mut rotation) in player_query.iter_mut() {
-        if action_state.disabled() {
-            continue;
-        }
+    for (actions, entity, mut rotation) in player_query.iter_mut() {
+        let look_action: Option<&Action<Look>> = if let Some(actions) = actions {
+            // Production path: Action<Look> is a related child of Actions<PlayerActions>
+            actions
+                .iter()
+                .find_map(|action_entity| look_query.get(*action_entity).ok())
+        } else {
+            // Legacy/test path: Action<Look> is directly on the entity
+            look_query.get(entity).ok()
+        };
 
-        let mouse_delta = get_mouse_look_delta(action_state);
-        if mouse_delta != Vec2::ZERO {
-            rotation.0 = apply_look_delta(rotation.0, mouse_delta);
+        if let Some(look_action) = look_action {
+            let mouse_delta = get_mouse_look_delta(look_action);
+            if mouse_delta != Vec2::ZERO {
+                rotation.0 = apply_look_delta(rotation.0, mouse_delta);
+            }
         }
     }
 }
@@ -49,29 +71,24 @@ pub fn update_player_rotation_from_input(
 #[cfg(test)]
 mod tests {
     use super::{apply_look_delta, get_mouse_look_delta};
-    use crate::inputs::input::{PITCH_LIMIT_RADIANS, PlayerAction};
-    use crate::protocol::{CharacterMarker, PlayerId};
-    use avian3d::prelude::Rotation;
-    use bevy::prelude::{App, Update, Vec2};
-    use leafwing_input_manager::prelude::ActionState;
-    use lightyear::prelude::{Controlled, PeerId, Predicted};
+    use crate::inputs::{Look, PITCH_LIMIT_RADIANS};
+    use bevy::prelude::Vec2;
+    use bevy_enhanced_input::action::Action;
 
     #[test]
     fn look_delta_applies_deadzone() {
-        let mut action_state = ActionState::<PlayerAction>::default();
-        action_state.set_axis_pair(&PlayerAction::Look, Vec2::new(0.0001, 0.0001));
-
-        let delta = get_mouse_look_delta(&action_state);
+        let mut look_action = Action::<Look>::default();
+        *look_action = Vec2::new(0.0001, 0.0001);
+        let delta = get_mouse_look_delta(&look_action);
         assert_eq!(delta, Vec2::ZERO);
     }
 
     #[test]
     fn look_delta_preserves_valid_input() {
-        let mut action_state = ActionState::<PlayerAction>::default();
+        let mut look_action = Action::<Look>::default();
         let expected = Vec2::new(0.25, -0.75);
-        action_state.set_axis_pair(&PlayerAction::Look, expected);
-
-        let delta = get_mouse_look_delta(&action_state);
+        *look_action = expected;
+        let delta = get_mouse_look_delta(&look_action);
         assert_eq!(delta, expected);
     }
 
@@ -116,103 +133,57 @@ mod tests {
         );
     }
 
+    // Regression: the production `get_player_actions()` bundle must bind `Look`
+    // to mouse motion, otherwise mouse look is dead at runtime. The unit tests
+    // above set `Action<Look>` by hand and therefore never exercised the
+    // binding — this one feeds a real `MouseMotion` event through the production
+    // bundle and asserts the `Look` action becomes non-zero.
     #[test]
-    fn look_updates_server_style_entity_without_predicted_controlled_markers() {
+    fn production_look_binding_consumes_mouse_motion() {
+        use crate::inputs::{Look, PlayerActions, get_player_actions};
+        use bevy::ecs::message::Messages;
+        use bevy::input::mouse::MouseMotion;
+        use bevy::input::InputPlugin;
+        use bevy::prelude::{App, MinimalPlugins, Vec2};
+        use bevy_enhanced_input::prelude::*;
+        use bevy_enhanced_input::action::relationship::Actions;
+
         let mut app = App::new();
-        app.add_systems(Update, super::update_player_rotation_from_input);
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(InputPlugin);
+        app.add_plugins(EnhancedInputPlugin)
+            .add_input_context::<PlayerActions>()
+            .finish();
 
-        let mut action_state = ActionState::<PlayerAction>::default();
-        action_state.enable();
-        action_state.set_axis_pair(&PlayerAction::Look, Vec2::new(120.0, 0.0));
-
-        let player = app
+        let entity = app
             .world_mut()
-            .spawn((
-                PlayerId(PeerId::Netcode(1)),
-                CharacterMarker,
-                Rotation::default(),
-                action_state,
-            ))
+            .spawn(get_player_actions())
             .id();
+
+        app.world_mut()
+            .resource_mut::<Messages<MouseMotion>>()
+            .write(MouseMotion {
+                delta: Vec2::new(20.0, 8.0),
+            });
 
         app.update();
 
-        let updated_rotation = app
-            .world()
-            .get::<Rotation>(player)
-            .expect("player should still have a rotation")
-            .0;
-
-        let angle = updated_rotation.angle_between(bevy::prelude::Quat::IDENTITY);
+        // Read the Look action from its relationship child entity, not the player
+        let value: Vec2 = {
+            let actions = app.world().get::<Actions<PlayerActions>>(entity).unwrap();
+            let mut found = None;
+            for action_entity in actions.iter() {
+                if let Some(action) = app.world().get::<Action<Look>>(*action_entity) {
+                    found = Some(**action);
+                    break;
+                }
+            }
+            found.expect("Look action should exist as a relationship child")
+        };
         assert!(
-            angle > 0.01,
-            "Rotation should change for server-style entity without prediction markers, angle={}",
-            angle
-        );
-    }
-
-    #[test]
-    fn look_updates_each_entity_from_its_own_action_state() {
-        let mut app = App::new();
-        app.add_systems(Update, super::update_player_rotation_from_input);
-
-        let mut turning = ActionState::<PlayerAction>::default();
-        turning.enable();
-        turning.set_axis_pair(&PlayerAction::Look, Vec2::new(80.0, 0.0));
-
-        let mut idle = ActionState::<PlayerAction>::default();
-        idle.enable();
-        idle.set_axis_pair(&PlayerAction::Look, Vec2::ZERO);
-
-        let turning_player = app
-            .world_mut()
-            .spawn((
-                PlayerId(PeerId::Netcode(10)),
-                Predicted,
-                Controlled,
-                CharacterMarker,
-                Rotation::default(),
-                turning,
-            ))
-            .id();
-
-        let idle_player = app
-            .world_mut()
-            .spawn((
-                PlayerId(PeerId::Netcode(11)),
-                Predicted,
-                Controlled,
-                CharacterMarker,
-                Rotation::default(),
-                idle,
-            ))
-            .id();
-
-        app.update();
-
-        let turning_rotation = app
-            .world()
-            .get::<Rotation>(turning_player)
-            .expect("turning player should have rotation")
-            .0;
-        let idle_rotation = app
-            .world()
-            .get::<Rotation>(idle_player)
-            .expect("idle player should have rotation")
-            .0;
-
-        let turning_angle = turning_rotation.angle_between(bevy::prelude::Quat::IDENTITY);
-        let idle_angle = idle_rotation.angle_between(bevy::prelude::Quat::IDENTITY);
-
-        assert!(
-            turning_angle > 0.01,
-            "Turning player should rotate, angle={}",
-            turning_angle
-        );
-        assert!(
-            idle_angle < 0.0001,
-            "Idle player should remain near identity rotation, angle={}",
-            idle_angle
+            value.length() > 0.0,
+            "production Look binding should pick up mouse motion; got {:?}",
+            value
         );
     }
 }

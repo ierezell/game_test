@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use bevy::MinimalPlugins;
-use bevy::log::LogPlugin;
+
 use bevy::prelude::{
     App, AssetApp, AssetPlugin, DefaultPlugins, Image, Mesh, PluginGroup, Shader, StandardMaterial,
     Vec3, default,
@@ -29,7 +29,9 @@ mod ccc;
 
 mod gameplay;
 mod health;
+mod integration;
 mod performance;
+mod udp_smoke;
 mod world;
 
 fn update_all(server_app: &mut App, client_app1: &mut App, client_app2: &mut App) {
@@ -178,16 +180,22 @@ fn wait_until_all_playing(server_app: &mut App, client_app1: &mut App, client_ap
         let world = client_app1.world_mut();
         let mut q = world.query_filtered::<&Transport, (bevy::prelude::With<Client>, bevy::prelude::With<Connected>)>();
         q.iter(world).next().map(|transport| {
-            (
-                transport.has_sender::<LobbyControlChannel>(),
-                transport.has_receiver::<LobbyControlChannel>(),
-            )
+            let has_sender = transport.channel_sends().any(|(kind, _)| {
+                use lightyear::transport::channel::ChannelKind;
+                kind == ChannelKind::of::<LobbyControlChannel>()
+            });
+            let has_receiver = transport.channel_receives().any(|r| {
+                use lightyear::transport::channel::ChannelKind;
+                r.channel_kind() == ChannelKind::of::<LobbyControlChannel>()
+            });
+            (has_sender, has_receiver)
         })
     };
 
     let server_transport_lobby_channel = {
         use lightyear::connection::client_of::ClientOf;
         use lightyear::prelude::{Connected, Transport};
+        use lightyear::transport::channel::ChannelKind;
         use shared::protocol::LobbyControlChannel;
 
         let world = server_app.world_mut();
@@ -196,28 +204,31 @@ fn wait_until_all_playing(server_app: &mut App, client_app1: &mut App, client_ap
             bevy::prelude::With<Connected>,
         )>();
         q.iter(world).next().map(|transport| {
-            (
-                transport.has_sender::<LobbyControlChannel>(),
-                transport.has_receiver::<LobbyControlChannel>(),
-            )
+            let has_sender = transport.channel_sends().any(|(kind, _)| {
+                kind == ChannelKind::of::<LobbyControlChannel>()
+            });
+            let has_receiver = transport.channel_receives().any(|r| {
+                r.channel_kind() == ChannelKind::of::<LobbyControlChannel>()
+            });
+            (has_sender, has_receiver)
         })
     };
 
     let client_replication_visibility = {
-        use lightyear::prelude::Confirmed;
+        use lightyear::prelude::Interpolated;
         use shared::protocol::{LevelSeed, LobbyState};
 
         let world = client_app1.world_mut();
         let mut lobby_q = world.query::<&LobbyState>();
-        let mut confirmed_lobby_q = world.query::<&Confirmed<LobbyState>>();
+        let mut interpolated_lobby_q = world.query::<&Interpolated>();
         let mut seed_q = world.query::<&LevelSeed>();
-        let mut confirmed_seed_q = world.query::<&Confirmed<LevelSeed>>();
+        let mut interpolated_seed_q = world.query::<&Interpolated>();
 
         (
             lobby_q.iter(world).count(),
-            confirmed_lobby_q.iter(world).count(),
+            interpolated_lobby_q.iter(world).count(),
             seed_q.iter(world).count(),
-            confirmed_seed_q.iter(world).count(),
+            interpolated_seed_q.iter(world).count(),
         )
     };
 
@@ -282,7 +293,6 @@ fn server_player_position_by_entity(
 
 fn client_interpolated_player_position(client_app: &mut App, id: u64) -> Option<Vec3> {
     use avian3d::prelude::Position;
-    use lightyear::prelude::Confirmed;
     use lightyear::prelude::Interpolated;
     use shared::protocol::PlayerId;
 
@@ -298,20 +308,11 @@ fn client_interpolated_player_position(client_app: &mut App, id: u64) -> Option<
         return Some(position);
     }
 
-    let mut confirmed_q = world.query_filtered::<
-        (&Confirmed<PlayerId>, &Confirmed<Position>),
-        bevy::prelude::With<Interpolated>,
-    >();
-    confirmed_q
-        .iter(world)
-        .find_map(|(player_id, position)| match player_id.0.0 {
-            lightyear::prelude::PeerId::Netcode(pid) if pid == id => Some(position.0.0),
-            _ => None,
-        })
+    None
 }
 
 fn client_has_local_predicted_player(client_app: &mut App, id: u64) -> bool {
-    use lightyear::prelude::{Confirmed, Controlled, Predicted};
+    use lightyear::prelude::{Controlled, Predicted};
     use shared::protocol::PlayerId;
 
     let world = client_app.world_mut();
@@ -320,41 +321,21 @@ fn client_has_local_predicted_player(client_app: &mut App, id: u64) -> bool {
         bevy::prelude::With<Predicted>,
         bevy::prelude::With<Controlled>,
     )>();
-    if direct_q
+    direct_q
         .iter(world)
         .any(|pid| matches!(pid.0, lightyear::prelude::PeerId::Netcode(pid) if pid == id))
-    {
-        return true;
-    }
-
-    let mut confirmed_q = world.query_filtered::<&Confirmed<PlayerId>, (
-        bevy::prelude::With<Predicted>,
-        bevy::prelude::With<Controlled>,
-    )>();
-    confirmed_q
-        .iter(world)
-        .any(|pid| matches!(pid.0.0, lightyear::prelude::PeerId::Netcode(pid) if pid == id))
 }
 
 fn client_has_remote_interpolated_player(client_app: &mut App, id: u64) -> bool {
-    use lightyear::prelude::{Confirmed, Interpolated};
+    use lightyear::prelude::Interpolated;
     use shared::protocol::PlayerId;
 
     let world = client_app.world_mut();
 
     let mut direct_q = world.query_filtered::<&PlayerId, bevy::prelude::With<Interpolated>>();
-    if direct_q
+    direct_q
         .iter(world)
         .any(|pid| matches!(pid.0, lightyear::prelude::PeerId::Netcode(pid) if pid == id))
-    {
-        return true;
-    }
-
-    let mut confirmed_q =
-        world.query_filtered::<&Confirmed<PlayerId>, bevy::prelude::With<Interpolated>>();
-    confirmed_q
-        .iter(world)
-        .any(|pid| matches!(pid.0.0, lightyear::prelude::PeerId::Netcode(pid) if pid == id))
 }
 
 fn wait_for_client_player_views(
@@ -405,17 +386,11 @@ fn snap_vec3(value: Vec3) -> Vec3 {
 }
 
 fn first_level_seed(app: &mut App) -> Option<u64> {
-    use lightyear::prelude::Confirmed;
     use shared::protocol::LevelSeed;
 
     let world = app.world_mut();
     let mut q = world.query::<&LevelSeed>();
-    if let Some(seed) = q.iter(world).next() {
-        return Some(seed.seed);
-    }
-
-    let mut confirmed_q = world.query::<&Confirmed<LevelSeed>>();
-    confirmed_q.iter(world).next().map(|seed| seed.0.seed)
+    q.iter(world).next().map(|seed| seed.seed)
 }
 
 fn assert_level_exists(app: &mut App, peer_name: &str, min_characters: usize) {
@@ -473,6 +448,7 @@ fn create_test_client_app_with_mode_and_endpoint(
     let mut client_app = App::new();
     let client_id = if client_id == 0 { 1 } else { client_id };
     client_app.insert_resource(Headless(true));
+    client_app.insert_resource(bevy::ui::UiScale::default());
     client_app.add_plugins(AssetPlugin {
         file_path: "../../../../assets".to_string(),
         ..Default::default()
@@ -491,7 +467,7 @@ fn create_test_client_app_with_mode_and_endpoint(
                 ..default()
             })
             .disable::<AssetPlugin>()
-            .disable::<LogPlugin>()
+            .disable::<bevy::log::LogPlugin>()
             .disable::<bevy::winit::WinitPlugin>()
             .disable::<bevy::render::RenderPlugin>()
             .disable::<bevy::pbr::PbrPlugin>()
@@ -507,10 +483,11 @@ fn create_test_client_app_with_mode_and_endpoint(
         client_app.insert_resource(endpoint);
     }
     client_app.insert_resource(shared::GymMode(gym_mode));
-    client_app.add_plugins(SharedPlugin);
     client_app.add_plugins(ClientPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
+    client_app.add_plugins(shared::SharedPlugin);
+    client_app.insert_resource(lightyear::prelude::PredictionManager::default());
 
     client_app.insert_resource(LocalPlayerId(client_id));
     client_app.add_plugins(ClientNetworkPlugin);
@@ -524,7 +501,18 @@ fn create_test_client_app_with_mode_and_endpoint(
     client_app.init_state::<ClientGameState>();
     client_app.insert_state(ClientGameState::Lobby);
 
+    finish_if_needed(&mut client_app);
     client_app
+}
+
+fn finish_if_needed(app: &mut App) {
+    use bevy::app::PluginsState;
+    match app.plugins_state() {
+        PluginsState::Finished | PluginsState::Cleaned => {}
+        _ => {
+            app.finish();
+        }
+    }
 }
 
 fn create_crossbeam_pair() -> (
@@ -561,7 +549,7 @@ fn add_server_clientof(
         LinkOf {
             server: server_entity,
         },
-        Link::new(None),
+        Link::default(),
         Linked,
         server_io,
         Transport::default(),
@@ -662,15 +650,10 @@ fn attach_crossbeam_client(server_app: &mut App, client_id: u64, gym_mode: bool)
     client_app
 }
 
-fn create_test_client_app_with_gym_mode(client_id: u64, gym_mode: bool) -> App {
-    create_test_client_app_with_mode(client_id, gym_mode, NetworkMode::Local)
-}
-
-fn create_test_client_app(client_id: u64) -> App {
-    create_test_client_app_with_gym_mode(client_id, true)
-}
-
-fn create_test_server_app_with_mode(gym_mode: bool, network_mode: NetworkMode) -> App {
+fn create_test_server_app_with_mode_unfinished(
+    gym_mode: bool,
+    network_mode: NetworkMode,
+) -> App {
     let mut app = App::new();
 
     app.add_plugins((
@@ -678,17 +661,28 @@ fn create_test_server_app_with_mode(gym_mode: bool, network_mode: NetworkMode) -
         bevy::state::app::StatesPlugin,
         bevy::diagnostic::DiagnosticsPlugin,
         bevy::asset::AssetPlugin::default(),
-        bevy::scene::ScenePlugin,
+        bevy::world_serialization::WorldSerializationPlugin,
         bevy::mesh::MeshPlugin,
         bevy::animation::AnimationPlugin,
     ));
 
     app.insert_resource(network_mode);
     app.insert_resource(shared::GymMode(gym_mode));
-    app.add_plugins(SharedPlugin);
+    if network_mode == NetworkMode::Local || network_mode == NetworkMode::Udp {
+        let bind_port = if network_mode == NetworkMode::Udp {
+            8080
+        } else {
+            0
+        };
+        app.insert_resource(shared::ServerBindAddr(std::net::SocketAddr::new(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+            bind_port,
+        )));
+    }
     app.add_plugins(ServerPlugins {
         tick_duration: Duration::from_secs_f64(1.0 / shared::FIXED_TIMESTEP_HZ),
     });
+    app.add_plugins(SharedPlugin);
     app.add_plugins(ServerNetworkPlugin);
     app.add_plugins(ServerLobbyPlugin);
     app.add_plugins(ServerEntitiesPlugin);
@@ -699,10 +693,12 @@ fn create_test_server_app_with_mode(gym_mode: bool, network_mode: NetworkMode) -
     app
 }
 
-fn create_test_server_app_with_gym_mode(gym_mode: bool) -> App {
-    create_test_server_app_with_mode(gym_mode, NetworkMode::Local)
+fn create_test_server_app_with_mode(gym_mode: bool, network_mode: NetworkMode) -> App {
+    let mut app = create_test_server_app_with_mode_unfinished(gym_mode, network_mode);
+    finish_if_needed(&mut app);
+    app
 }
 
-fn create_test_server_app() -> App {
-    create_test_server_app_with_gym_mode(true)
+fn create_test_server_app_with_gym_mode(gym_mode: bool) -> App {
+    create_test_server_app_with_mode(gym_mode, NetworkMode::Local)
 }

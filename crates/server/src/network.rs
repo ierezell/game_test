@@ -3,18 +3,17 @@ use bevy::prelude::{
     With, Without, info,
 };
 use std::collections::HashSet;
-use std::time::Duration;
 
 use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
-    Client, Connected, ControlledBy, DeltaManager, Disconnected, Link, LinkOf, Linked, LocalAddr,
+    Client, Connected, ControlledBy, Disconnected, Link, LinkOf, Linked, LocalAddr,
     LocalId, NetworkTarget, PeerId, RemoteId, Replicate, ReplicationReceiver, ReplicationSender,
-    SendUpdatesMode, Server, ServerMultiMessageSender,
+    Server, ServerMultiMessageSender,
     server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start, Started},
 };
 use shared::debug::debug_println;
 use shared::protocol::{LobbyControlChannel, LobbyState, PlayerId, StartLoadingGameEvent};
-use shared::{SERVER_BIND_ADDR, SHARED_SETTINGS};
+use shared::{SERVER_BIND_ADDR, ServerBindAddr, SHARED_SETTINGS};
 
 use crate::ServerGameState;
 pub struct ServerNetworkPlugin;
@@ -88,7 +87,7 @@ fn ensure_local_host_clientof_links(
             LinkOf {
                 server: server_entity,
             },
-            Link::new(None),
+            Link::default(),
             Linked,
             RemoteId(client_peer_id),
             LocalId(PeerId::Server),
@@ -100,8 +99,6 @@ fn ensure_local_host_clientof_links(
 }
 
 fn startup_server_crossbeam(mut commands: Commands) {
-    // In Crossbeam mode, connections are manually managed via LinkOf entities.
-    // We just need a Server entity to exist to satisfy queries/Start event.
     let server_entity = commands
         .spawn((Name::new("Server"), Server::default(), Started))
         .id();
@@ -114,11 +111,29 @@ fn startup_server_crossbeam(mut commands: Commands) {
     });
 }
 
-fn startup_server_local(mut commands: Commands) {
-    // In Local mode (HostServer), server and client are in the same app.
-    // Lightyear handles local communication via HostServer/HostClient automatically.
+fn startup_server_local(mut commands: Commands, bind_addr: Option<Res<ServerBindAddr>>) {
+    let bind_addr = bind_addr
+        .map(|a| a.0)
+        .unwrap_or(SERVER_BIND_ADDR);
+    let netcode_config = NetcodeConfig {
+        num_disconnect_packets: 10,
+        keep_alive_send_rate: 1.0 / 10.0,
+        client_timeout_secs: 10,
+        protocol_id: SHARED_SETTINGS.protocol_id,
+        private_key: SHARED_SETTINGS.private_key,
+        connection_request_handler: None,
+        server_addr_check: false,
+    };
+
     let server_entity = commands
-        .spawn((Name::new("Server"), Server::default(), Started))
+        .spawn((
+            Name::new("Server"),
+            Server::default(),
+            Started,
+            NetcodeServer::new(netcode_config),
+            LocalAddr(bind_addr),
+            ServerUdpIo::default(),
+        ))
         .id();
     debug_println(format_args!(
         "ServerNetworkPlugin: spawned Server entity {:?} in Local mode (HostServer)",
@@ -129,20 +144,24 @@ fn startup_server_local(mut commands: Commands) {
     });
 }
 
-fn startup_server(mut commands: Commands) {
+fn startup_server(mut commands: Commands, bind_addr: Option<Res<ServerBindAddr>>) {
+    let bind_addr = bind_addr
+        .map(|a| a.0)
+        .unwrap_or(SERVER_BIND_ADDR);
     let netcode_config = NetcodeConfig {
         num_disconnect_packets: 10,
         keep_alive_send_rate: 1.0 / 10.0,
         client_timeout_secs: 10,
         protocol_id: SHARED_SETTINGS.protocol_id,
         private_key: SHARED_SETTINGS.private_key,
+        connection_request_handler: None,
+        server_addr_check: false,
     };
     let server_entity = commands
         .spawn((
             NetcodeServer::new(netcode_config),
-            LocalAddr(SERVER_BIND_ADDR),
+            LocalAddr(bind_addr),
             ServerUdpIo::default(),
-            DeltaManager::default(),
         ))
         .id();
 
@@ -169,13 +188,11 @@ fn handle_connected(
 
     commands.entity(trigger.entity).insert((
         Name::from(format!("Client_{}", client_id_bits)),
-        ReplicationSender::new(Duration::ZERO, SendUpdatesMode::SinceLastAck, true),
+        ReplicationSender::default(),
         ReplicationReceiver::default(),
     ));
 
-    // Get or create the lobby state
     if let Some((lobby_entity, mut lobby_state)) = lobby_query.iter_mut().next() {
-        // Lobby exists, add player if not already present
         if !lobby_state.players.contains(&client_id_bits) {
             debug_println(format_args!(
                 "DEBUG: Server accepted connection from Client_{}",
@@ -186,12 +203,11 @@ fn handle_connected(
                 .entity(lobby_entity)
                 .insert(Replicate::to_clients(NetworkTarget::All));
 
-            if lobby_state.players.len() == 1 {
+            if lobby_state.players.len() == 1 || lobby_state.host_id == 0 {
                 debug_println(format_args!("DEBUG: Client_{} became host", client_id_bits));
                 lobby_state.host_id = client_id_bits;
             }
 
-            // If the game is already in progress, send the StartLoadingGameEvent to the newly connected client
             if *server_state.get() == ServerGameState::Playing {
                 debug_println(format_args!(
                     "DEBUG: Game already started, sending StartLoadingGameEvent to late-joining Client_{}",
@@ -218,7 +234,6 @@ fn handle_connected(
             ));
         }
     } else {
-        // No lobby exists, create it with this first client as host
         debug_println(format_args!(
             "DEBUG: Creating lobby with Client_{} as first player and host",
             client_id_bits

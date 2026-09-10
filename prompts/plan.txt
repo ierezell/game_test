@@ -1,0 +1,156 @@
+Those are GTFO Maps.
+
+Please help me to find a way to make similar levels in a procedural ways.
+
+I need to keep the tension, game design, surprise elements, etc.. of GTFO.
+
+1. Macro Graph Generation (Zone Node Topology)
+GTFO levels rely on a distinct Zone Graph structure rather than raw tile-by-tile randomness.
+
+Directed Acyclic Graphs (DAG): Build the level flow first as a node graph where each node is an entire Zone (e.g., Zone 41, Zone 42) and edges are doors.
+
+Lock-and-Key Loops: Place main objectives in deep leaf nodes, then inject keycard or power cell dependencies into side branches. This forces calculated backtracking through previously cleared or dynamic hazard zones.
+
+Choke Point Gating: Classify transitions using explicit door types—Standard, Keycard-locked, Security Alarm, or Bulkhead—to give players explicit visual "pacing stops" where they prepare for defensive holds.
+
+2. Micro Layout (Modular Prefab Assembly)
+Once the Zone graph is established, expand each Zone node into actual playable geometry using socket-based room modules.
+
+Prefab Sockets: Use hand-crafted sub-rooms (server halls, narrow maintenance corridors, reactor pits) with standardized connection sockets. This preserves gameplay quality, verticality, and sightline blockers required for stealth.
+
+Layout Anchors: Force specific structural landmarks into dedicated graph positions (such as the large circular extraction zone E at the start/end).
+
+Stealth Architecture: Ensure generation rules enforce minimum cover density (pillars, crates, partitions) so sleepers can be snuck past reliably without immediate line-of-sight triggers.
+
+3. Hazard & Resource Budgeting
+Tension in GTFO comes from resource starvation and information management.
+
+Resource Math: Calculate a strict ammo, health, and tool refill budget based on total path length and enemy density. Scatter these items predominantly in dead-end rooms to reward risky exploration.
+
+Hazard Layering: Assign environmental conditions—like heavy toxic fog or high Scout counts—to specific downstream zones to create localized spikes in stress.
+
+Terminal Indexing: Generate a virtual network map connecting all terminals. The generator auto-indexes item locations into a command-line network so players can use QUERY and PING commands to navigate the generated space.
+
+4. Defensive Hold & Horde Spawning
+Scan Node Placement: Place security scan circles across varied terrain within the target room (e.g., open catwalks vs narrow doors) to disrupt defensible positions.
+
+Spawn Pathing: Route alarm horde spawns 2 to 3 rooms away along the graph. This gives player mine-deployers and sentry guns predictable choke points while preserving the panic of approaching waves.
+
+Which game engine or tech stack are you planning to use to build this level generator?
+
+Would be with Bevy
+
+Building a GTFO-style level generator in Bevy fits well with Rust’s data-driven ecosystem. Bevy’s ECS (Entity Component System) allows you to separate the macro-level topology (graph math) from the micro-level geometry (glTF scene spawning and socket matching).
+
+Architecting this generation pipeline in Bevy involves key crates, data structures, and execution phases.
+
+1. Recommended Crate Stack
+petgraph: For macro graph topology (Zones, connections, locked doors, and key dependencies).
+
+rand / rand_chacha: Deterministic, seed-based PRNG to ensure level layouts can be re-created from a single seed string.
+
+bevy_scene / standard glTF workflows: Represent room prefabs as glTF scenes, using empty nodes named Socket_North, Socket_South, etc., as connection points.
+
+2. Pipeline Architecture & States
+Manage level generation using Bevy’s native States machine so heavy graph math and asset instantiation happen cleanly before gameplay systems start.
+
+Rust
+#[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
+enum LevelGenState {
+    #[default]
+    Idle,
+    GenerateGraph,    // Phase 1: Build petgraph DAG
+    AssemblePrefabs,  // Phase 2: Match room tiles & align glTF sockets
+    PopulateEntities, // Phase 3: Spawn doors, terminals, items, enemies
+    Complete,
+}
+3. Step-by-Step System Implementation
+Phase 1: Macro Graph Generation (petgraph)
+Construct the Zone network purely in memory using a Bevy Resource holding a petgraph::Graph.
+
+Rust
+use bevy::prelude::*;
+use petgraph::graph::{NodeIndex, UnGraph};
+
+#[derive(Clone, Debug)]
+pub struct ZoneData {
+    pub zone_id: u32,
+    pub security_level: u32,
+    pub is_objective: bool,
+    pub has_alarm_door: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct DoorConnection {
+    pub door_type: DoorType, // Normal, Keycard, Alarm, Bulkhead
+}
+
+#[derive(Resource, Default)]
+pub struct LevelGraph {
+    pub graph: UnGraph<ZoneData, DoorConnection>,
+    pub start_node: NodeIndex,
+    pub objective_node: NodeIndex,
+}
+Logic: Run an algorithm (e.g., seeded random walk with forced branching) to generate 8–15 Zone nodes.
+
+Lock-and-Key Logic: Identify leaf nodes, place the Objective item in one leaf, and place its required Keycard/Power Cell in a distinct non-ancestor branch to enforce back-tracking.
+
+Phase 2: Socket-Based Prefab Matching
+Once the topology exists, map each Zone node to concrete 3D geometry using hand-crafted sub-room prefabs.
+
+Prefab Definition: Create glTF modular blocks (corridor, server room, broad hall) in Blender. Add empty parent transforms labeled Socket_0, Socket_1 with exact position and rotation vectors.
+
+Assembly Algorithm:
+
+Pick a starting room prefab for Zone 0.
+
+Iterate through open sockets and query available prefabs that match required door directions and physical dimensions without colliding with existing bounding boxes.
+
+Spawn the prefabs in Bevy using SceneBundle.
+
+Rust
+#[derive(Component)]
+pub struct Socket {
+    pub connection_type: String, // e.g., "StandardDoor", "Bulkhead"
+    pub is_connected: bool,
+}
+
+#[derive(Component)]
+pub struct ZoneRoom {
+    pub zone_id: u32,
+}
+Phase 3: Populating Gameplay Mechanics (ECS Integration)
+GTFO relies heavily on terminal queries, door holds, and resource management. Attach dedicated components to the spawned geometry during this phase:
+
+Rust
+// Security Alarm Doors (Choke Points)
+#[derive(Component)]
+pub struct SecurityDoor {
+    pub requires_keycard: Option<String>,
+    pub triggers_alarm: bool,
+    pub state: DoorState, // Open, Closed, Locked, Defective
+}
+
+// Terminal Network
+#[derive(Component)]
+pub struct TerminalConsole {
+    pub terminal_id: String,
+    pub network_zone: u32,
+    pub indexed_items: Vec<String>, // Stores item IDs for QUERY/PING commands
+}
+
+// Resource Containers
+#[derive(Component)]
+pub struct ResourceLocker {
+    pub ammo_packs: u8,
+    pub tool_packs: u8,
+    pub med_packs: u8,
+}
+4. Indexing the Terminal Network
+When LevelGenState::PopulateEntities runs:
+
+Collect all spawned items (keycards, power cells, objectives) and record their assigned ZoneRoom ID.
+
+Register these items into a global TerminalNetwork Resource.
+
+When players access any terminal, query this resource to output exact GTFO-style command logs (e.g., KEY_RED_842 IS IN ZONE 42).

@@ -44,6 +44,7 @@ fn test_npc_navigation_patrol_moves_agent() {
                 speed: 3.0,
                 arrival_threshold: 1.0,
                 current_target: patrol_points.first().copied(),
+                path_waypoints: Vec::new(),
             },
             PatrolState {
                 wait_duration: 0.0,

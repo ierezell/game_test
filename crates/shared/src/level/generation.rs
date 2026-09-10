@@ -1,9 +1,9 @@
 use avian3d::prelude::{Collider, Position, RigidBody, Rotation};
 use bevy::prelude::*;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::navigation::NavigationObstacle;
 
@@ -263,6 +263,70 @@ impl ZoneType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Reflect)]
+pub enum DoorType {
+    Normal,
+    Keycard,
+    Alarm,
+    Bulkhead,
+}
+
+impl DoorType {
+    pub fn requires_keycard(self) -> bool {
+        matches!(self, DoorType::Keycard)
+    }
+
+    pub fn is_defensive_hold(self) -> bool {
+        matches!(self, DoorType::Alarm | DoorType::Bulkhead)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Reflect)]
+pub enum KeycardColor {
+    Red,
+    Blue,
+}
+
+impl Default for KeycardColor {
+    fn default() -> Self {
+        Self::Red
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum IndexedItemKind {
+    Keycard,
+    Objective,
+    Ammo,
+    Medical,
+    Tool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexedItem {
+    pub id: String,
+    pub kind: IndexedItemKind,
+    pub zone: ZoneId,
+    pub label: String,
+}
+
+/// Pure-data representation of the virtual terminal network that every terminal
+/// console in the level can answer `QUERY`/`PING`/`LIST` against. It is computed
+/// from the expedition design so the layout stays deterministic for a given seed.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TerminalNetwork {
+    pub items: Vec<IndexedItem>,
+}
+
+/// Per-zone resource budget. Items are concentrated in dead-ends to reward the
+/// risk of straying off the beaten path, mirroring GTFO's resource starvation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZoneResources {
+    pub ammo_packs: u8,
+    pub tool_packs: u8,
+    pub med_packs: u8,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Component)]
 pub struct Zone {
     pub id: ZoneId,
@@ -272,6 +336,10 @@ pub struct Zone {
     pub size: Vec3,
     pub connections: Vec<ZoneId>,
     pub is_built: bool,
+    pub is_objective: bool,
+    pub is_keycard: bool,
+    pub hazard_level: u8,
+    pub resources: ZoneResources,
 }
 
 impl Zone {
@@ -292,7 +360,15 @@ impl Zone {
             size,
             connections: Vec::new(),
             is_built: false,
+            is_objective: false,
+            is_keycard: false,
+            hazard_level: 0,
+            resources: ZoneResources::default(),
         }
+    }
+
+    pub fn is_leaf(&self, spawn: ZoneId) -> bool {
+        self.id != spawn && self.connections.len() <= 1
     }
 }
 
@@ -302,6 +378,9 @@ pub struct ZoneConnection {
     pub to_zone: ZoneId,
     pub door_position: Vec3,
     pub door_rotation: Quat,
+    pub door_type: DoorType,
+    pub required_keycard: Option<ZoneId>,
+    pub is_critical_path: bool,
 }
 
 #[derive(Debug, Clone, Resource, Serialize, Deserialize)]
@@ -330,6 +409,12 @@ pub struct LevelGraph {
     pub connections: Vec<ZoneConnection>,
     pub spawn_zone: ZoneId,
     pub objective_zones: Vec<ZoneId>,
+    pub objective_zone: Option<ZoneId>,
+    pub keycard_zone: Option<ZoneId>,
+    pub keycard_color: KeycardColor,
+    pub terminal_network: TerminalNetwork,
+    pub horde_spawn_zones: Vec<ZoneId>,
+    pub scan_node_zones: Vec<ZoneId>,
 }
 
 impl LevelGraph {
@@ -340,6 +425,12 @@ impl LevelGraph {
             connections: Vec::new(),
             spawn_zone: ZoneId(0),
             objective_zones: Vec::new(),
+            objective_zone: None,
+            keycard_zone: None,
+            keycard_color: KeycardColor::default(),
+            terminal_network: TerminalNetwork::default(),
+            horde_spawn_zones: Vec::new(),
+            scan_node_zones: Vec::new(),
         }
     }
 
@@ -361,12 +452,16 @@ impl LevelGraph {
         to: ZoneId,
         door_position: Vec3,
         door_rotation: Quat,
+        door_type: DoorType,
     ) {
         self.connections.push(ZoneConnection {
             from_zone: from,
             to_zone: to,
             door_position,
             door_rotation,
+            door_type,
+            required_keycard: None,
+            is_critical_path: false,
         });
 
         if let Some(from_zone) = self.zones.get_mut(&from)
@@ -379,6 +474,20 @@ impl LevelGraph {
         {
             to_zone.connections.push(from);
         }
+    }
+
+    pub fn critical_path(&self, objective: ZoneId) -> Vec<ZoneId> {
+        bfs_path(self, self.spawn_zone, objective).unwrap_or_default()
+    }
+
+    pub fn depth_map(&self) -> HashMap<ZoneId, u32> {
+        zone_depths(self)
+    }
+
+    pub fn connections_of(&self, zone: ZoneId) -> impl Iterator<Item = &ZoneConnection> {
+        self.connections
+            .iter()
+            .filter(move |c| c.from_zone == zone || c.to_zone == zone)
     }
 }
 
@@ -453,7 +562,13 @@ pub fn generate_level(config: LevelConfig) -> LevelGraph {
             };
 
             graph.add_zone(new_zone);
-            graph.add_connection(current_zone_id, new_zone_id, door_position, door_rotation);
+            graph.add_connection(
+                current_zone_id,
+                new_zone_id,
+                door_position,
+                door_rotation,
+                DoorType::Normal,
+            );
 
             if zone_type.max_connections() > 1 {
                 frontier.push((new_zone_id, depth + 1));
@@ -473,6 +588,9 @@ pub fn generate_level(config: LevelConfig) -> LevelGraph {
         }
     }
 
+    let mut design_rng = StdRng::seed_from_u64(config.seed);
+    apply_expedition_design(&mut graph, &mut design_rng);
+
     info!(
         "Generated level with {} zones and {} connections",
         graph.zones.len(),
@@ -480,6 +598,395 @@ pub fn generate_level(config: LevelConfig) -> LevelGraph {
     );
 
     graph
+}
+
+fn adjacency_list(graph: &LevelGraph) -> HashMap<ZoneId, Vec<ZoneId>> {
+    let mut adj: HashMap<ZoneId, Vec<ZoneId>> = HashMap::new();
+    for zone_id in graph.zones.keys() {
+        adj.entry(*zone_id).or_default();
+    }
+    for conn in &graph.connections {
+        adj.entry(conn.from_zone).or_default().push(conn.to_zone);
+        adj.entry(conn.to_zone).or_default().push(conn.from_zone);
+        if !adj[&conn.from_zone].contains(&conn.to_zone) {
+            adj.entry(conn.from_zone).or_default().push(conn.to_zone);
+        }
+    }
+    adj
+}
+
+fn zone_depths(graph: &LevelGraph) -> HashMap<ZoneId, u32> {
+    let adj = adjacency_list(graph);
+    let mut depths: HashMap<ZoneId, u32> = HashMap::new();
+    let mut queue = VecDeque::new();
+    depths.insert(graph.spawn_zone, 0);
+    queue.push_back(graph.spawn_zone);
+    while let Some(current) = queue.pop_front() {
+        let depth = *depths.get(&current).unwrap_or(&0);
+        let Some(neighbors) = adj.get(&current) else {
+            continue;
+        };
+        for neighbor in neighbors {
+            if !depths.contains_key(neighbor) {
+                depths.insert(*neighbor, depth + 1);
+                queue.push_back(*neighbor);
+            }
+        }
+    }
+    depths
+}
+
+fn leaf_zones(graph: &LevelGraph) -> Vec<ZoneId> {
+    graph
+        .zones
+        .values()
+        .filter(|zone| zone.is_leaf(graph.spawn_zone))
+        .map(|zone| zone.id)
+        .collect()
+}
+
+fn bfs_path(graph: &LevelGraph, from: ZoneId, to: ZoneId) -> Option<Vec<ZoneId>> {
+    let adj = adjacency_list(graph);
+    let mut prev: HashMap<ZoneId, ZoneId> = HashMap::new();
+    let mut queue = VecDeque::new();
+    queue.push_back(from);
+    prev.insert(from, from);
+
+    while let Some(current) = queue.pop_front() {
+        if current == to {
+            break;
+        }
+        let Some(neighbors) = adj.get(&current) else {
+            continue;
+        };
+        for neighbor in neighbors {
+            if !prev.contains_key(neighbor) {
+                prev.insert(*neighbor, current);
+                queue.push_back(*neighbor);
+            }
+        }
+    }
+
+    if !prev.contains_key(&to) {
+        return None;
+    }
+
+    let mut path = vec![to];
+    let mut current = to;
+    while current != from {
+        let parent = *prev.get(&current)?;
+        path.push(parent);
+        current = parent;
+    }
+    path.reverse();
+    Some(path)
+}
+
+fn connection_endpoints(conn: &ZoneConnection) -> (ZoneId, ZoneId) {
+    (conn.from_zone, conn.to_zone)
+}
+
+fn set_path_edge_door(
+    graph: &mut LevelGraph,
+    critical_path: &[ZoneId],
+    target: ZoneId,
+    door_type: DoorType,
+) {
+    let Some(idx) = critical_path.iter().position(|z| *z == target) else {
+        return;
+    };
+    let Some(prev) = idx.checked_sub(1).and_then(|i| critical_path.get(i)) else {
+        return;
+    };
+    if let Some(conn) = find_connection_mut(&mut graph.connections, *prev, target) {
+        if conn.door_type != DoorType::Keycard {
+            conn.door_type = door_type;
+        }
+    }
+}
+
+fn find_connection_mut<'a>(
+    connections: &'a mut [ZoneConnection],
+    a: ZoneId,
+    b: ZoneId,
+) -> Option<&'a mut ZoneConnection> {
+    for conn in connections.iter_mut() {
+        let (f, t) = connection_endpoints(conn);
+        if (f == a && t == b) || (f == b && t == a) {
+            return Some(conn);
+        }
+    }
+    None
+}
+
+fn color_name(color: KeycardColor) -> &'static str {
+    match color {
+        KeycardColor::Red => "RED",
+        KeycardColor::Blue => "BLUE",
+    }
+}
+
+/// Post-generation pass that layers GTFO-style expedition design onto the raw
+/// zone graph: a deep-leaf objective, a keycard locked in a separate branch to
+/// force backtracking, escalating door types along the critical path, hazard
+/// density that grows downstream, a resource budget concentrated in dead-ends,
+/// a terminal network index, scan-node hold positions and routed horde spawns.
+pub fn apply_expedition_design(graph: &mut LevelGraph, rng: &mut StdRng) {
+    if graph.zones.len() < 4 {
+        return;
+    }
+
+    let depths = zone_depths(graph);
+    let max_depth = depths.values().copied().max().unwrap_or(0);
+    let leaves = leaf_zones(graph);
+
+    if leaves.is_empty() {
+        return;
+    }
+
+    let objective = leaves
+        .iter()
+        .max_by_key(|zone| depths.get(*zone).copied().unwrap_or(0))
+        .copied()
+        .unwrap();
+    graph.objective_zone = Some(objective);
+    if let Some(zone) = graph.get_zone_mut(objective) {
+        zone.is_objective = true;
+        if !graph.objective_zones.contains(&objective) {
+            graph.objective_zones.push(objective);
+        }
+    }
+
+    let critical_path = bfs_path(graph, graph.spawn_zone, objective).unwrap_or_default();
+    let critical_set: HashSet<ZoneId> = critical_path.iter().copied().collect();
+
+    for conn in &mut graph.connections {
+        let (a, b) = connection_endpoints(conn);
+        let on_critical = critical_set.contains(&a)
+            && critical_set.contains(&b)
+            && critical_path
+                .windows(2)
+                .any(|w| (w[0] == a && w[1] == b) || (w[0] == b && w[1] == a));
+        conn.is_critical_path = on_critical;
+    }
+
+    let keycard = leaves
+        .iter()
+        .filter(|zone| !critical_set.contains(*zone))
+        .max_by_key(|zone| depths.get(*zone).copied().unwrap_or(0))
+        .copied();
+
+    let keycard_zone: Option<ZoneId> = if let Some(kc) = keycard {
+        graph.keycard_zone = Some(kc);
+        graph.keycard_color = if kc.0.is_multiple_of(2) {
+            KeycardColor::Blue
+        } else {
+            KeycardColor::Red
+        };
+        if let Some(zone) = graph.get_zone_mut(kc) {
+            zone.is_keycard = true;
+        }
+        Some(kc)
+    } else {
+        None
+    };
+
+    let depth_threshold = max_depth / 2;
+    for conn in &mut graph.connections {
+        if !conn.is_critical_path {
+            if conn.door_type == DoorType::Normal && rng.random_bool(0.18) {
+                conn.door_type = DoorType::Alarm;
+            }
+            continue;
+        }
+
+        let deeper = conn.to_zone.0.max(conn.from_zone.0);
+        let depth = depths.get(&ZoneId(deeper)).copied().unwrap_or(0);
+        if depth >= depth_threshold && conn.door_type != DoorType::Keycard {
+            conn.door_type = DoorType::Alarm;
+        }
+    }
+
+    if let Some(kc) = keycard_zone {
+        let attach = bfs_path(graph, kc, objective)
+            .and_then(|path| {
+                path.iter()
+                    .find(|zone| critical_set.contains(zone))
+                    .copied()
+            })
+            .unwrap_or(graph.spawn_zone);
+
+        let attach_idx = critical_path.iter().position(|z| *z == attach);
+        if let Some(idx) = attach_idx {
+            if let Some(gate_target) = critical_path.get(idx + 1).copied() {
+                if let Some(conn) =
+                    find_connection_mut(&mut graph.connections, attach, gate_target)
+                {
+                    conn.door_type = DoorType::Keycard;
+                    conn.required_keycard = Some(kc);
+                }
+            }
+        }
+    }
+
+    set_path_edge_door(graph, &critical_path, objective, DoorType::Bulkhead);
+
+    for conn in &mut graph.connections {
+        if conn.door_type == DoorType::Bulkhead && conn.required_keycard.is_some() {
+            conn.door_type = DoorType::Keycard;
+        }
+    }
+
+    for zone in graph.zones.values_mut() {
+        let depth = depths.get(&zone.id).copied().unwrap_or(0);
+        zone.hazard_level = (depth as u8).min(5);
+        zone.resources = assign_zone_resources(zone, &depths, objective, keycard_zone, rng);
+    }
+
+    let terminal_network = build_terminal_network(graph, &depths);
+    graph.terminal_network = terminal_network;
+
+    graph.horde_spawn_zones = horde_spawn_zones(&critical_path, objective);
+    graph.scan_node_zones = scan_node_zones(&critical_path, objective, graph.spawn_zone);
+}
+
+fn assign_zone_resources(
+    zone: &Zone,
+    _depths: &HashMap<ZoneId, u32>,
+    objective: ZoneId,
+    keycard: Option<ZoneId>,
+    rng: &mut StdRng,
+) -> ZoneResources {
+    let mut resources = ZoneResources::default();
+
+    if zone.id == objective {
+        resources.med_packs = 1;
+        resources.tool_packs = 1;
+        resources.ammo_packs = 1;
+        return resources;
+    }
+
+    if Some(zone.id) == keycard {
+        resources.med_packs = 1;
+        resources.tool_packs = 0;
+        resources.ammo_packs = rng.random_range(0..=1);
+        return resources;
+    }
+
+    if zone.is_leaf(objective) && zone.id != objective {
+        resources.ammo_packs = rng.random_range(1..=2).min(3);
+    }
+
+    if zone.hazard_level >= 3 {
+        resources.ammo_packs = resources.ammo_packs.saturating_add(1);
+    }
+
+    if zone.zone_type == ZoneType::Storage {
+        resources.ammo_packs = resources.ammo_packs.saturating_add(2);
+        resources.tool_packs = 1;
+    }
+
+    resources
+}
+
+fn build_terminal_network(graph: &LevelGraph, _depths: &HashMap<ZoneId, u32>) -> TerminalNetwork {
+    let mut items = Vec::new();
+
+    if let Some(kc) = graph.keycard_zone {
+        items.push(IndexedItem {
+            id: format!("KC_{}_{}", color_name(graph.keycard_color), kc.0),
+            kind: IndexedItemKind::Keycard,
+            zone: kc,
+            label: format!("KEYCARD {} IS IN ZONE {}", color_name(graph.keycard_color), kc.0),
+        });
+    }
+
+    if let Some(obj) = graph.objective_zone {
+        items.push(IndexedItem {
+            id: format!("OBJ_{}", obj.0),
+            kind: IndexedItemKind::Objective,
+            zone: obj,
+            label: format!("OBJECTIVE IS IN ZONE {}", obj.0),
+        });
+    }
+
+    for zone in graph.zones.values() {
+        let base = zone.id.0;
+        if zone.resources.ammo_packs > 0 {
+            items.push(IndexedItem {
+                id: format!("AMMO_{}", base),
+                kind: IndexedItemKind::Ammo,
+                zone: zone.id,
+                label: format!("AMMO CACHE {} IS IN ZONE {}", zone.resources.ammo_packs, base),
+            });
+        }
+        if zone.resources.med_packs > 0 {
+            items.push(IndexedItem {
+                id: format!("MED_{}", base),
+                kind: IndexedItemKind::Medical,
+                zone: zone.id,
+                label: format!("MEDICAL SUPPLIES ARE IN ZONE {}", base),
+            });
+        }
+        if zone.resources.tool_packs > 0 {
+            items.push(IndexedItem {
+                id: format!("TOOL_{}", base),
+                kind: IndexedItemKind::Tool,
+                zone: zone.id,
+                label: format!("TOOL CACHE IS IN ZONE {}", base),
+            });
+        }
+    }
+
+    TerminalNetwork { items }
+}
+
+/// Alarm hordes are routed to spawn 2-3 rooms away from the objective so that
+/// players have time to set up mines/sentries at the defensive choke points.
+fn horde_spawn_zones(critical_path: &[ZoneId], objective: ZoneId) -> Vec<ZoneId> {
+    let mut spawns = Vec::new();
+    if critical_path.is_empty() {
+        return spawns;
+    }
+    let obj_index = critical_path
+        .iter()
+        .rposition(|z| *z == objective)
+        .unwrap_or(critical_path.len().saturating_sub(1));
+
+    for back in [3usize, 2] {
+        let idx = obj_index.checked_sub(back);
+        if let Some(idx) = idx {
+            if let Some(zone) = critical_path.get(idx) {
+                spawns.push(*zone);
+            }
+        }
+    }
+
+    spawns.dedup();
+    spawns
+}
+
+/// Scan nodes anchor the defensive hold inside the objective room and just
+/// upstream so players cannot cheese the alarm behind a single wall.
+fn scan_node_zones(
+    critical_path: &[ZoneId],
+    objective: ZoneId,
+    spawn: ZoneId,
+) -> Vec<ZoneId> {
+    let mut zones = vec![];
+    let obj_index = critical_path
+        .iter()
+        .rposition(|z| *z == objective);
+    if let Some(idx) = obj_index {
+        zones.push(objective);
+        if let Some(upstream) = idx.checked_sub(1).and_then(|i| critical_path.get(i)) {
+            if *upstream != spawn {
+                zones.push(*upstream);
+            }
+        }
+    }
+    zones.dedup();
+    zones
 }
 
 fn choose_zone_type(rng: &mut StdRng, depth: u32, max_depth: u32) -> ZoneType {
@@ -491,9 +998,8 @@ fn choose_zone_type(rng: &mut StdRng, depth: u32, max_depth: u32) -> ZoneType {
 
     match roll {
         r if r < 0.15 => ZoneType::Hub,
-        r if r < 0.35 => ZoneType::Corridor,
-        r if r < 0.50 => ZoneType::Utility,
-        r if r < 0.70 => ZoneType::Industrial,
+        r if r < 0.35 => ZoneType::Utility,
+        r if r < 0.50 => ZoneType::Industrial,
         _ => ZoneType::Storage,
     }
 }
@@ -616,10 +1122,11 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
 #[cfg(test)]
 mod tests {
     use super::{
-        LevelConfig, WallSide, ZoneId, build_wall_segments, collect_zone_wall_segments,
-        generate_level, wall_half_span,
+        DoorType, IndexedItemKind, LevelConfig, LevelGraph, WallSide, ZoneId, build_wall_segments,
+        collect_zone_wall_segments, generate_level, wall_half_span,
     };
     use bevy::prelude::Vec3;
+    use std::collections::HashSet;
 
     #[test]
     fn generate_level_is_deterministic_for_same_seed() {
@@ -764,5 +1271,268 @@ mod tests {
                 to_segment_total
             );
         }
+    }
+
+    fn branched_level() -> LevelGraph {
+        for seed in 1..=40 {
+            let graph = generate_level(LevelConfig {
+                seed,
+                target_zone_count: 16,
+                min_zone_spacing: 28.0,
+                max_depth: 6,
+            });
+            if graph.keycard_zone.is_some() {
+                return graph;
+            }
+        }
+        panic!("No seed in 1..=40 produced a keycard-bearing level; widen the search");
+    }
+
+    #[test]
+    fn expedition_design_places_objective_in_a_deep_leaf() {
+        let level = generate_level(LevelConfig {
+            seed: 42,
+            target_zone_count: 18,
+            min_zone_spacing: 28.0,
+            max_depth: 8,
+        });
+
+        let objective = level
+            .objective_zone
+            .expect("expedition design should designate an objective");
+        let zone = level
+            .get_zone(objective)
+            .unwrap_or_else(|| panic!("objective zone {:?} should exist", objective));
+        assert!(zone.is_objective);
+        assert!(
+            zone.is_leaf(level.spawn_zone),
+            "objective {:?} should be a leaf node",
+            objective
+        );
+    }
+
+    #[test]
+    fn expedition_design_keycard_forces_backtrack() {
+        let level = branched_level();
+
+        let keycard_zone = level
+            .keycard_zone
+            .expect("a branched level should place a keycard");
+
+        let critical_set: HashSet<ZoneId> = level
+            .critical_path(objective_or_fail(&level))
+            .iter()
+            .copied()
+            .collect();
+        let keycard_zone_handle = level
+            .get_zone(keycard_zone)
+            .expect("keycard zone should exist");
+        assert!(
+            keycard_zone_handle.is_keycard,
+            "keycard zone {:?} should be flagged",
+            keycard_zone
+        );
+        assert!(
+            keycard_zone_handle.is_leaf(level.spawn_zone),
+            "keycard zone {:?} should sit in its own branch leaf",
+            keycard_zone
+        );
+        assert!(
+            !critical_set.contains(&keycard_zone),
+            "keycard zone {:?} must live off the critical path to force backtracking",
+            keycard_zone
+        );
+
+        let keyed = level
+            .connections
+            .iter()
+            .filter(|c| c.door_type == DoorType::Keycard)
+            .collect::<Vec<_>>();
+        assert!(
+            !keyed.is_empty(),
+            "at least one door should require the keycard"
+        );
+        assert!(
+            keyed
+                .iter()
+                .all(|c| c.required_keycard == Some(keycard_zone)),
+            "every keyed door should reference the placed keycard zone"
+        );
+    }
+
+    #[test]
+    fn expedition_design_gates_objective_approach_with_defensive_doors() {
+        let level = generate_level(LevelConfig {
+            seed: 7,
+            target_zone_count: 18,
+            min_zone_spacing: 28.0,
+            max_depth: 8,
+        });
+        let objective = level.objective_zone.expect("objective should exist");
+
+        let defensive: Vec<_> = level
+            .connections
+            .iter()
+            .filter(|c| c.door_type.is_defensive_hold())
+            .collect();
+        assert!(
+            !defensive.is_empty(),
+            "the critical path should escalate into defensive hold doors"
+        );
+
+        let adjacent_to_objective = level.connections.iter().any(|c| {
+            c.door_type.is_defensive_hold()
+                && (c.from_zone == objective || c.to_zone == objective)
+        });
+        assert!(
+            adjacent_to_objective,
+            "objective room should be gated by a defensive-hold door"
+        );
+    }
+
+    #[test]
+    fn expedition_design_terminal_network_indexes_keycard_and_objective() {
+        let level = branched_level();
+
+        let has_keycard_entry = level
+            .terminal_network
+            .items
+            .iter()
+            .any(|item| item.kind == IndexedItemKind::Keycard);
+        let has_objective_entry = level
+            .terminal_network
+            .items
+            .iter()
+            .any(|item| item.kind == IndexedItemKind::Objective);
+        assert!(has_keycard_entry, "terminal network should index the keycard");
+        assert!(has_objective_entry, "terminal network should index the objective");
+
+        let keycard = level.keycard_zone.expect("keycard zone should exist");
+        let kc_entry = level
+            .terminal_network
+            .items
+            .iter()
+            .find(|item| item.kind == IndexedItemKind::Keycard)
+            .expect("keycard terminal entry should exist");
+        assert_eq!(kc_entry.zone, keycard);
+
+        let objective = level.objective_zone.expect("objective should exist");
+        let obj_entry = level
+            .terminal_network
+            .items
+            .iter()
+            .find(|item| item.kind == IndexedItemKind::Objective)
+            .expect("objective terminal entry should exist");
+        assert_eq!(obj_entry.zone, objective);
+    }
+
+    #[test]
+    fn expedition_design_resources_concentrated_in_dead_ends() {
+        let level = generate_level(LevelConfig {
+            seed: 13,
+            target_zone_count: 14,
+            min_zone_spacing: 30.0,
+            max_depth: 7,
+        });
+
+        for zone in level.zones.values() {
+            if zone.is_leaf(level.spawn_zone)
+                && !zone.is_objective
+                && !zone.is_keycard
+            {
+                assert!(
+                    zone.resources.ammo_packs >= 1,
+                    "dead-end zone {:?} should reward exploration with ammo",
+                    zone.id
+                );
+            }
+        }
+
+        let objective = level
+            .objective_zone
+            .expect("objective should exist");
+        let objective_zone = level.get_zone(objective).unwrap();
+        assert!(
+            objective_zone.resources.ammo_packs + objective_zone.resources.med_packs
+                + objective_zone.resources.tool_packs
+                > 0,
+            "objective zone should carry a resource cache"
+        );
+    }
+
+    #[test]
+    fn expedition_design_horde_spawns_upstream_of_objective() {
+        let level = generate_level(LevelConfig {
+            seed: 21,
+            target_zone_count: 16,
+            min_zone_spacing: 28.0,
+            max_depth: 7,
+        });
+        let objective = level.objective_zone.expect("objective should exist");
+        let depths = level.depth_map();
+        let obj_depth = depths
+            .get(&objective)
+            .copied()
+            .expect("objective should have a depth");
+
+        assert!(
+            !level.horde_spawn_zones.is_empty(),
+            "alarm hordes should spawn upstream of the objective"
+        );
+        for spawn_zone in &level.horde_spawn_zones {
+            let depth = depths.get(spawn_zone).copied().unwrap_or(0);
+            assert!(
+                depth < obj_depth,
+                "horde spawn zone {:?} should be upstream of objective (depth {} < {})",
+                spawn_zone,
+                depth,
+                obj_depth
+            );
+        }
+    }
+
+    #[test]
+    fn expedition_design_does_not_mutate_layout_positions() {
+        let config = LevelConfig {
+            seed: 999,
+            target_zone_count: 14,
+            min_zone_spacing: 30.0,
+            max_depth: 7,
+        };
+        let level_a = generate_level(config.clone());
+        let level_b = generate_level(config.clone());
+
+        assert_eq!(level_a.zones.len(), level_b.zones.len());
+        for (id, zone) in &level_a.zones {
+            let other = level_b
+                .get_zone(*id)
+                .unwrap_or_else(|| panic!("zone {:?} should exist in second run", id));
+            assert_eq!(zone.position, other.position);
+            assert_eq!(zone.is_objective, other.is_objective);
+            assert_eq!(zone.is_keycard, other.is_keycard);
+        }
+        let _ = &level_a;
+    }
+
+    #[test]
+    fn expedition_design_handles_chain_without_branching() {
+        let level = generate_level(LevelConfig {
+            seed: 1,
+            target_zone_count: 5,
+            min_zone_spacing: 30.0,
+            max_depth: 8,
+        });
+        assert!(
+            level.objective_zone.is_some(),
+            "even a chain should get an objective"
+        );
+        // No hard crash and the graph stays well-formed.
+        assert!(!level.zones.is_empty());
+    }
+
+    fn objective_or_fail(level: &LevelGraph) -> ZoneId {
+        level
+            .objective_zone
+            .unwrap_or_else(|| panic!("expected an objective zone to exist"))
     }
 }

@@ -62,8 +62,23 @@ enum Mode {
     Host,
 }
 
+/// Spawns a background thread that exits the process after `seconds`.
+fn spawn_stop_timer(seconds: u64) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(seconds));
+        println!("Auto-stopping after {} seconds", seconds);
+        std::process::exit(0);
+    });
+}
+
 pub fn run() {
     let cli = Cli::parse();
+
+    if let Some(s) = cli.stop_after
+        && s > 0
+    {
+        spawn_stop_timer(s);
+    }
 
     match cli.mode {
         Mode::Client => {
@@ -89,18 +104,9 @@ pub fn run() {
                 }
             }
 
-            if cli.auto_join && !cli.auto_host {
+            // Auto-join when a specific client ID is given (no need for explicit --auto-join)
+            if (cli.auto_join || cli.client_id > 0) && !cli.auto_host {
                 client_app.insert_resource(AutoJoin(true));
-            }
-
-            if let Some(stop_after_seconds) = cli.stop_after
-                && stop_after_seconds > 0
-            {
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
-                    println!("Auto-stopping after {} seconds", stop_after_seconds);
-                    std::process::exit(0);
-                });
             }
 
             client_app.run();
@@ -109,16 +115,6 @@ pub fn run() {
             let mut server_app = create_server_app(cli.headless, NetworkMode::Udp);
             if cli.gym {
                 server_app.insert_resource(GymMode(cli.gym));
-            }
-
-            if let Some(stop_after_seconds) = cli.stop_after
-                && stop_after_seconds > 0
-            {
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
-                    println!("Auto-stopping server after {} seconds", stop_after_seconds);
-                    std::process::exit(0);
-                });
             }
 
             server_app.run();
@@ -133,16 +129,6 @@ pub fn run() {
             if cli.auto_start {
                 host_app.insert_resource(AutoStart(true));
                 host_app.insert_resource(AutoStartOnLobbyReady(true));
-            }
-
-            if let Some(stop_after_seconds) = cli.stop_after
-                && stop_after_seconds > 0
-            {
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(stop_after_seconds));
-                    println!("Auto-stopping after {} seconds", stop_after_seconds);
-                    std::process::exit(0);
-                });
             }
 
             host_app.run();

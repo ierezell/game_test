@@ -5,15 +5,15 @@ use avian3d::prelude::*;
 use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
-use leafwing_input_manager::prelude::ActionState;
+use bevy_enhanced_input::action::Action;
 
 use lightyear::prelude::{Controlled, Predicted};
 use shared::{
     components::health::Health,
-    inputs::input::PlayerAction,
     navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
     protocol::{CharacterMarker, PlayerId},
 };
+use shared::inputs::Move;
 use std::time::Duration;
 
 pub struct ClientDebugPlugin;
@@ -29,7 +29,7 @@ impl Plugin for ClientDebugPlugin {
         app.add_plugins(FpsOverlayPlugin {
             config: FpsOverlayConfig {
                 text_config: TextFont {
-                    font_size: 18.0,
+                    font_size: FontSize::Px(18.0),
                     ..default()
                 },
                 text_color: Color::srgb(0.2, 1.0, 0.2),
@@ -106,7 +106,7 @@ fn spawn_debug_options_ui(mut commands: Commands) {
             parent.spawn((
                 Text::new("Debug Options"),
                 TextFont {
-                    font_size: 16.0,
+                    font_size: FontSize::Px(16.0),
                     ..default()
                 },
             ));
@@ -115,7 +115,7 @@ fn spawn_debug_options_ui(mut commands: Commands) {
                 DebugCursorStatusText,
                 Text::new("Cursor: --"),
                 TextFont {
-                    font_size: 14.0,
+                    font_size: FontSize::Px(14.0),
                     ..default()
                 },
             ));
@@ -124,7 +124,7 @@ fn spawn_debug_options_ui(mut commands: Commands) {
                 DebugInputStatusText,
                 Text::new("Input: --"),
                 TextFont {
-                    font_size: 14.0,
+                    font_size: FontSize::Px(14.0),
                     ..default()
                 },
             ));
@@ -132,7 +132,7 @@ fn spawn_debug_options_ui(mut commands: Commands) {
             parent.spawn((
                 Text::new("LMB: Lock cursor | Esc: Unlock cursor"),
                 TextFont {
-                    font_size: 13.0,
+                    font_size: FontSize::Px(13.0),
                     ..default()
                 },
             ));
@@ -172,7 +172,7 @@ fn update_debug_options_text(
     >,
     cursor_options_query: Query<&CursorOptions, With<PrimaryWindow>>,
     player_actions: Query<
-        &ActionState<PlayerAction>,
+        &Action<Move>,
         (With<PlayerId>, With<Predicted>, With<Controlled>),
     >,
 ) {
@@ -190,7 +190,7 @@ fn update_debug_options_text(
     if let Ok(mut text) = input_text_query.single_mut() {
         let input_enabled = player_actions
             .single()
-            .is_ok_and(|action_state| !action_state.disabled());
+            .is_ok();
         **text = if input_enabled {
             "Input: Enabled".to_string()
         } else {

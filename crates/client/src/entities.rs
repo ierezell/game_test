@@ -1,19 +1,15 @@
-use crate::inputs::input_map::get_player_input_map;
-
 use bevy::app::Update;
 use bevy::prelude::{
     App, Assets, Capsule3d, Color, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d, Plugin, Query,
     Res, ResMut, StandardMaterial, With, Without, default,
 };
-use leafwing_input_manager::prelude::ActionState;
 
 use shared::entities::{NpcPhysicsBundle, PlayerPhysicsBundle};
 
-use shared::inputs::input::PlayerAction;
-
+use crate::inputs::spawn_local_player_input_actions;
 use crate::LocalPlayerId;
 use lightyear::prelude::{Controlled, Interpolated, Predicted};
-use shared::inputs::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
+use shared::inputs::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
 
 use shared::protocol::{CharacterMarker, PlayerColor, PlayerId};
 
@@ -24,6 +20,7 @@ impl Plugin for ClientEntitiesPlugin {
         app.add_systems(Update, handle_interpolated_npcs_setup);
         app.add_systems(Update, handle_local_player_setup);
         app.add_systems(Update, handle_interpolated_players_setup);
+        app.add_systems(Update, spawn_local_player_input_actions);
     }
 }
 
@@ -44,14 +41,9 @@ fn handle_local_player_setup(
 ) {
     for (entity, color, player_id) in player_query.iter() {
         if player_id.0.to_bits() == local_player_id.0 {
-            let input_map = get_player_input_map();
-            let mut action_state = ActionState::<PlayerAction>::default();
-            action_state.enable();
             commands.entity(entity).insert((
                 Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
                 MeshMaterial3d(materials.add(color.0)),
-                input_map,
-                action_state,
                 PlayerPhysicsBundle::default(),
             ));
         }

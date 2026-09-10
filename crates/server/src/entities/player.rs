@@ -1,13 +1,11 @@
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::prelude::{Commands, Entity, Name, Query, Vec3, With, info};
-use leafwing_input_manager::prelude::ActionState;
+use shared::inputs::get_player_actions;
 
 use lightyear::prelude::{
-    Connected, ControlledBy, InterpolationTarget, NetworkTarget, PeerId, PredictionTarget,
-    RemoteId, Replicate, server::ClientOf,
+    Connected, ControlledBy, NetworkTarget, PeerId, RemoteId, Replicate, server::ClientOf,
 };
 use shared::debug::debug_println;
-use shared::inputs::input::PlayerAction;
 use shared::inputs::movement::GroundState;
 use shared::{
     components::{
@@ -32,13 +30,10 @@ pub fn spawn_player_entities(
     let spawn_radius = 3.0;
 
     for (index, player_id) in lobby_data.players.iter().enumerate() {
-        if let Some((client_entity, remote_id)) =
+        if let Some((client_entity, _remote_id)) =
             client_query
                 .iter()
-                .find(|(_, remote_id)| match remote_id.0 {
-                    PeerId::Netcode(id) => id == *player_id,
-                    _ => false,
-                })
+                .find(|(_, remote_id)| remote_id.0.to_bits() == *player_id)
         {
             let angle = (index as f32) * 2.0 * std::f32::consts::PI / player_count;
             let spawn_position =
@@ -66,16 +61,14 @@ pub fn spawn_player_entities(
                         lifetime: Default::default(),
                     },
                     Replicate::to_clients(NetworkTarget::All),
-                    PredictionTarget::to_clients(NetworkTarget::Single(remote_id.0)),
-                    InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(remote_id.0)),
                 ))
                 .insert(GroundState::default())
                 .insert((
                     CharacterMarker,
                     PlayerPhysicsBundle::default(),
-                    ActionState::<PlayerAction>::default(),
-                    leafwing_input_manager::prelude::InputMap::<PlayerAction>::default(),
-                ));
+                ))
+                // Add the input actions for this player (will be replicated from client)
+                .insert(get_player_actions());
         } else {
             debug_println(format_args!(
                 "DEBUG: Could not find client entity for player ID: {}",
@@ -103,10 +96,7 @@ pub fn spawn_late_joining_players(
     };
 
     for (client_entity, remote_id) in client_query.iter() {
-        let player_id_bits = match remote_id.0 {
-            PeerId::Netcode(id) => id,
-            _ => continue,
-        };
+        let player_id_bits = remote_id.0.to_bits();
 
         if !lobby_data.players.contains(&player_id_bits) {
             continue;
@@ -151,16 +141,14 @@ pub fn spawn_late_joining_players(
                         lifetime: Default::default(),
                     },
                     Replicate::to_clients(NetworkTarget::All),
-                    PredictionTarget::to_clients(NetworkTarget::Single(remote_id.0)),
-                    InterpolationTarget::to_clients(NetworkTarget::AllExceptSingle(remote_id.0)),
                 ))
                 .insert(GroundState::default())
                 .insert((
                     CharacterMarker,
                     PlayerPhysicsBundle::default(),
-                    ActionState::<PlayerAction>::default(),
-                    leafwing_input_manager::prelude::InputMap::<PlayerAction>::default(),
-                ));
+                ))
+                // Add the input actions for this player (will be replicated from client)
+                .insert(get_player_actions());
         }
     }
 }

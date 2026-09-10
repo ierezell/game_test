@@ -1,16 +1,16 @@
 use crate::components::health::DamageEvent;
-use crate::inputs::input::PlayerAction;
 use crate::navigation::NavigationObstacle;
+use crate::inputs::{Reload, Shoot};
 use avian3d::prelude::{
     Collider, LinearVelocity, Position, RigidBody, Rotation, SpatialQueryFilter,
-    SpatialQueryPipeline,
+    SpatialQuery,
 };
 use bevy::ecs::query::With;
 use bevy::prelude::{
     Commands, Component, Dir3, Entity, MessageWriter, Query, Res, Time, Timer, TimerMode, Vec3,
     info,
 };
-use leafwing_input_manager::prelude::ActionState;
+use bevy_enhanced_input::action::Action;
 use lightyear::prelude::ControlledBy;
 use serde::{Deserialize, Serialize};
 
@@ -45,7 +45,7 @@ impl Default for Gun {
     fn default() -> Self {
         let magazine_size = 8;
         Self {
-            cooldown: Timer::from_seconds(0.3, TimerMode::Once), // ~3 shots/sec
+            cooldown: Timer::from_seconds(0.3, TimerMode::Once),
             damage: 25.0,
             range: 100.0,
             magazine_size,
@@ -96,29 +96,30 @@ pub fn fire_gun_system(
             &mut Gun,
             &Position,
             &Rotation,
-            &ActionState<PlayerAction>,
+            &Action<Shoot>,
+            &Action<Reload>,
         ),
         With<ControlledBy>,
     >,
-    spatial_query: Res<SpatialQueryPipeline>,
+    spatial_query: SpatialQuery,
     obstacle_query: Query<(), With<NavigationObstacle>>,
     mut damage_writer: MessageWriter<DamageEvent>,
     time: Res<Time>,
 ) {
-    for (shooter_entity, mut gun, pos, rot, action_state) in query.iter_mut() {
+    for (shooter_entity, mut gun, pos, rot, shoot_action, reload_action) in query.iter_mut() {
         gun.cooldown.tick(time.delta());
 
-        if action_state.disabled() {
-            continue;
-        }
+        // Use Action value directly (derefs to output type)
+        let is_reloading = **reload_action;
+        let is_shooting = **shoot_action;
 
-        if action_state.just_pressed(&PlayerAction::Reload) {
+        if is_reloading {
             gun.start_reload();
         }
 
         gun.tick_reload(time.delta());
 
-        if action_state.pressed(&PlayerAction::Shoot) && gun.cooldown.is_finished() {
+        if is_shooting && gun.cooldown.is_finished() {
             if gun.is_reloading {
                 continue;
             }
@@ -135,14 +136,14 @@ pub fn fire_gun_system(
             let filter = SpatialQueryFilter::default().with_excluded_entities([shooter_entity]);
 
             // Perform raycast from camera position (eye level)
-            let eye_height = 1.5; // Approximate player eye height
+            let eye_height = 1.5;
             let shoot_origin = pos.0 + Vec3::new(0.0, eye_height, 0.0);
 
             let primary_hit = spatial_query.cast_ray(
                 shoot_origin,
                 Dir3::new(direction).unwrap_or(Dir3::NEG_Z),
                 gun.range,
-                false, // also detect hits when the ray starts inside or very close to a collider
+                false,
                 &filter,
             );
 
@@ -171,14 +172,12 @@ pub fn fire_gun_system(
                     hit_entity, hit.distance, hit_point
                 );
 
-                // Send damage event - the health system will handle it
                 damage_writer.write(DamageEvent {
                     target: hit_entity,
                     amount: gun.damage,
                     source: Some(shooter_entity),
                 });
 
-                // Spawn hit event for further processing (effects, sounds, etc.)
                 commands.spawn(HitEvent {
                     damage: gun.damage,
                     hit_entity,
@@ -207,7 +206,7 @@ pub struct ProjectileGun {
 impl Default for ProjectileGun {
     fn default() -> Self {
         Self {
-            cooldown: Timer::from_seconds(0.3, TimerMode::Once), // ~3 shots/sec
+            cooldown: Timer::from_seconds(0.3, TimerMode::Once),
         }
     }
 }
@@ -227,18 +226,16 @@ pub fn fire_projectile_gun_system(
         &mut ProjectileGun,
         &Position,
         &Rotation,
-        &ActionState<PlayerAction>,
+        &Action<Shoot>,
     )>,
     time: Res<Time>,
 ) {
-    for (entity, mut gun, pos, rot, action_state) in query.iter_mut() {
+    for (entity, mut gun, pos, rot, shoot_action) in query.iter_mut() {
         gun.cooldown.tick(time.delta());
 
-        if action_state.disabled() {
-            continue;
-        }
+        let is_shooting = **shoot_action;
 
-        if action_state.pressed(&PlayerAction::Shoot) && gun.cooldown.is_finished() {
+        if is_shooting && gun.cooldown.is_finished() {
             let direction = rot.0 * Vec3::NEG_Z;
             commands.spawn((
                 Position(pos.0),
@@ -273,7 +270,6 @@ pub fn update_simple_projectiles(
 /// System to handle hit events and apply effects (sound, particles, etc.)
 pub fn process_hit_events(mut commands: Commands, hit_events: Query<(Entity, &HitEvent)>) {
     for (event_entity, hit_event) in hit_events.iter() {
-        // Here you can add visual/audio effects for hits
         info!(
             "Processing hit event: {} damage to {:?} from {:?} at {:?}",
             hit_event.damage, hit_event.hit_entity, hit_event.shooter, hit_event.hit_point
@@ -283,17 +279,15 @@ pub fn process_hit_events(mut commands: Commands, hit_events: Query<(Entity, &Hi
     }
 }
 
-// Death handling is managed by the health system
-
 #[cfg(test)]
 mod tests {
     use super::{Gun, HitEvent, fire_gun_system, shoot_direction};
     use avian3d::prelude::{Collider, Position, RigidBody, Rotation};
-    use bevy::prelude::{App, MinimalPlugins, Quat, Timer, TimerMode, Vec3};
-    use leafwing_input_manager::prelude::ActionState;
+    use bevy::prelude::{App, GamepadAxis, KeyCode, MinimalPlugins, Quat, Timer, TimerMode, Vec3};
+    use bevy_enhanced_input::prelude::*;
     use lightyear::prelude::ControlledBy;
+    use crate::inputs::{Move, PlayerActions, Reload, Shoot};
     use crate::components::health::HealthPlugin;
-    use crate::inputs::input::PlayerAction;
     use std::time::Duration;
 
     #[test]
@@ -364,21 +358,36 @@ mod tests {
         app.insert_resource(avian3d::dynamics::solver::SolverDiagnostics::default());
         app.insert_resource(avian3d::spatial_query::SpatialQueryDiagnostics::default());
         app.add_plugins(avian3d::prelude::PhysicsPlugins::default());
+        app.add_plugins(EnhancedInputPlugin)
+            .add_input_context::<PlayerActions>();
         app.add_plugins(HealthPlugin);
+        app.finish();
         app.add_systems(bevy::prelude::Update, fire_gun_system);
 
         let owner = app.world_mut().spawn_empty().id();
 
-        let mut action_state = ActionState::<PlayerAction>::default();
-        action_state.enable();
-        let shooter = app.world_mut().spawn((
+        let entity = app.world_mut().spawn((
+            PlayerActions,
+            actions!(PlayerActions[
+                (Action::<Move>::new(), bindings![
+                    (KeyCode::KeyW, SwizzleAxis::YXZ),
+                    (KeyCode::KeyA, Negate::all()),
+                    (KeyCode::KeyS, Negate::all(), SwizzleAxis::YXZ),
+                    KeyCode::KeyD,
+                    GamepadAxis::LeftStickX,
+                    (GamepadAxis::LeftStickY, SwizzleAxis::YXZ),
+                ]),
+                (Action::<Shoot>::new(), bindings![KeyCode::Space]),
+                (Action::<Reload>::new(), bindings![KeyCode::KeyR]),
+            ]),
+            Action::<Shoot>::default(),
+            Action::<Reload>::default(),
             Position::new(Vec3::new(0.0, 0.5, 0.0)),
             Rotation::default(),
             Gun {
                 cooldown: Timer::from_seconds(0.0, TimerMode::Once),
                 ..Gun::default()
             },
-            action_state,
             ControlledBy {
                 owner,
                 lifetime: Default::default(),
@@ -398,10 +407,10 @@ mod tests {
 
         {
             let world = app.world_mut();
-            let mut action_state = world
-                .get_mut::<ActionState<PlayerAction>>(shooter)
-                .expect("Shooter should keep ActionState");
-            action_state.press(&PlayerAction::Shoot);
+            let mut shoot_action = world
+                .get_mut::<Action<Shoot>>(entity)
+                .expect("Shooter should keep Action<Shoot>");
+            **shoot_action = true;
         }
 
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
@@ -425,7 +434,7 @@ mod tests {
 
         let shooter_gun = app
             .world()
-            .get::<Gun>(shooter)
+            .get::<Gun>(entity)
             .expect("Shooter should still have Gun after firing");
         assert_eq!(
             shooter_gun.ammo_in_magazine,

@@ -12,7 +12,7 @@ use bevy_inspector_egui::{
 
 use lightyear::prelude::{Controlled, Predicted};
 use shared::NetworkMode;
-use shared::inputs::input::PLAYER_CAPSULE_HEIGHT;
+use shared::inputs::PLAYER_CAPSULE_HEIGHT;
 use shared::protocol::PlayerId;
 
 use crate::ClientGameState;

@@ -2,7 +2,7 @@ use avian3d::prelude::{
     AngularDamping, Collider, Friction, LinearDamping, LockedAxes, Mass, Restitution, RigidBody,
 };
 
-use crate::inputs::input::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
+use crate::inputs::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
 use bevy::prelude::{Bundle, Color};
 
 #[derive(Bundle)]

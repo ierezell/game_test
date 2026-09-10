@@ -1,15 +1,14 @@
 use bevy::prelude::{
-    App, Assets, Commands, Mesh, Plugin, Query, Res, ResMut, Single, StandardMaterial, Update,
+    App, Assets, Commands, Mesh, Plugin, Query, Res, ResMut, StandardMaterial, Update, With,
 };
 use bevy::state::commands::CommandsStatesExt;
+use lightyear::prelude::{Client, MessageReceiver};
 use shared::{GymMode, NetworkMode};
 use shared::gym::setup_gym_level;
 use shared::level::generation::{LevelConfig, build_level_physics, generate_level};
 use shared::level::visuals::build_level_visuals;
 
 use crate::ClientGameState;
-use lightyear::prelude::{Confirmed, MessageReceiver};
-
 use shared::protocol::{LevelSeed, StartLoadingGameEvent};
 
 pub struct ClientGameCyclePlugin;
@@ -22,22 +21,22 @@ impl Plugin for ClientGameCyclePlugin {
 
 #[allow(clippy::too_many_arguments)]
 fn handle_world_creation(
-    mut receiver: Single<&mut MessageReceiver<StartLoadingGameEvent>>,
+    mut receiver_q: Query<&mut MessageReceiver<StartLoadingGameEvent>, With<Client>>,
     mut commands: Commands,
     gym_mode: Option<Res<GymMode>>,
     network_mode: Res<NetworkMode>,
     level_seed_query: Query<&LevelSeed>,
-    confirmed_level_seed_query: Query<&Confirmed<LevelSeed>>,
     meshes: ResMut<Assets<Mesh>>,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
     state: Res<bevy::prelude::State<ClientGameState>>,
 ) {
-    let has_level_seed = level_seed_query.iter().next().is_some()
-        || confirmed_level_seed_query.iter().next().is_some();
-
-    if receiver.has_messages() {
+    let has_level_seed = level_seed_query.iter().next().is_some();
+    let has_msg = receiver_q.iter().any(|r| r.has_messages());
+    for mut receiver in receiver_q.iter_mut() {
         receiver.receive().for_each(drop);
+    }
 
+    if has_msg {
         // First transition to Loading state
         bevy::log::info!("📨 Client received StartLoadingGameEvent, transitioning to Loading");
         commands.set_state(ClientGameState::Loading);
@@ -69,12 +68,6 @@ fn handle_world_creation(
             .iter()
             .next()
             .map(|seed| seed.seed)
-            .or_else(|| {
-                confirmed_level_seed_query
-                    .iter()
-                    .next()
-                    .map(|seed| seed.0.seed)
-            })
         {
             bevy::log::info!("🌱 Client generating level with seed: {}", seed);
 

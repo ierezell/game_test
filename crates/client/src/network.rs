@@ -9,12 +9,13 @@ use bevy::prelude::{
 pub struct ServerAddr(pub std::net::SocketAddr);
 use lightyear::prelude::{
     Authentication, Client, Connect, Connected, Connecting, Link, LocalAddr, PeerAddr,
-    PredictionManager, ReplicationReceiver, ReplicationSender, UdpIo,
+    ReplicationReceiver, ReplicationSender, UdpIo,
     client::{NetcodeClient, NetcodeConfig},
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use shared::debug::debug_println;
+use shared::protocol::{LevelSeed, LobbyState};
 use shared::{SERVER_ADDR, SHARED_SETTINGS};
 
 #[derive(Resource)]
@@ -81,15 +82,13 @@ fn start_connection_crossbeam(
         Linked, LocalId, PeerId, PingConfig, PingManager, RemoteId, ReplicationSender, Transport,
     };
 
-    // Clone the endpoint because we might need it again if we reconnect (though Res is borrowed)
-    // CrossbeamIo should be cloneable (channels are).
     let io = endpoint.0.clone();
 
     let client_entity = commands
         .spawn((
-            Client::default(),
-            Link::new(None),
-            Linked, // Crossbeam is always immediately linked
+            Client,
+            Link::default(),
+            Linked,
             io,
             Transport::default(),
             RemoteId(PeerId::Server),
@@ -99,7 +98,6 @@ fn start_connection_crossbeam(
             }),
             ReplicationSender::default(),
             ReplicationReceiver::default(),
-            PredictionManager::default(),
         ))
         .insert(Name::from(format!("Client {}", client_id.0)))
         .id();
@@ -130,8 +128,6 @@ fn start_connection_local(
         client_id.0
     ));
 
-    // Local mode (HostClient): Create a Client entity linked to the Server entity.
-    // Include explicit peer ids so the server can always resolve a RemoteId.
     use lightyear::prelude::{Link, LinkOf, LocalId, PeerId, RemoteId};
 
     let server_entity = match server_query.iter().next() {
@@ -146,15 +142,15 @@ fn start_connection_local(
 
     let client_entity = commands
         .spawn((
-            Client::default(),
+            Client,
             LinkOf {
                 server: server_entity,
             },
-            Link::new(None),
+            Link::default(),
             RemoteId(PeerId::Server),
             LocalId(PeerId::Netcode(client_id.0)),
             ReplicationSender::default(),
-            PredictionManager::default(),
+            ReplicationReceiver::default(),
         ))
         .insert(Name::from(format!("HostClient {}", client_id.0)))
         .id();
@@ -190,11 +186,9 @@ fn start_connection(
         client_id.0
     ));
 
-    // Use a different port range to avoid conflicts with server
     let client_port = 5000 + client_id.0 as u16;
     let client_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), client_port);
 
-    // Use dynamic server address for testing if available, otherwise use default
     let server_addr = if let Some(test_addr) = test_server_addr {
         test_addr.0
     } else {
@@ -227,15 +221,14 @@ fn start_connection(
             ));
             let client_entity = commands
                 .spawn((
-                    Client::default(),
+                    Client,
                     LocalAddr(client_addr),
                     PeerAddr(server_addr),
-                    Link::new(None),
+                    Link::default(),
                     ReplicationSender::default(),
                     ReplicationReceiver::default(),
                     netcode_client,
                     UdpIo::default(),
-                    PredictionManager::default(),
                 ))
                 .insert(Name::from(format!("Client {}", client_id.0)))
                 .id();
@@ -266,6 +259,8 @@ fn handle_client_disconnected(
     trigger: On<Remove, Connected>,
     mut commands: Commands,
     current_state: Res<State<ClientGameState>>,
+    lobby_state_query: Query<Entity, With<LobbyState>>,
+    level_seed_query: Query<Entity, With<LevelSeed>>,
 ) {
     let current_state_value = current_state.get();
     info!(
@@ -273,5 +268,54 @@ fn handle_client_disconnected(
         trigger.entity, current_state_value
     );
 
+    // Clean up stale replicated lobby and level seed entities
+    for entity in lobby_state_query.iter() {
+        commands.entity(entity).despawn();
+    }
+    for entity in level_seed_query.iter() {
+        commands.entity(entity).despawn();
+    }
+
     commands.set_state(ClientGameState::LocalMenu);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::handle_client_disconnected;
+    use crate::ClientGameState;
+    use bevy::prelude::{App, MinimalPlugins, State};
+    use bevy::state::app::AppExtStates;
+    use lightyear::prelude::{Connected, PeerId, RemoteId};
+    use shared::protocol::{LevelSeed, LobbyState};
+
+    #[test]
+    fn disconnect_cleans_replicated_entities_and_transitions_to_local_menu() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(bevy::state::app::StatesPlugin);
+        app.init_state::<ClientGameState>();
+        app.insert_state(ClientGameState::Lobby);
+        app.add_observer(handle_client_disconnected);
+
+        let lobby_ent = app.world_mut().spawn(LobbyState {
+            players: vec![1, 2],
+            host_id: 1,
+        }).id();
+        let seed_ent = app.world_mut().spawn(LevelSeed { seed: 42 }).id();
+
+        let client_ent = app.world_mut().spawn((Connected, RemoteId(PeerId::Server))).id();
+        app.update();
+
+        // Simulate disconnection by removing Connected
+        app.world_mut().entity_mut(client_ent).remove::<Connected>();
+        app.update();
+
+        let state = app.world().resource::<State<ClientGameState>>().get();
+        assert_eq!(state, &ClientGameState::LocalMenu);
+
+        let lobby_exists = app.world().get::<LobbyState>(lobby_ent).is_some();
+        let seed_exists = app.world().get::<LevelSeed>(seed_ent).is_some();
+        assert!(!lobby_exists, "LobbyState should be despawned on client disconnect");
+        assert!(!seed_exists, "LevelSeed should be despawned on client disconnect");
+    }
 }

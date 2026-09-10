@@ -25,18 +25,14 @@ fn test_movement_replicates_to_server_and_other_clients() {
 fn test_shooting_applies_damage_and_sets_death_state() {
     use avian3d::prelude::{Position, Rotation};
     use bevy::prelude::Update;
-    use leafwing_input_manager::prelude::ActionState;
+    use bevy_enhanced_input::prelude::*;
     use shared::components::health::Health;
     use shared::components::weapons::{Projectile, ProjectileGun, fire_projectile_gun_system};
-    use shared::inputs::input::PlayerAction;
+    use shared::inputs::Shoot;
 
     let mut app = App::new();
     app.add_plugins(MinimalPlugins);
     app.add_systems(Update, fire_projectile_gun_system);
-
-    let mut action_state = ActionState::<PlayerAction>::default();
-    action_state.enable();
-    action_state.press(&PlayerAction::Shoot);
 
     let shooter = app
         .world_mut()
@@ -46,7 +42,7 @@ fn test_shooting_applies_damage_and_sets_death_state() {
             },
             Position::new(Vec3::ZERO),
             Rotation::default(),
-            action_state,
+            Action::<Shoot>::new(),
         ))
         .id();
 
@@ -54,6 +50,13 @@ fn test_shooting_applies_damage_and_sets_death_state() {
         .world_mut()
         .spawn((Health::basic(), Position::new(Vec3::new(0.0, 1.5, -5.0))))
         .id();
+
+    {
+        let world = app.world_mut();
+        if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(shooter) {
+                **shoot_action = true;
+        }
+    }
 
     update_single_app(&mut app, Duration::from_millis(16));
     update_single_app(&mut app, Duration::from_millis(16));
@@ -179,12 +182,13 @@ fn test_projectile_spawn_and_lifecycle_in_playing_server_world() {
 fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
     use avian3d::prelude::{Collider, LinearVelocity, Position, RigidBody, Rotation};
     use bevy::prelude::{Commands, FixedUpdate, Quat, Resource, Update, Vec2};
-    use leafwing_input_manager::prelude::ActionState;
+    use bevy::ecs::schedule::IntoScheduleConfigs;
+    use bevy_enhanced_input::prelude::*;
     use lightyear::prelude::{ControlledBy, PeerId};
     use shared::components::health::Health;
     use shared::components::weapons::Gun;
-    use shared::inputs::input::PlayerAction;
     use shared::inputs::movement::GroundState;
+    use shared::inputs::{Jump, Move, PlayerActions, Reload, Shoot, Sprint};
     use shared::level::building::{
         ProceduralConnectionLightMarker, ProceduralEnemyMarker, ProceduralNavMeshMarker,
         build_procedural_runtime_content,
@@ -222,6 +226,7 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
     }
 
     let mut app = create_test_server_app_with_mode(false, NetworkMode::Local);
+    super::finish_if_needed(&mut app);
     let graph = generate_level(LevelConfig {
         seed: 404,
         target_zone_count: 14,
@@ -232,7 +237,14 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
     app.insert_resource(E2eLevelGraph(graph));
     app.insert_resource(E2eLevelLoaded::default());
     app.add_systems(Update, setup_level_once);
-    app.add_systems(FixedUpdate, integrate_position_from_velocity);
+    app.add_systems(
+        FixedUpdate,
+        (
+            shared::inputs::movement::apply_movement,
+            integrate_position_from_velocity,
+        )
+            .chain(),
+    );
 
     let actor_count = 6usize;
     let mut shooter_entities = Vec::with_capacity(actor_count);
@@ -240,11 +252,6 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
 
     for index in 0..actor_count {
         let owner = app.world_mut().spawn_empty().id();
-
-        let mut action_state = ActionState::<PlayerAction>::default();
-        action_state.enable();
-        action_state.press(&PlayerAction::Shoot);
-        action_state.set_axis_pair(&PlayerAction::Move, Vec2::new(0.0, 1.0));
 
         let shooter_position = Vec3::new(index as f32 * 2.5, 1.0, 8.0);
         let shooter = app
@@ -267,13 +274,29 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
                     ),
                     ..Gun::default()
                 },
-                action_state,
+                PlayerActions,
+                Action::<Shoot>::new(),
+                Action::<Move>::new(),
+                Action::<Jump>::new(),
+                Action::<Sprint>::new(),
+                Action::<Reload>::new(),
                 ControlledBy {
                     owner,
                     lifetime: Default::default(),
                 },
             ))
             .id();
+
+        {
+            let world = app.world_mut();
+            if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(shooter) {
+                **shoot_action = true;
+            }
+            if let Some(mut move_action) = world.get_mut::<Action<Move>>(shooter) {
+                **move_action = Vec2::new(0.0, 1.0);
+            }
+        }
+
         shooter_entities.push(shooter);
 
         let target = app
@@ -359,10 +382,11 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
 fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
     use avian3d::prelude::{LinearVelocity, Position, Rotation};
     use bevy::prelude::{Commands, FixedUpdate, Quat, Resource, Update, Vec2};
-    use leafwing_input_manager::prelude::ActionState;
+    use bevy::ecs::schedule::IntoScheduleConfigs;
+    use bevy_enhanced_input::prelude::*;
     use lightyear::prelude::{ControlledBy, PeerId};
-    use shared::inputs::input::PlayerAction;
     use shared::inputs::movement::GroundState;
+    use shared::inputs::{Move, PlayerActions};
     use shared::level::building::{
         ProceduralEnemyMarker, ProceduralNavMeshMarker, build_procedural_runtime_content,
     };
@@ -399,6 +423,7 @@ fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
     }
 
     let mut app = create_test_server_app_with_mode(false, NetworkMode::Local);
+    super::finish_if_needed(&mut app);
     let graph = generate_level(LevelConfig {
         seed: 905,
         target_zone_count: 16,
@@ -409,16 +434,20 @@ fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
     app.insert_resource(E2eLevelGraph(graph));
     app.insert_resource(E2eLevelLoaded::default());
     app.add_systems(Update, setup_level_once);
-    app.add_systems(FixedUpdate, integrate_position_from_velocity);
+    app.add_systems(
+        FixedUpdate,
+        (
+            shared::inputs::movement::apply_movement,
+            integrate_position_from_velocity,
+        )
+            .chain(),
+    );
 
     let actor_count = 10usize;
     let mut player_entities = Vec::with_capacity(actor_count);
 
     for index in 0..actor_count {
         let owner = app.world_mut().spawn_empty().id();
-        let mut action_state = ActionState::<PlayerAction>::default();
-        action_state.enable();
-        action_state.set_axis_pair(&PlayerAction::Move, Vec2::new(0.0, 1.0));
 
         let entity = app
             .world_mut()
@@ -433,13 +462,21 @@ fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
                     ground_distance: 0.0,
                     ground_tick: 1,
                 },
-                action_state,
+                PlayerActions,
+                Action::<Move>::new(),
                 ControlledBy {
                     owner,
                     lifetime: Default::default(),
                 },
             ))
             .id();
+
+        {
+            let world = app.world_mut();
+            if let Some(mut move_action) = world.get_mut::<Action<Move>>(entity) {
+                **move_action = Vec2::new(0.0, 1.0);
+            }
+        }
 
         player_entities.push(entity);
     }
@@ -481,4 +518,176 @@ fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
         );
     }
     assert!(checked_enemies >= 2, "Expected multiple procedural enemies");
+}
+
+#[test]
+fn test_e2e_full_game_cycle() {
+    use avian3d::prelude::{Collider, LinearVelocity, Position, RigidBody, Rotation};
+    use bevy::prelude::{Commands, FixedUpdate, Quat, Resource, Update, Vec2};
+    use bevy::ecs::schedule::IntoScheduleConfigs;
+    use bevy_enhanced_input::prelude::*;
+    use lightyear::prelude::{ControlledBy, PeerId};
+    use shared::components::health::Health;
+    use shared::components::weapons::Gun;
+    use shared::inputs::movement::GroundState;
+    use shared::inputs::{Jump, Move, PlayerActions, Reload, Shoot, Sprint};
+    use shared::level::building::{
+        ProceduralConnectionLightMarker, ProceduralEnemyMarker, ProceduralNavMeshMarker,
+        build_procedural_runtime_content,
+    };
+    use shared::level::generation::{LevelConfig, LevelGraph, build_level_physics, generate_level};
+    use shared::protocol::PlayerId;
+
+    #[derive(Resource)]
+    struct E2eLevelGraph(LevelGraph);
+
+    #[derive(Resource, Default)]
+    struct E2eLevelLoaded(bool);
+
+    fn setup_level_once(
+        mut commands: Commands,
+        level_graph: bevy::prelude::Res<E2eLevelGraph>,
+        mut loaded: bevy::prelude::ResMut<E2eLevelLoaded>,
+    ) {
+        if loaded.0 {
+            return;
+        }
+
+        build_level_physics(commands.reborrow(), &level_graph.0);
+        build_procedural_runtime_content(&mut commands, &level_graph.0);
+        loaded.0 = true;
+    }
+
+    fn integrate_position_from_velocity(
+        time: bevy::prelude::Res<bevy::prelude::Time>,
+        mut query: bevy::prelude::Query<(&mut Position, &LinearVelocity)>,
+    ) {
+        for (mut position, velocity) in &mut query {
+            position.0 += velocity.0 * time.delta_secs();
+        }
+    }
+
+    let mut app = create_test_server_app_with_mode(false, NetworkMode::Local);
+    super::finish_if_needed(&mut app);
+    let graph = generate_level(LevelConfig {
+        seed: 42,
+        target_zone_count: 10,
+        min_zone_spacing: 30.0,
+        max_depth: 6,
+    });
+
+    app.insert_resource(E2eLevelGraph(graph));
+    app.insert_resource(E2eLevelLoaded::default());
+    app.add_systems(Update, setup_level_once);
+    app.add_systems(
+        FixedUpdate,
+        (
+            shared::inputs::movement::apply_movement,
+            integrate_position_from_velocity,
+        )
+            .chain(),
+    );
+
+    let owner = app.world_mut().spawn_empty().id();
+
+    let shooter = app
+        .world_mut()
+        .spawn((
+            PlayerId(PeerId::Netcode(1)),
+            Position::new(Vec3::new(0.0, 1.0, 8.0)),
+            Rotation::from(Quat::IDENTITY),
+            LinearVelocity::default(),
+            GroundState {
+                is_grounded: true,
+                ground_normal: Vec3::Y,
+                ground_distance: 0.0,
+                ground_tick: 1,
+            },
+            Gun {
+                cooldown: bevy::prelude::Timer::from_seconds(
+                    0.0,
+                    bevy::prelude::TimerMode::Once,
+                ),
+                ..Gun::default()
+            },
+            PlayerActions,
+            Action::<Shoot>::new(),
+            Action::<Move>::new(),
+            Action::<Jump>::new(),
+            Action::<Sprint>::new(),
+            Action::<Reload>::new(),
+            ControlledBy {
+                owner,
+                lifetime: Default::default(),
+            },
+        ))
+        .id();
+
+    {
+        let world = app.world_mut();
+        if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(shooter) {
+            **shoot_action = true;
+        }
+        if let Some(mut move_action) = world.get_mut::<Action<Move>>(shooter) {
+            **move_action = Vec2::new(0.0, 1.0);
+        }
+    }
+
+    let target = app
+        .world_mut()
+        .spawn((
+            Health::basic(),
+            Position::new(Vec3::new(0.0, 2.5, 3.0)),
+            Rotation::from(Quat::IDENTITY),
+            Collider::cuboid(0.6, 1.0, 0.6),
+            RigidBody::Static,
+        ))
+        .id();
+
+    for _ in 0..180 {
+        update_single_app(&mut app, Duration::from_millis(16));
+    }
+
+    let world = app.world_mut();
+
+    let navmesh_count = world
+        .query_filtered::<bevy::prelude::Entity, bevy::prelude::With<ProceduralNavMeshMarker>>()
+        .iter(world)
+        .count();
+    assert!(navmesh_count >= 1, "Navmesh should be generated");
+
+    let enemy_count = world
+        .query_filtered::<bevy::prelude::Entity, bevy::prelude::With<ProceduralEnemyMarker>>()
+        .iter(world)
+        .count();
+    assert!(enemy_count >= 1, "Enemies should spawn");
+
+    let light_count = world
+        .query_filtered::<
+            bevy::prelude::Entity,
+            bevy::prelude::With<ProceduralConnectionLightMarker>,
+        >()
+        .iter(world)
+        .count();
+    assert!(light_count >= 1, "Connection lights should spawn");
+
+    let shooter_pos = world
+        .get::<Position>(shooter)
+        .expect("Shooter should exist")
+        .0;
+    assert!(
+        shooter_pos.z < 6.0,
+        "Shooter should have moved forward (z={:.2})",
+        shooter_pos.z
+    );
+
+    let target_health = world
+        .get::<Health>(target)
+        .expect("Target should exist")
+        .current;
+    assert!(
+        target_health < Health::basic().max,
+        "Target should have taken damage (health={:.2})",
+        target_health
+    );
 }

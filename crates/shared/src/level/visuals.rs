@@ -30,7 +30,7 @@ fn spawn_zone_lighting(commands: &mut Commands, zone: &Zone) {
             intensity: 42000.0,
             range: zone.size.x.max(zone.size.z) * 0.8,
             radius: 1.5,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_translation(zone.position + Vec3::new(0.0, zone.size.y * 0.4, 0.0)),
@@ -56,7 +56,7 @@ fn spawn_zone_lighting(commands: &mut Commands, zone: &Zone) {
                     intensity: 3800.0,
                     range: 12.0,
                     radius: 0.35,
-                    shadows_enabled: false,
+                    shadow_maps_enabled: false,
                     ..default()
                 },
                 Transform::from_translation(light_position),

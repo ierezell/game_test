@@ -1,7 +1,7 @@
 use avian3d::prelude::*;
 use bevy::ecs::query::QueryFilter;
 use bevy::prelude::*;
-use lightyear::prelude::{InterpolationTarget, NetworkTarget, Replicate};
+use lightyear::prelude::{NetworkTarget, Replicate};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use vleue_navigator::prelude::{ManagedNavMesh, NavMesh, NavMeshStatus};
@@ -25,6 +25,7 @@ pub struct SimpleNavigationAgent {
     pub speed: f32,
     pub arrival_threshold: f32,
     pub current_target: Option<Vec3>,
+    pub path_waypoints: Vec<Vec3>,
 }
 
 #[derive(Component, Clone, Debug, Default)]
@@ -54,6 +55,7 @@ impl SimpleNavigationAgent {
             speed,
             arrival_threshold: 1.0,
             current_target: None,
+            path_waypoints: Vec::new(),
         }
     }
 
@@ -62,6 +64,7 @@ impl SimpleNavigationAgent {
             speed: 3.0,
             arrival_threshold: 1.5,
             current_target: None,
+            path_waypoints: Vec::new(),
         }
     }
 }
@@ -143,6 +146,8 @@ fn patrol_system(
         &Position,
     )>,
     time: Res<Time>,
+    navmeshes: Option<Res<Assets<vleue_navigator::NavMesh>>>,
+    managed_navmeshes: Query<&vleue_navigator::prelude::ManagedNavMesh>,
 ) {
     for (entity, mut nav_agent, mut patrol_state, patrol_route, position) in agents.iter_mut() {
         if nav_agent.current_target.is_none() {
@@ -173,14 +178,72 @@ fn patrol_system(
                 && let Some((next_target, next_index)) = patrol_route
                     .get_next_target(patrol_state.current_target_index, &mut patrol_state.forward)
             {
-                debug!(
-                    "Entity {:?}: Moving to next patrol target: {:?} (index {})",
-                    entity, next_target, next_index
-                );
+                // Attempt to generate a path using the NavMesh
+                let mut path_found = false;
+                if let (Some(navmeshes), Ok(managed_navmesh)) =
+                    (&navmeshes, managed_navmeshes.single())
+                {
+                    if let Some(navmesh) = navmeshes.get(&**managed_navmesh) {
+                        // Check if the target is actually valid/accessible on the navmesh
+                        if navmesh.transformed_is_in_mesh(next_target) {
+                            if let Some(path) = navmesh.transformed_path(position.0, next_target) {
+                                debug!(
+                                    "Entity {:?}: Found NavMesh path with {} waypoints to {:?} (index {})",
+                                    entity,
+                                    path.path.len(),
+                                    next_target,
+                                    next_index
+                                );
 
-                nav_agent.current_target = Some(next_target);
-                patrol_state.current_target_index = next_index;
-                patrol_state.wait_timer = 0.0;
+                                nav_agent.current_target = Some(next_target);
+                                // Reverse the waypoints so we can pop them off the back efficiently during movement
+                                nav_agent.path_waypoints = path.path;
+                                nav_agent.path_waypoints.reverse();
+                                // Remove the first waypoint if it's too close to the current position
+                                if let Some(first_wp) = nav_agent.path_waypoints.last()
+                                    && position.0.distance(*first_wp) < 0.5
+                                {
+                                    nav_agent.path_waypoints.pop();
+                                }
+
+                                patrol_state.current_target_index = next_index;
+                                patrol_state.wait_timer = 0.0;
+                                path_found = true;
+                            } else {
+                                warn!(
+                                    "Entity {:?}: No path to accessible target {:?}",
+                                    entity, next_target
+                                );
+                            }
+                        } else {
+                            warn!(
+                                "Entity {:?}: Target {:?} is NOT accessible on the NavMesh! Skipping...",
+                                entity, next_target
+                            );
+                            // If it's inaccessible, we skip this point and immediately move to the next one to avoid getting stuck
+                            patrol_state.current_target_index = next_index;
+                            patrol_state.wait_timer = patrol_state.wait_duration; // Trigger next cycle immediately
+                            path_found = true; // Prevent fallback execution
+                        }
+                    } else {
+                        warn!("Entity {:?}: NavMesh asset not loaded yet.", entity);
+                    }
+                } else {
+                    warn!("Entity {:?}: ManagedNavMesh not found.", entity);
+                }
+
+                if !path_found {
+                    // Fallback to straight line logic if no path could be generated
+                    debug!(
+                        "Entity {:?}: Fallback! Moving straight to next patrol target: {:?} (index {})",
+                        entity, next_target, next_index
+                    );
+
+                    nav_agent.current_target = Some(next_target);
+                    nav_agent.path_waypoints.clear();
+                    patrol_state.current_target_index = next_index;
+                    patrol_state.wait_timer = 0.0;
+                }
             }
         } else {
             patrol_state.wait_timer = 0.0;
@@ -344,8 +407,6 @@ pub fn setup_patrol(commands: &mut Commands, entity: Entity, patrol_points: Vec<
         PatrolState::default(),
         patrol_route,
         Replicate::to_clients(NetworkTarget::All),
-        // Add interpolation for smooth NPC movement on clients
-        InterpolationTarget::to_clients(NetworkTarget::All),
     ));
 
     info!(
@@ -474,6 +535,7 @@ mod tests {
                     speed: 4.0,
                     arrival_threshold: 0.5,
                     current_target: Some(target),
+                    path_waypoints: Vec::new(),
                 },
                 NavigationPathState::default(),
             ))

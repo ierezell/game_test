@@ -97,19 +97,19 @@ pub fn spawn_procedural_connection_lights(commands: &mut Commands, level_graph: 
 }
 
 fn patrol_points_for_zone(zone: &Zone) -> Vec<Vec3> {
-	let half_x = (zone.size.x * 0.30).min(12.0);
-	let half_z = (zone.size.z * 0.30).min(12.0);
-	let offsets = [
-		Vec3::new(-half_x, 1.0, -half_z),
-		Vec3::new(half_x, 1.0, -half_z),
-		Vec3::new(half_x, 1.0, half_z),
-		Vec3::new(-half_x, 1.0, half_z),
-	];
+    let half_x = (zone.size.x * 0.30).min(12.0);
+    let half_z = (zone.size.z * 0.30).min(12.0);
+    let offsets = [
+        Vec3::new(-half_x, 1.0, -half_z),
+        Vec3::new(half_x, 1.0, -half_z),
+        Vec3::new(half_x, 1.0, half_z),
+        Vec3::new(-half_x, 1.0, half_z),
+    ];
 
-	offsets
-		.iter()
-		.map(|offset| zone.position + zone.rotation * *offset)
-		.collect()
+    offsets
+        .iter()
+        .map(|offset| zone.position + zone.rotation * *offset)
+        .collect()
 }
 
 fn enemy_speed_for_zone(zone_type: ZoneType) -> f32 {

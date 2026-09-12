@@ -16,7 +16,7 @@
         "stdio"
       ],
       "environment": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "***REMOVED***",
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "",
         "GITHUB_READ_ONLY": "1"
       },
       "enabled": true

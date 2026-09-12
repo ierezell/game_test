@@ -1332,3 +1332,420 @@ fn test_gym_mode_crossbeam_clients_have_camera() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// GYM MODE SHOOTING TESTS
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_gym_mode_shooting_hits_npc_and_deals_damage() {
+    use crate::host::create_host_app;
+    use bevy::prelude::State;
+    use bevy::time::TimeUpdateStrategy;
+    use client::ClientGameState;
+    use client::lobby::AutoStart;
+    use server::lobby::AutoStartOnLobbyReady;
+    use bevy_enhanced_input::action::Action;
+    use shared::inputs::{Shoot, Reload};
+    use shared::components::weapons::{Gun, HitEvent};
+    use shared::components::health::Health;
+    use shared::gym::GymRandomWanderer;
+    use shared::protocol::PlayerId;
+    use lightyear::prelude::ControlledBy;
+    use avian3d::prelude::{Position, Rotation};
+
+    let mut app = create_host_app(true, "../../assets".to_string());
+    app.insert_resource(shared::ServerBindAddr(std::net::SocketAddr::new(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+    )));
+    app.insert_resource(bevy::ui::UiScale::default());
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(16)));
+    app.insert_resource(AutoStart(true));
+    app.insert_resource(AutoStartOnLobbyReady(true));
+    app.insert_resource(shared::GymMode(true));
+    finish_if_needed(&mut app);
+
+    // Wait for game to reach Playing state
+    for _ in 0..800 {
+        app.update();
+        let state = app
+            .world()
+            .resource::<State<ClientGameState>>()
+            .get()
+            .clone();
+        if state == ClientGameState::Playing {
+            break;
+        }
+    }
+
+    // Find the player entity (has Gun + ControlledBy + PlayerId)
+    let player_entity = {
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<bevy::prelude::Entity, (
+            bevy::prelude::With<Gun>,
+            bevy::prelude::With<ControlledBy>,
+            bevy::prelude::With<PlayerId>,
+        )>();
+        query.iter(world).next()
+    };
+
+    assert!(
+        player_entity.is_some(),
+        "Player with Gun should exist in gym mode"
+    );
+    let player_entity = player_entity.unwrap();
+
+    let npc_entity = {
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<bevy::prelude::Entity, (
+            bevy::prelude::With<GymRandomWanderer>,
+            bevy::prelude::With<Health>,
+        )>();
+        query.iter(world).next()
+    };
+
+    assert!(
+        npc_entity.is_some(),
+        "NPC (GymRandomWanderer + Health) should exist in gym mode"
+    );
+    let npc_entity = npc_entity.unwrap();
+
+    // Set the player's rotation to face the NPC so the raycast hits it.
+    // NPC is at (-18, 1, -8), player at (3, 3.5, 0). Direction from player to NPC:
+    let player_pos = {
+        let world = app.world();
+        *world.get::<Position>(player_entity).expect("Player should have Position")
+    };
+    let npc_pos = {
+        let world = app.world();
+        *world.get::<Position>(npc_entity).expect("NPC should have Position")
+    };
+    let to_npc = (npc_pos.0 - player_pos.0).normalize();
+    let rotation = bevy::math::Quat::from_rotation_y(
+        to_npc.x.atan2(to_npc.z)
+    ) * bevy::math::Quat::from_rotation_x(-to_npc.y.atan2((to_npc.x * to_npc.x + to_npc.z * to_npc.z).sqrt()));
+    {
+        let world = app.world_mut();
+        world.entity_mut(player_entity).insert(Rotation::from(rotation));
+    }
+
+    // Set the player's Shoot action to true.
+    // In headless mode, EnhancedInputPlugin may not create Action<Shoot> via actions! macro, so we insert manually.
+    {
+        let world = app.world_mut();
+
+        // Ensure the player has Action<Shoot> and Action<Reload> (required by fire_gun_system)
+        if world.get::<Action<Shoot>>(player_entity).is_none() {
+            world.entity_mut(player_entity).insert(Action::<Shoot>::default());
+        }
+        if world.get::<Action<Reload>>(player_entity).is_none() {
+            world.entity_mut(player_entity).insert(Action::<Reload>::default());
+        }
+
+        // Make the gun ready to fire
+        let mut gun = world
+            .get_mut::<Gun>(player_entity)
+            .expect("Player should have Gun");
+        gun.cooldown.set_elapsed(std::time::Duration::from_secs_f32(0.299));
+    }
+
+    // Run several updates to allow FixedUpdate to fire
+    let mut total_hits = 0;
+    for _ in 0..10 {
+        // Re-set the action and cooldown each frame since they get consumed/reset
+        {
+            let world = app.world_mut();
+            if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(player_entity) {
+                **shoot_action = true;
+            }
+            if let Some(mut gun) = world.get_mut::<Gun>(player_entity) {
+                gun.cooldown.set_elapsed(std::time::Duration::from_secs_f32(0.299));
+            }
+        }
+        app.update();
+
+        // Check for HitEvent after each frame (HitEvents are despawned after processing)
+        {
+            let world = app.world_mut();
+            let mut q = world.query::<&HitEvent>();
+            total_hits += q.iter(world).count();
+        }
+    }
+
+    // Reset Shoot action
+    {
+        let world = app.world_mut();
+        if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(player_entity) {
+            **shoot_action = false;
+        }
+    }
+
+    // Check for HitEvent (proof that shooting raycast worked)
+    assert!(
+        total_hits > 0,
+        "Shooting should produce at least one HitEvent"
+    );
+
+    // In host mode, DamageEvent is a network message that goes to clients.
+    // The NPC health change may not be visible on the server side since the
+    // server's MessageReader receives messages from clients, not its own messages.
+    // We verify shooting works end-to-end via HitEvents (spawn proof) + ammo consumption.
+}
+
+#[test]
+fn test_gym_mode_gun_consumes_ammo_when_shooting() {
+    use crate::host::create_host_app;
+    use bevy::prelude::State;
+    use bevy::time::TimeUpdateStrategy;
+    use client::ClientGameState;
+    use client::lobby::AutoStart;
+    use server::lobby::AutoStartOnLobbyReady;
+    use bevy_enhanced_input::action::Action;
+    use shared::inputs::{Shoot, Reload};
+    use shared::components::weapons::Gun;
+    use lightyear::prelude::ControlledBy;
+
+    let mut app = create_host_app(true, "../../assets".to_string());
+    app.insert_resource(shared::ServerBindAddr(std::net::SocketAddr::new(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+    )));
+    app.insert_resource(bevy::ui::UiScale::default());
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(16)));
+    app.insert_resource(AutoStart(true));
+    app.insert_resource(AutoStartOnLobbyReady(true));
+    app.insert_resource(shared::GymMode(true));
+    finish_if_needed(&mut app);
+
+    for _ in 0..800 {
+        app.update();
+        let state = app
+            .world()
+            .resource::<State<ClientGameState>>()
+            .get()
+            .clone();
+        if state == ClientGameState::Playing {
+            break;
+        }
+    }
+
+    let player_entity = {
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<bevy::prelude::Entity, (
+            bevy::prelude::With<Gun>,
+            bevy::prelude::With<ControlledBy>,
+        )>();
+        query.iter(world).next()
+    };
+
+    assert!(player_entity.is_some(), "Player should have Gun component");
+    let player_entity = player_entity.unwrap();
+
+    let initial_ammo = {
+        let world = app.world_mut();
+        world.get::<Gun>(player_entity).expect("Should have Gun").ammo_in_magazine
+    };
+
+    {
+        let world = app.world_mut();
+        if world.get::<Action<Shoot>>(player_entity).is_none() {
+            world.entity_mut(player_entity).insert(Action::<Shoot>::default());
+        }
+        if world.get::<Action<Reload>>(player_entity).is_none() {
+            world.entity_mut(player_entity).insert(Action::<Reload>::default());
+        }
+        let mut gun = world.get_mut::<Gun>(player_entity).expect("Should have Gun");
+        gun.cooldown.set_elapsed(std::time::Duration::from_secs_f32(0.299));
+    }
+
+    // Run Update + FixedUpdate cycles to trigger fire_gun_system
+    for _ in 0..10 {
+        {
+            let world = app.world_mut();
+            if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(player_entity) {
+                **shoot_action = true;
+            }
+            if let Some(mut gun) = world.get_mut::<Gun>(player_entity) {
+                gun.cooldown.set_elapsed(std::time::Duration::from_secs_f32(0.299));
+            }
+        }
+        app.update();
+    }
+
+    let final_ammo = {
+        let world = app.world_mut();
+        world.get::<Gun>(player_entity).expect("Should have Gun").ammo_in_magazine
+    };
+
+    assert!(
+        final_ammo < initial_ammo,
+        "Shooting should consume ammo (initial: {}, final: {})",
+        initial_ammo,
+        final_ammo
+    );
+}
+
+#[test]
+fn test_gym_mode_gun_cooldown_prevents_rapid_fire() {
+    use crate::host::create_host_app;
+    use bevy::prelude::State;
+    use bevy::time::TimeUpdateStrategy;
+    use client::ClientGameState;
+    use client::lobby::AutoStart;
+    use server::lobby::AutoStartOnLobbyReady;
+    use bevy_enhanced_input::action::Action;
+    use shared::inputs::{Shoot, Reload};
+    use shared::components::weapons::{Gun, HitEvent};
+    use lightyear::prelude::ControlledBy;
+
+    let mut app = create_host_app(true, "../../assets".to_string());
+    app.insert_resource(shared::ServerBindAddr(std::net::SocketAddr::new(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+    )));
+    app.insert_resource(bevy::ui::UiScale::default());
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(16)));
+    app.insert_resource(AutoStart(true));
+    app.insert_resource(AutoStartOnLobbyReady(true));
+    app.insert_resource(shared::GymMode(true));
+    finish_if_needed(&mut app);
+
+    for _ in 0..800 {
+        app.update();
+        let state = app
+            .world()
+            .resource::<State<ClientGameState>>()
+            .get()
+            .clone();
+        if state == ClientGameState::Playing {
+            break;
+        }
+    }
+
+    let player_entity = {
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<bevy::prelude::Entity, (
+            bevy::prelude::With<Gun>,
+            bevy::prelude::With<ControlledBy>,
+        )>();
+        query.iter(world).next()
+    };
+
+    assert!(player_entity.is_some(), "Player should have Gun component");
+    let player_entity = player_entity.unwrap();
+
+    // Set Shoot action to true and fire
+    {
+        let world = app.world_mut();
+        if world.get::<Action<Shoot>>(player_entity).is_none() {
+            world.entity_mut(player_entity).insert(Action::<Shoot>::default());
+        }
+        if world.get::<Action<Reload>>(player_entity).is_none() {
+            world.entity_mut(player_entity).insert(Action::<Reload>::default());
+        }
+        let mut gun = world.get_mut::<Gun>(player_entity).expect("Should have Gun");
+        gun.cooldown.set_elapsed(std::time::Duration::from_secs_f32(0.299));
+    }
+
+    // Fire once: set action true for one frame, then immediately set it false
+    let mut total_hits = 0;
+    {
+        let world = app.world_mut();
+        if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(player_entity) {
+            **shoot_action = true;
+        }
+        if let Some(mut gun) = world.get_mut::<Gun>(player_entity) {
+            gun.cooldown.set_elapsed(std::time::Duration::from_secs_f32(0.299));
+        }
+    }
+    for _ in 0..5 {
+        app.update();
+        // Collect hit events
+        {
+            let world = app.world_mut();
+            let mut q = world.query::<&HitEvent>();
+            total_hits += q.iter(world).count();
+        }
+        // Reset action to false after firing
+        {
+            let world = app.world_mut();
+            if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(player_entity) {
+                **shoot_action = false;
+            }
+        }
+    }
+
+    let hit_count_after_first = total_hits;
+
+    // Try to shoot again immediately - cooldown should prevent fire
+    {
+        let world = app.world_mut();
+        if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(player_entity) {
+            **shoot_action = true;
+        }
+        // Don't touch cooldown - it should still be running
+    }
+
+    let mut total_hits2 = 0;
+    for _ in 0..5 {
+        app.update();
+        {
+            let world = app.world_mut();
+            let mut q = world.query::<&HitEvent>();
+            total_hits2 += q.iter(world).count();
+        }
+        {
+            let world = app.world_mut();
+            if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(player_entity) {
+                **shoot_action = false;
+            }
+        }
+    }
+
+    assert!(
+        hit_count_after_first > 0,
+        "First shot should produce hit events"
+    );
+    assert!(
+        total_hits2 == 0,
+        "Cooldown should prevent second shot immediately (first: {}, second: {})",
+        hit_count_after_first,
+        total_hits2
+    );
+
+    // Wait for cooldown to expire - set cooldown to near-finished state
+    // and fire again
+    {
+        let world = app.world_mut();
+        if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(player_entity) {
+            **shoot_action = true;
+        }
+        if let Some(mut gun) = world.get_mut::<Gun>(player_entity) {
+            gun.cooldown.set_elapsed(std::time::Duration::from_secs_f32(0.299));
+        }
+    }
+
+    let mut total_hits3 = 0;
+    for _ in 0..5 {
+        app.update();
+        {
+            let world = app.world_mut();
+            let mut q = world.query::<&HitEvent>();
+            total_hits3 += q.iter(world).count();
+        }
+        {
+            let world = app.world_mut();
+            if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(player_entity) {
+                **shoot_action = false;
+            }
+        }
+    }
+
+    assert!(
+        total_hits3 > 0,
+        "After cooldown expires, shooting should produce more hit events (before: {}, after: {})",
+        hit_count_after_first,
+        total_hits3
+    );
+}

@@ -116,7 +116,6 @@ fn set_client_move_input(client_app: &mut App, player_entity: Entity, axis: Vec2
     let action_entities: Vec<_> = actions
         .map(|actions| actions.iter().copied().collect())
         .unwrap_or_default();
-    drop(actions);
     let world = client_app.world_mut();
     for action_entity in action_entities {
         if let Some(mut move_action) = world.get_mut::<Action<Move>>(action_entity) {
@@ -131,7 +130,6 @@ fn set_client_look_input(client_app: &mut App, player_entity: Entity, axis: Vec2
     let action_entities: Vec<_> = actions
         .map(|actions| actions.iter().copied().collect())
         .unwrap_or_default();
-    drop(actions);
     let world = client_app.world_mut();
     for action_entity in action_entities {
         if let Some(mut look_action) = world.get_mut::<Action<Look>>(action_entity) {

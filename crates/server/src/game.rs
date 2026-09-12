@@ -4,14 +4,14 @@ use bevy::prelude::{
 };
 
 use lightyear::prelude::{RemoteId, server::ClientOf};
-use shared::level::visuals::build_level_visuals;
+use shared::level::{
+    building::build_procedural_runtime_content,
+    generation::{LevelConfig, build_level_physics, generate_level},
+    prefabs::build_prefab_level,
+};
 use shared::{
     GymMode,
     gym::setup_gym_level,
-    level::{
-        building::build_procedural_runtime_content,
-        generation::{LevelConfig, build_level_physics, generate_level},
-    },
     protocol::{LevelSeed, LobbyState},
 };
 
@@ -54,10 +54,10 @@ pub fn generate_and_build_level(
         build_level_physics(commands.reborrow(), &level_graph);
 
         if let (Some(mesh_assets), Some(mat_assets)) = (meshes, materials) {
-            build_level_visuals(
+            build_prefab_level(
                 commands.reborrow(),
                 mesh_assets,
-                Some(mat_assets),
+                mat_assets,
                 &level_graph,
             );
         }

@@ -606,10 +606,13 @@ fn adjacency_list(graph: &LevelGraph) -> HashMap<ZoneId, Vec<ZoneId>> {
         adj.entry(*zone_id).or_default();
     }
     for conn in &graph.connections {
-        adj.entry(conn.from_zone).or_default().push(conn.to_zone);
-        adj.entry(conn.to_zone).or_default().push(conn.from_zone);
-        if !adj[&conn.from_zone].contains(&conn.to_zone) {
-            adj.entry(conn.from_zone).or_default().push(conn.to_zone);
+        let entry = adj.entry(conn.from_zone).or_default();
+        if !entry.contains(&conn.to_zone) {
+            entry.push(conn.to_zone);
+        }
+        let entry = adj.entry(conn.to_zone).or_default();
+        if !entry.contains(&conn.from_zone) {
+            entry.push(conn.from_zone);
         }
     }
     adj
@@ -1047,6 +1050,9 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
         level_graph.zones.len()
     );
 
+    let wall_height = 10.0;
+    let floor_thickness = 1.0;
+
     let mut min_x = f32::INFINITY;
     let mut max_x = f32::NEG_INFINITY;
     let mut min_z = f32::INFINITY;
@@ -1060,7 +1066,6 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
         max_z = max_z.max(zone.position.z + zone.size.z * 0.5);
 
         // Floor collider
-        let floor_thickness = 1.0;
         let floor_position = zone.position + Vec3::new(0.0, -floor_thickness / 2.0, 0.0);
         commands.spawn((
             RigidBody::Static,
@@ -1069,6 +1074,18 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
             Rotation::from(zone.rotation),
             Transform::from_translation(floor_position).with_rotation(zone.rotation),
             Name::new(format!("Physics_Floor_Zone_{}", zone.id.0)),
+        ));
+
+        // Ceiling collider (prevents players from walking above walls)
+        let ceiling_position =
+            zone.position + Vec3::new(0.0, wall_height + floor_thickness / 2.0, 0.0);
+        commands.spawn((
+            RigidBody::Static,
+            Collider::cuboid(zone.size.x, floor_thickness, zone.size.z),
+            Position::new(ceiling_position),
+            Rotation::from(zone.rotation),
+            Transform::from_translation(ceiling_position).with_rotation(zone.rotation),
+            Name::new(format!("Physics_Ceiling_Zone_{}", zone.id.0)),
         ));
 
         // Walls colliders
@@ -1122,8 +1139,8 @@ pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
 #[cfg(test)]
 mod tests {
     use super::{
-        DoorType, IndexedItemKind, LevelConfig, LevelGraph, WallSide, ZoneId, build_wall_segments,
-        collect_zone_wall_segments, generate_level, wall_half_span,
+        DoorType, IndexedItemKind, LevelConfig, LevelGraph, WallSide, ZoneId, build_level_physics,
+        build_wall_segments, collect_zone_wall_segments, generate_level, wall_half_span,
     };
     use bevy::prelude::Vec3;
     use std::collections::HashSet;
@@ -1534,5 +1551,183 @@ mod tests {
         level
             .objective_zone
             .unwrap_or_else(|| panic!("expected an objective zone to exist"))
+    }
+
+    // ---------------------------------------------------------------------------
+    // Room construction tests
+    // ---------------------------------------------------------------------------
+
+    use avian3d::prelude::Position;
+    use bevy::prelude::{
+        App, Commands, Entity, MinimalPlugins, Name, Resource, Res, Update, With,
+    };
+
+    #[derive(Resource, Clone)]
+    struct TestLevelGraph(LevelGraph);
+
+    fn build_physics_system(commands: Commands, level_graph: Res<TestLevelGraph>) {
+        build_level_physics(commands, &level_graph.0);
+    }
+
+    fn make_physics_app(level: LevelGraph) -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.insert_resource(TestLevelGraph(level));
+        app.add_systems(Update, build_physics_system);
+        app.finish();
+        app.update();
+        app
+    }
+
+    fn entities_named_with(app: &mut App, prefix: &str) -> Vec<Entity> {
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<(Entity, &Name), With<Name>>();
+        query
+            .iter(world)
+            .filter(|(_, name)| name.as_str().starts_with(prefix))
+            .map(|(entity, _)| entity)
+            .collect()
+    }
+
+    fn position_of_named(app: &mut App, name: &str) -> Option<Position> {
+        let world = app.world_mut();
+        let mut query = world.query_filtered::<(&Position, &Name), With<Name>>();
+        query
+            .iter(world)
+            .find(|(_, n)| n.as_str() == name)
+            .map(|(pos, _)| *pos)
+    }
+
+    #[test]
+    fn build_level_physics_creates_floor_for_every_zone() {
+        let level = generate_level(LevelConfig {
+            seed: 42,
+            target_zone_count: 8,
+            min_zone_spacing: 30.0,
+            max_depth: 6,
+        });
+
+        let mut app = make_physics_app(level.clone());
+
+        let floors = entities_named_with(&mut app, "Physics_Floor_Zone");
+        assert_eq!(
+            floors.len(),
+            level.zones.len(),
+            "every zone should have a floor collider"
+        );
+    }
+
+    #[test]
+    fn build_level_physics_creates_ceiling_for_every_zone() {
+        let level = generate_level(LevelConfig {
+            seed: 42,
+            target_zone_count: 8,
+            min_zone_spacing: 30.0,
+            max_depth: 6,
+        });
+
+        let mut app = make_physics_app(level.clone());
+
+        let ceilings = entities_named_with(&mut app, "Physics_Ceiling_Zone");
+        assert_eq!(
+            ceilings.len(),
+            level.zones.len(),
+            "every zone should have a ceiling collider"
+        );
+    }
+
+    #[test]
+    fn build_level_physics_creates_walls_and_safety_floor() {
+        let level = generate_level(LevelConfig {
+            seed: 42,
+            target_zone_count: 8,
+            min_zone_spacing: 30.0,
+            max_depth: 6,
+        });
+
+        let mut app = make_physics_app(level);
+
+        let walls = entities_named_with(&mut app, "Physics_Wall_");
+        assert!(walls.len() > 0, "should have wall segments");
+
+        let safety_exists = {
+            let world = app.world_mut();
+            let mut query = world.query_filtered::<(Entity, &Name), With<Name>>();
+            query.iter(world).any(|(_, name)| name.as_str() == "Physics_SafetyFloor")
+        };
+        assert!(safety_exists, "should have safety floor");
+    }
+
+    #[test]
+    fn floor_and_ceiling_align_vertically_per_zone() {
+        let level = generate_level(LevelConfig {
+            seed: 42,
+            target_zone_count: 8,
+            min_zone_spacing: 30.0,
+            max_depth: 6,
+        });
+
+        let mut app = make_physics_app(level.clone());
+
+        for zone in level.zones.values() {
+            let floor =
+                position_of_named(&mut app, &format!("Physics_Floor_Zone_{}", zone.id.0));
+            let ceiling =
+                position_of_named(&mut app, &format!("Physics_Ceiling_Zone_{}", zone.id.0));
+
+            assert!(floor.is_some(), "Zone {} should have floor", zone.id.0);
+            assert!(
+                ceiling.is_some(),
+                "Zone {} should have ceiling",
+                zone.id.0
+            );
+
+            let expected_floor = zone.position.y - 0.5;
+            let expected_ceiling = zone.position.y + 10.5;
+
+            assert!(
+                (floor.unwrap().0.y - expected_floor).abs() < 0.001,
+                "Zone {} floor Y mismatch: expected {}, got {}",
+                zone.id.0,
+                expected_floor,
+                floor.unwrap().0.y
+            );
+            assert!(
+                (ceiling.unwrap().0.y - expected_ceiling).abs() < 0.001,
+                "Zone {} ceiling Y mismatch: expected {}, got {}",
+                zone.id.0,
+                expected_ceiling,
+                ceiling.unwrap().0.y
+            );
+        }
+    }
+
+    #[test]
+    fn wall_segments_produce_openings_for_connected_zones() {
+        let level = generate_level(LevelConfig {
+            seed: 42,
+            target_zone_count: 12,
+            min_zone_spacing: 28.0,
+            max_depth: 8,
+        });
+
+        assert!(
+            !level.connections.is_empty(),
+            "level should have connections"
+        );
+
+        for zone in level.zones.values() {
+            if zone.connections.is_empty() {
+                continue;
+            }
+
+            let segments = collect_zone_wall_segments(zone, &level);
+            let total: f32 = segments.iter().flatten().map(|(_, len)| *len).sum();
+            assert!(
+                total > 0.0,
+                "Zone {} with connections should have wall segments",
+                zone.id.0
+            );
+        }
     }
 }

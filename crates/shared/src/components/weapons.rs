@@ -1,6 +1,6 @@
 use crate::components::health::DamageEvent;
 use crate::navigation::NavigationObstacle;
-use crate::inputs::{Reload, Shoot};
+use crate::inputs::{PlayerActions, Reload, Shoot};
 use avian3d::prelude::{
     Collider, LinearVelocity, Position, RigidBody, Rotation, SpatialQueryFilter,
     SpatialQuery,
@@ -11,6 +11,7 @@ use bevy::prelude::{
     info,
 };
 use bevy_enhanced_input::action::Action;
+use bevy_enhanced_input::prelude::Actions;
 use lightyear::prelude::ControlledBy;
 use serde::{Deserialize, Serialize};
 
@@ -96,22 +97,54 @@ pub fn fire_gun_system(
             &mut Gun,
             &Position,
             &Rotation,
-            &Action<Shoot>,
-            &Action<Reload>,
+            Option<&Actions<PlayerActions>>,
         ),
         With<ControlledBy>,
     >,
+    shoot_query: Query<&Action<Shoot>>,
+    reload_query: Query<&Action<Reload>>,
     spatial_query: SpatialQuery,
     obstacle_query: Query<(), With<NavigationObstacle>>,
     mut damage_writer: MessageWriter<DamageEvent>,
     time: Res<Time>,
 ) {
-    for (shooter_entity, mut gun, pos, rot, shoot_action, reload_action) in query.iter_mut() {
+    for (shooter_entity, mut gun, pos, rot, actions) in query.iter_mut() {
         gun.cooldown.tick(time.delta());
 
-        // Use Action value directly (derefs to output type)
-        let is_reloading = **reload_action;
-        let is_shooting = **shoot_action;
+        let is_shooting: bool;
+        let is_reloading: bool;
+
+        if let Some(actions) = actions {
+            let mut shoot_val = false;
+            let mut reload_val = false;
+            for action_entity in actions.iter() {
+                if let Ok(shoot) = shoot_query.get(*action_entity) {
+                    shoot_val = **shoot;
+                }
+                if let Ok(reload) = reload_query.get(*action_entity) {
+                    reload_val = **reload;
+                }
+            }
+            // Also check direct component on entity (supports test setups that
+            // insert Action<T> alongside Actions<PlayerActions>)
+            if !shoot_val {
+                if let Ok(shoot) = shoot_query.get(shooter_entity) {
+                    shoot_val = **shoot;
+                }
+            }
+            if !reload_val {
+                if let Ok(reload) = reload_query.get(shooter_entity) {
+                    reload_val = **reload;
+                }
+            }
+            is_shooting = shoot_val;
+            is_reloading = reload_val;
+        } else {
+            let shoot_action = shoot_query.get(shooter_entity);
+            let reload_action = reload_query.get(shooter_entity);
+            is_shooting = shoot_action.map(|a| **a).unwrap_or(false);
+            is_reloading = reload_action.map(|a| **a).unwrap_or(false);
+        }
 
         if is_reloading {
             gun.start_reload();
@@ -226,14 +259,25 @@ pub fn fire_projectile_gun_system(
         &mut ProjectileGun,
         &Position,
         &Rotation,
-        &Action<Shoot>,
+        Option<&Actions<PlayerActions>>,
     )>,
+    shoot_query: Query<&Action<Shoot>>,
     time: Res<Time>,
 ) {
-    for (entity, mut gun, pos, rot, shoot_action) in query.iter_mut() {
+    for (entity, mut gun, pos, rot, actions) in query.iter_mut() {
         gun.cooldown.tick(time.delta());
 
-        let is_shooting = **shoot_action;
+        let is_shooting: bool;
+        if let Some(actions) = actions {
+            is_shooting = actions
+                .iter()
+                .filter_map(|action_entity| shoot_query.get(*action_entity).ok())
+                .next()
+                .map(|action| **action)
+                .unwrap_or(false);
+        } else {
+            is_shooting = shoot_query.get(entity).map(|a| **a).unwrap_or(false);
+        }
 
         if is_shooting && gun.cooldown.is_finished() {
             let direction = rot.0 * Vec3::NEG_Z;

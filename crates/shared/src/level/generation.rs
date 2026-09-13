@@ -170,7 +170,12 @@ pub(crate) fn collect_zone_wall_segments(
     let openings = collect_zone_wall_openings(zone, level_graph);
     let mut segments: [Vec<(f32, f32)>; 4] = std::array::from_fn(|_| Vec::new());
 
-    for side in [WallSide::East, WallSide::West, WallSide::North, WallSide::South] {
+    for side in [
+        WallSide::East,
+        WallSide::West,
+        WallSide::North,
+        WallSide::South,
+    ] {
         segments[side.as_index()] = build_wall_segments(
             wall_half_span(zone, side),
             &openings[side.as_index()],
@@ -197,7 +202,8 @@ fn spawn_wall_segments_for_side(
         WallSide::South => (Vec3::new(0.0, zone.size.y * 0.5, -half_z), false),
     };
 
-    for (segment_index, (segment_center, segment_length)) in segment_definitions.iter().enumerate() {
+    for (segment_index, (segment_center, segment_length)) in segment_definitions.iter().enumerate()
+    {
         let local_offset = if span_on_z {
             wall_anchor + Vec3::new(0.0, 0.0, *segment_center)
         } else {
@@ -226,8 +232,14 @@ fn spawn_wall_segments_for_side(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, Reflect)]
 pub struct ZoneId(pub u32);
+
+impl std::fmt::Display for ZoneId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ZoneType {
@@ -242,12 +254,12 @@ pub enum ZoneType {
 impl ZoneType {
     pub fn size_multiplier(&self) -> f32 {
         match self {
-            ZoneType::Hub => 2.0,
+            ZoneType::Hub => 3.0,
             ZoneType::Corridor => 0.5,
-            ZoneType::Utility => 0.8,
-            ZoneType::Industrial => 2.5,
-            ZoneType::Objective => 1.5,
-            ZoneType::Storage => 1.0,
+            ZoneType::Utility => 1.5,
+            ZoneType::Industrial => 3.5,
+            ZoneType::Objective => 2.0,
+            ZoneType::Storage => 2.0,
         }
     }
 
@@ -259,6 +271,19 @@ impl ZoneType {
             ZoneType::Industrial => 4,
             ZoneType::Objective => 2,
             ZoneType::Storage => 1,
+        }
+    }
+
+    pub fn half_extent(&self) -> Vec3 {
+        let base_size = 20.0;
+        let multiplier = self.size_multiplier();
+        match self {
+            ZoneType::Corridor => Vec3::new(base_size * 0.5 * 0.5, 5.0, base_size * 2.5 * 0.5),
+            _ => Vec3::new(
+                base_size * multiplier * 0.5,
+                5.0,
+                base_size * multiplier * 0.5,
+            ),
         }
     }
 }
@@ -300,6 +325,18 @@ pub enum IndexedItemKind {
     Ammo,
     Medical,
     Tool,
+}
+
+impl std::fmt::Display for IndexedItemKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Keycard => write!(f, "Keycard"),
+            Self::Objective => write!(f, "Objective"),
+            Self::Ammo => write!(f, "Ammo"),
+            Self::Medical => write!(f, "Medical"),
+            Self::Tool => write!(f, "Tool"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -348,7 +385,7 @@ impl Zone {
         let multiplier = zone_type.size_multiplier();
 
         let size = match zone_type {
-            ZoneType::Corridor => Vec3::new(base_size * 0.3, 10.0, base_size * 2.0),
+            ZoneType::Corridor => Vec3::new(base_size * 0.5, 10.0, base_size * 2.5),
             _ => Vec3::new(base_size * multiplier, 10.0, base_size * multiplier),
         };
 
@@ -396,13 +433,13 @@ impl Default for LevelConfig {
         Self {
             seed: 12345,
             target_zone_count: 15,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 10,
         }
     }
 }
 
-#[derive(Debug, Clone, Resource)]
+#[derive(Debug, Clone, Resource, Default, Serialize, Deserialize)]
 pub struct LevelGraph {
     pub config: LevelConfig,
     pub zones: HashMap<ZoneId, Zone>,
@@ -540,8 +577,13 @@ pub fn generate_level(config: LevelConfig) -> LevelGraph {
 
             let zone_type = choose_zone_type(&mut rng, depth, config.max_depth);
 
-            let new_position =
-                calculate_zone_position(&graph, current_zone_id, &mut rng, config.min_zone_spacing);
+            let new_position = calculate_zone_position(
+                &graph,
+                current_zone_id,
+                &mut rng,
+                config.min_zone_spacing,
+                zone_type,
+            );
             let current_pos = current_zone.position;
 
             let direction = (new_position - current_pos).normalize_or_zero();
@@ -640,12 +682,14 @@ fn zone_depths(graph: &LevelGraph) -> HashMap<ZoneId, u32> {
 }
 
 fn leaf_zones(graph: &LevelGraph) -> Vec<ZoneId> {
-    graph
+    let mut leaves: Vec<ZoneId> = graph
         .zones
         .values()
         .filter(|zone| zone.is_leaf(graph.spawn_zone))
         .map(|zone| zone.id)
-        .collect()
+        .collect();
+    leaves.sort_by_key(|z| z.0);
+    leaves
 }
 
 fn bfs_path(graph: &LevelGraph, from: ZoneId, to: ZoneId) -> Option<Vec<ZoneId>> {
@@ -749,7 +793,12 @@ pub fn apply_expedition_design(graph: &mut LevelGraph, rng: &mut StdRng) {
 
     let objective = leaves
         .iter()
-        .max_by_key(|zone| depths.get(*zone).copied().unwrap_or(0))
+        .max_by_key(|zone| {
+            (
+                depths.get(*zone).copied().unwrap_or(0),
+                std::cmp::Reverse(zone.0),
+            )
+        })
         .copied()
         .unwrap();
     graph.objective_zone = Some(objective);
@@ -776,7 +825,12 @@ pub fn apply_expedition_design(graph: &mut LevelGraph, rng: &mut StdRng) {
     let keycard = leaves
         .iter()
         .filter(|zone| !critical_set.contains(*zone))
-        .max_by_key(|zone| depths.get(*zone).copied().unwrap_or(0))
+        .max_by_key(|zone| {
+            (
+                depths.get(*zone).copied().unwrap_or(0),
+                std::cmp::Reverse(zone.0),
+            )
+        })
         .copied();
 
     let keycard_zone: Option<ZoneId> = if let Some(kc) = keycard {
@@ -814,7 +868,7 @@ pub fn apply_expedition_design(graph: &mut LevelGraph, rng: &mut StdRng) {
         let attach = bfs_path(graph, kc, objective)
             .and_then(|path| {
                 path.iter()
-                    .find(|zone| critical_set.contains(zone))
+                    .find(|zone| critical_set.contains(zone) && **zone != objective)
                     .copied()
             })
             .unwrap_or(graph.spawn_zone);
@@ -822,11 +876,13 @@ pub fn apply_expedition_design(graph: &mut LevelGraph, rng: &mut StdRng) {
         let attach_idx = critical_path.iter().position(|z| *z == attach);
         if let Some(idx) = attach_idx {
             if let Some(gate_target) = critical_path.get(idx + 1).copied() {
-                if let Some(conn) =
-                    find_connection_mut(&mut graph.connections, attach, gate_target)
-                {
-                    conn.door_type = DoorType::Keycard;
-                    conn.required_keycard = Some(kc);
+                if gate_target != objective {
+                    if let Some(conn) =
+                        find_connection_mut(&mut graph.connections, attach, gate_target)
+                    {
+                        conn.door_type = DoorType::Keycard;
+                        conn.required_keycard = Some(kc);
+                    }
                 }
             }
         }
@@ -840,10 +896,14 @@ pub fn apply_expedition_design(graph: &mut LevelGraph, rng: &mut StdRng) {
         }
     }
 
-    for zone in graph.zones.values_mut() {
-        let depth = depths.get(&zone.id).copied().unwrap_or(0);
-        zone.hazard_level = (depth as u8).min(5);
-        zone.resources = assign_zone_resources(zone, &depths, objective, keycard_zone, rng);
+    let mut sorted_zone_ids: Vec<ZoneId> = graph.zones.keys().copied().collect();
+    sorted_zone_ids.sort_by_key(|z| z.0);
+    for zone_id in sorted_zone_ids {
+        if let Some(zone) = graph.zones.get_mut(&zone_id) {
+            let depth = depths.get(&zone.id).copied().unwrap_or(0);
+            zone.hazard_level = (depth as u8).min(5);
+            zone.resources = assign_zone_resources(zone, &depths, objective, keycard_zone, rng);
+        }
     }
 
     let terminal_network = build_terminal_network(graph, &depths);
@@ -900,7 +960,11 @@ fn build_terminal_network(graph: &LevelGraph, _depths: &HashMap<ZoneId, u32>) ->
             id: format!("KC_{}_{}", color_name(graph.keycard_color), kc.0),
             kind: IndexedItemKind::Keycard,
             zone: kc,
-            label: format!("KEYCARD {} IS IN ZONE {}", color_name(graph.keycard_color), kc.0),
+            label: format!(
+                "KEYCARD {} IS IN ZONE {}",
+                color_name(graph.keycard_color),
+                kc.0
+            ),
         });
     }
 
@@ -920,7 +984,10 @@ fn build_terminal_network(graph: &LevelGraph, _depths: &HashMap<ZoneId, u32>) ->
                 id: format!("AMMO_{}", base),
                 kind: IndexedItemKind::Ammo,
                 zone: zone.id,
-                label: format!("AMMO CACHE {} IS IN ZONE {}", zone.resources.ammo_packs, base),
+                label: format!(
+                    "AMMO CACHE {} IS IN ZONE {}",
+                    zone.resources.ammo_packs, base
+                ),
             });
         }
         if zone.resources.med_packs > 0 {
@@ -971,15 +1038,9 @@ fn horde_spawn_zones(critical_path: &[ZoneId], objective: ZoneId) -> Vec<ZoneId>
 
 /// Scan nodes anchor the defensive hold inside the objective room and just
 /// upstream so players cannot cheese the alarm behind a single wall.
-fn scan_node_zones(
-    critical_path: &[ZoneId],
-    objective: ZoneId,
-    spawn: ZoneId,
-) -> Vec<ZoneId> {
+fn scan_node_zones(critical_path: &[ZoneId], objective: ZoneId, spawn: ZoneId) -> Vec<ZoneId> {
     let mut zones = vec![];
-    let obj_index = critical_path
-        .iter()
-        .rposition(|z| *z == objective);
+    let obj_index = critical_path.iter().rposition(|z| *z == objective);
     if let Some(idx) = obj_index {
         zones.push(objective);
         if let Some(upstream) = idx.checked_sub(1).and_then(|i| critical_path.get(i)) {
@@ -1007,11 +1068,30 @@ fn choose_zone_type(rng: &mut StdRng, depth: u32, max_depth: u32) -> ZoneType {
     }
 }
 
+fn half_extent_in_direction(half_size: Vec2, direction: Vec3) -> f32 {
+    let dir = direction.normalize_or_zero();
+    if dir.x.abs() < 0.001 && dir.z.abs() < 0.001 {
+        return 0.0;
+    }
+    let tx = if dir.x.abs() > 0.001 {
+        half_size.x / dir.x.abs()
+    } else {
+        f32::INFINITY
+    };
+    let tz = if dir.z.abs() > 0.001 {
+        half_size.y / dir.z.abs()
+    } else {
+        f32::INFINITY
+    };
+    tx.min(tz)
+}
+
 fn calculate_zone_position(
     graph: &LevelGraph,
     parent_id: ZoneId,
     rng: &mut StdRng,
     min_spacing: f32,
+    child_type: ZoneType,
 ) -> Vec3 {
     let Some(parent) = graph.get_zone(parent_id) else {
         warn!(
@@ -1021,19 +1101,31 @@ fn calculate_zone_position(
         return Vec3::ZERO;
     };
     let parent_pos = parent.position;
+    let parent_half = parent.size.xz() * 0.5;
+    let child_half = child_type.half_extent().xz();
 
     for _ in 0..10 {
         let angle = rng.random_range(0.0..std::f32::consts::TAU);
-        let distance = rng.random_range(min_spacing..(min_spacing * 1.5));
+        let direction = Vec3::new(angle.cos(), 0.0, angle.sin());
 
-        let offset = Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance);
+        let parent_edge = half_extent_in_direction(parent_half, direction);
+        let child_edge = if child_type == ZoneType::Corridor {
+            child_half.y
+        } else {
+            half_extent_in_direction(child_half, -direction)
+        };
+
+        let touch_distance = parent_edge + child_edge;
+        let distance = rng.random_range(touch_distance..(touch_distance + min_spacing * 0.15));
+
+        let offset = direction * distance;
 
         let new_pos = parent_pos + offset;
 
         let too_close = graph
             .zones
             .values()
-            .any(|zone| zone.position.distance(new_pos) < min_spacing * 0.8);
+            .any(|zone| zone.position.distance(new_pos) < touch_distance * 0.9);
 
         if !too_close {
             return new_pos;
@@ -1041,7 +1133,15 @@ fn calculate_zone_position(
     }
 
     let angle = rng.random_range(0.0..std::f32::consts::TAU);
-    parent_pos + Vec3::new(angle.cos() * min_spacing, 0.0, angle.sin() * min_spacing)
+    let direction = Vec3::new(angle.cos(), 0.0, angle.sin());
+    let parent_edge = half_extent_in_direction(parent_half, direction);
+    let child_edge = if child_type == ZoneType::Corridor {
+        child_half.y
+    } else {
+        half_extent_in_direction(child_half, -direction)
+    };
+    let touch_distance = parent_edge + child_edge;
+    parent_pos + direction * touch_distance
 }
 
 pub fn build_level_physics(mut commands: Commands, level_graph: &LevelGraph) {
@@ -1150,7 +1250,7 @@ mod tests {
         let config = LevelConfig {
             seed: 1337,
             target_zone_count: 10,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 6,
         };
 
@@ -1176,11 +1276,42 @@ mod tests {
     }
 
     #[test]
+    fn generated_seed_corpus_preserves_objective_reachability_and_indexing() {
+        for seed in 0..100 {
+            let level = generate_level(LevelConfig {
+                seed,
+                target_zone_count: 12,
+                min_zone_spacing: 55.0,
+                max_depth: 8,
+            });
+            let objective = level
+                .objective_zone
+                .unwrap_or_else(|| panic!("seed {seed} should produce an objective"));
+            let path = level.critical_path(objective);
+
+            assert!(
+                path.first() == Some(&level.spawn_zone),
+                "seed {seed} objective path should start at spawn"
+            );
+            assert!(
+                path.last() == Some(&objective),
+                "seed {seed} objective path should end at objective"
+            );
+            assert!(
+                level.terminal_network.items.iter().any(|item| {
+                    item.kind == IndexedItemKind::Objective && item.zone == objective
+                }),
+                "seed {seed} objective should be indexed by terminals"
+            );
+        }
+    }
+
+    #[test]
     fn generated_level_contains_spawn_zone_and_connections() {
         let level = generate_level(LevelConfig {
             seed: 7,
             target_zone_count: 12,
-            min_zone_spacing: 35.0,
+            min_zone_spacing: 55.0,
             max_depth: 8,
         });
 
@@ -1213,7 +1344,11 @@ mod tests {
     fn wall_segments_split_around_single_opening() {
         let segments = build_wall_segments(10.0, &[0.0], 6.0);
 
-        assert_eq!(segments.len(), 2, "Expected two wall segments around one opening");
+        assert_eq!(
+            segments.len(),
+            2,
+            "Expected two wall segments around one opening"
+        );
         assert!(
             (segments[0].1 - 7.0).abs() < 0.001,
             "First segment length should be 7.0, got {:?}",
@@ -1231,7 +1366,7 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 99,
             target_zone_count: 12,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 8,
         });
 
@@ -1295,7 +1430,7 @@ mod tests {
             let graph = generate_level(LevelConfig {
                 seed,
                 target_zone_count: 16,
-                min_zone_spacing: 28.0,
+                min_zone_spacing: 55.0,
                 max_depth: 6,
             });
             if graph.keycard_zone.is_some() {
@@ -1310,7 +1445,7 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 42,
             target_zone_count: 18,
-            min_zone_spacing: 28.0,
+            min_zone_spacing: 55.0,
             max_depth: 8,
         });
 
@@ -1382,7 +1517,7 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 7,
             target_zone_count: 18,
-            min_zone_spacing: 28.0,
+            min_zone_spacing: 55.0,
             max_depth: 8,
         });
         let objective = level.objective_zone.expect("objective should exist");
@@ -1398,8 +1533,7 @@ mod tests {
         );
 
         let adjacent_to_objective = level.connections.iter().any(|c| {
-            c.door_type.is_defensive_hold()
-                && (c.from_zone == objective || c.to_zone == objective)
+            c.door_type.is_defensive_hold() && (c.from_zone == objective || c.to_zone == objective)
         });
         assert!(
             adjacent_to_objective,
@@ -1421,8 +1555,14 @@ mod tests {
             .items
             .iter()
             .any(|item| item.kind == IndexedItemKind::Objective);
-        assert!(has_keycard_entry, "terminal network should index the keycard");
-        assert!(has_objective_entry, "terminal network should index the objective");
+        assert!(
+            has_keycard_entry,
+            "terminal network should index the keycard"
+        );
+        assert!(
+            has_objective_entry,
+            "terminal network should index the objective"
+        );
 
         let keycard = level.keycard_zone.expect("keycard zone should exist");
         let kc_entry = level
@@ -1448,15 +1588,12 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 13,
             target_zone_count: 14,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 7,
         });
 
         for zone in level.zones.values() {
-            if zone.is_leaf(level.spawn_zone)
-                && !zone.is_objective
-                && !zone.is_keycard
-            {
+            if zone.is_leaf(level.spawn_zone) && !zone.is_objective && !zone.is_keycard {
                 assert!(
                     zone.resources.ammo_packs >= 1,
                     "dead-end zone {:?} should reward exploration with ammo",
@@ -1465,12 +1602,11 @@ mod tests {
             }
         }
 
-        let objective = level
-            .objective_zone
-            .expect("objective should exist");
+        let objective = level.objective_zone.expect("objective should exist");
         let objective_zone = level.get_zone(objective).unwrap();
         assert!(
-            objective_zone.resources.ammo_packs + objective_zone.resources.med_packs
+            objective_zone.resources.ammo_packs
+                + objective_zone.resources.med_packs
                 + objective_zone.resources.tool_packs
                 > 0,
             "objective zone should carry a resource cache"
@@ -1482,7 +1618,7 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 21,
             target_zone_count: 16,
-            min_zone_spacing: 28.0,
+            min_zone_spacing: 55.0,
             max_depth: 7,
         });
         let objective = level.objective_zone.expect("objective should exist");
@@ -1513,7 +1649,7 @@ mod tests {
         let config = LevelConfig {
             seed: 999,
             target_zone_count: 14,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 7,
         };
         let level_a = generate_level(config.clone());
@@ -1536,7 +1672,7 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 1,
             target_zone_count: 5,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 8,
         });
         assert!(
@@ -1558,9 +1694,7 @@ mod tests {
     // ---------------------------------------------------------------------------
 
     use avian3d::prelude::Position;
-    use bevy::prelude::{
-        App, Commands, Entity, MinimalPlugins, Name, Resource, Res, Update, With,
-    };
+    use bevy::prelude::{App, Commands, Entity, MinimalPlugins, Name, Res, Resource, Update, With};
 
     #[derive(Resource, Clone)]
     struct TestLevelGraph(LevelGraph);
@@ -1603,7 +1737,7 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 42,
             target_zone_count: 8,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 6,
         });
 
@@ -1622,7 +1756,7 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 42,
             target_zone_count: 8,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 6,
         });
 
@@ -1641,7 +1775,7 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 42,
             target_zone_count: 8,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 6,
         });
 
@@ -1653,7 +1787,9 @@ mod tests {
         let safety_exists = {
             let world = app.world_mut();
             let mut query = world.query_filtered::<(Entity, &Name), With<Name>>();
-            query.iter(world).any(|(_, name)| name.as_str() == "Physics_SafetyFloor")
+            query
+                .iter(world)
+                .any(|(_, name)| name.as_str() == "Physics_SafetyFloor")
         };
         assert!(safety_exists, "should have safety floor");
     }
@@ -1663,24 +1799,19 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 42,
             target_zone_count: 8,
-            min_zone_spacing: 30.0,
+            min_zone_spacing: 55.0,
             max_depth: 6,
         });
 
         let mut app = make_physics_app(level.clone());
 
         for zone in level.zones.values() {
-            let floor =
-                position_of_named(&mut app, &format!("Physics_Floor_Zone_{}", zone.id.0));
+            let floor = position_of_named(&mut app, &format!("Physics_Floor_Zone_{}", zone.id.0));
             let ceiling =
                 position_of_named(&mut app, &format!("Physics_Ceiling_Zone_{}", zone.id.0));
 
             assert!(floor.is_some(), "Zone {} should have floor", zone.id.0);
-            assert!(
-                ceiling.is_some(),
-                "Zone {} should have ceiling",
-                zone.id.0
-            );
+            assert!(ceiling.is_some(), "Zone {} should have ceiling", zone.id.0);
 
             let expected_floor = zone.position.y - 0.5;
             let expected_ceiling = zone.position.y + 10.5;
@@ -1707,7 +1838,7 @@ mod tests {
         let level = generate_level(LevelConfig {
             seed: 42,
             target_zone_count: 12,
-            min_zone_spacing: 28.0,
+            min_zone_spacing: 55.0,
             max_depth: 8,
         });
 

@@ -9,8 +9,8 @@ use crate::protocol::{CharacterMarker, PlayerId};
 use avian3d::prelude::{Collider, LinearVelocity, Position, RigidBody, Rotation};
 use bevy::prelude::Color;
 use bevy::prelude::{
-    Assets, Commands, Component, Cuboid, Dir3, Mesh, Mesh3d, MeshMaterial3d, Name, Plane3d, Query,
-    Ref, Res, ResMut, StandardMaterial, Vec2, Vec3, With, Without, default,
+    AmbientLight, Assets, Commands, Component, Cuboid, Dir3, Mesh, Mesh3d, MeshMaterial3d, Name,
+    Plane3d, Query, Ref, Res, ResMut, StandardMaterial, Vec2, Vec3, With, Without, default,
 };
 use lightyear::prelude::{NetworkTarget, Replicate};
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,15 @@ pub fn setup_gym_level(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: Option<ResMut<Assets<StandardMaterial>>>, // Option for tests as there is no render
 ) {
+    commands.spawn((
+        AmbientLight {
+            color: Color::srgb(0.16, 0.2, 0.24),
+            brightness: 24.0,
+            ..default()
+        },
+        Name::new("GymAmbientLight"),
+    ));
+
     let mut floor_entity = commands.spawn((
         Name::new("Floor"),
         Position::from(Vec3::new(0.0, -FLOOR_THICKNESS / 2.0, 0.0)),

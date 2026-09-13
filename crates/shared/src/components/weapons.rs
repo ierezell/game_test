@@ -1,6 +1,7 @@
 use crate::components::health::DamageEvent;
 use crate::navigation::NavigationObstacle;
 use crate::inputs::{PlayerActions, Reload, Shoot};
+use crate::noise::{NoiseEvent, NoiseType};
 use avian3d::prelude::{
     Collider, LinearVelocity, Position, RigidBody, Rotation, SpatialQueryFilter,
     SpatialQuery,
@@ -106,6 +107,7 @@ pub fn fire_gun_system(
     spatial_query: SpatialQuery,
     obstacle_query: Query<(), With<NavigationObstacle>>,
     mut damage_writer: MessageWriter<DamageEvent>,
+    mut noise_writer: MessageWriter<NoiseEvent>,
     time: Res<Time>,
 ) {
     for (shooter_entity, mut gun, pos, rot, actions) in query.iter_mut() {
@@ -211,6 +213,13 @@ pub fn fire_gun_system(
                     source: Some(shooter_entity),
                 });
 
+                noise_writer.write(NoiseEvent::with_entity(
+                    shoot_origin,
+                    shooter_entity,
+                    NoiseType::Gunshot,
+                    time.elapsed().as_secs_f32(),
+                ));
+
                 commands.spawn(HitEvent {
                     damage: gun.damage,
                     hit_entity,
@@ -219,6 +228,13 @@ pub fn fire_gun_system(
                 });
             } else {
                 info!("🔫 Gun fired but missed (no hit detected)");
+
+                noise_writer.write(NoiseEvent::with_entity(
+                    shoot_origin,
+                    shooter_entity,
+                    NoiseType::Gunshot,
+                    time.elapsed().as_secs_f32(),
+                ));
             }
 
             gun.ammo_in_magazine = gun.ammo_in_magazine.saturating_sub(1);
@@ -405,6 +421,7 @@ mod tests {
         app.add_plugins(EnhancedInputPlugin)
             .add_input_context::<PlayerActions>();
         app.add_plugins(HealthPlugin);
+        app.add_message::<crate::noise::NoiseEvent>();
         app.finish();
         app.add_systems(bevy::prelude::Update, fire_gun_system);
 

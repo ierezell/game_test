@@ -8,6 +8,7 @@ pub mod hud;
 pub mod inputs;
 pub mod lobby;
 pub mod network;
+pub mod terminal;
 pub mod vfx;
 
 use crate::camera::ClientCameraPlugin;
@@ -18,6 +19,7 @@ use crate::hud::ClientHudPlugin;
 use crate::inputs::ClientInputPlugin;
 use crate::lobby::ClientLobbyPlugin;
 use crate::network::ClientNetworkPlugin;
+use crate::terminal::ClientTerminalPlugin;
 
 use crate::vfx::ClientVFXPlugin;
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
@@ -159,6 +161,7 @@ pub fn create_client_app(
     client_app.add_plugins(ClientLobbyPlugin);
     client_app.add_plugins(ClientGameCyclePlugin);
     client_app.add_plugins(ClientHudPlugin);
+    client_app.add_plugins(ClientTerminalPlugin);
     client_app.add_plugins(shared::inputs::movement::MovementPlugin::new(headless));
 
     client_app.init_state::<ClientGameState>();

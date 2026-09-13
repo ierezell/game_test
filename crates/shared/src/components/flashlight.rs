@@ -31,3 +31,46 @@ impl PlayerFlashlight {
         self.is_on = !self.is_on;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flashlight_new_starts_on() {
+        let flashlight = PlayerFlashlight::new();
+        assert!(flashlight.is_on, "Flashlight should start ON");
+        assert_eq!(flashlight.intensity, 1400000.0, "Flashlight should have high intensity");
+        assert_eq!(flashlight.range, 100.0, "Flashlight should have long range");
+        assert!(flashlight.inner_angle > 0.0, "Inner angle should be positive");
+        assert!(flashlight.outer_angle > flashlight.inner_angle, "Outer angle should be larger than inner");
+    }
+
+    #[test]
+    fn flashlight_toggle_switches_state() {
+        let mut flashlight = PlayerFlashlight::new();
+        assert!(flashlight.is_on, "Should start ON");
+
+        flashlight.toggle();
+        assert!(!flashlight.is_on, "Should be OFF after first toggle");
+
+        flashlight.toggle();
+        assert!(flashlight.is_on, "Should be ON after second toggle");
+    }
+
+    #[test]
+    fn flashlight_default_starts_off() {
+        let flashlight = PlayerFlashlight::default();
+        assert!(!flashlight.is_on, "Default flashlight should start OFF");
+        assert_eq!(flashlight.intensity, 0.0, "Default intensity should be 0");
+        assert_eq!(flashlight.range, 0.0, "Default range should be 0");
+    }
+
+    #[test]
+    fn flashlight_angles_are_sensible() {
+        let flashlight = PlayerFlashlight::new();
+        // Inner angle ~6.3 degrees, outer angle ~21.8 degrees
+        assert!(flashlight.inner_angle < flashlight.outer_angle, "Inner < Outer");
+        assert!(flashlight.outer_angle < std::f32::consts::FRAC_PI_2, "Outer < 90 degrees");
+    }
+}

@@ -185,7 +185,6 @@ You are a game design agent helping to transform this multiplayer FPS template i
 - **Extraction**: Security scan sequence → alarm waves → defend → extract
 
 ### Deep Rock Galactic
-- **4 classes** with **traversal synergy**: Scout flare+grapple → Engineer platform → Driller tunnels → Gunner zipline
 - **Mission types**: 10 types (Mining, Egg Hunt, Point Extraction, Elimination, Escort, Sabotage, Deep Scan, Heavy Extraction, Salvage, On-site Refining)
 - **Nitra**: Red mineral → calls resupply pod (80 Nitra = 4 racks of 50% ammo/health)
 - **Secondary objectives**: Fossils, Apoca Bloom, Dystrum, Hollomite, extermination

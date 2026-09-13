@@ -5,8 +5,11 @@ pub mod gym;
 pub mod inputs;
 pub mod level;
 pub mod navigation;
+pub mod noise;
 pub mod protocol;
 pub mod render;
+pub mod sleeper;
+pub mod terminal;
 
 use avian3d::collision::CollisionDiagnostics;
 use avian3d::dynamics::solver::SolverDiagnostics;
@@ -87,5 +90,8 @@ impl Plugin for SharedPlugin {
         app.add_plugins(navigation::NavigationPlugin);
         app.add_plugins(components::health::HealthPlugin);
         app.add_plugins(components::weapons::WeaponsPlugin);
+        app.add_plugins(noise::NoisePlugin);
+        app.add_plugins(sleeper::SleeperPlugin);
+        app.add_plugins(terminal::TerminalPlugin);
     }
 }

@@ -1206,7 +1206,7 @@ fn test_gym_mode_crossbeam_player_entities_replicate_to_clients() {
 #[test]
 fn test_normal_mode_crossbeam_procedural_content_on_server() {
     use avian3d::prelude::Collider;
-    use shared::level::building::{ProceduralConnectionLightMarker, ProceduralEnemyMarker, ProceduralNavMeshMarker};
+    use shared::level::building::{ProceduralConnectionLightMarker, ProceduralSleeperMarker, ProceduralNavMeshMarker};
 
     let (mut server_app, mut client_app1, mut client_app2) = setup_two_client_server(false);
 
@@ -1220,13 +1220,13 @@ fn test_normal_mode_crossbeam_procedural_content_on_server() {
         .count();
     assert!(navmesh_count >= 1, "server should have procedural navmesh");
 
-    let enemy_count = world
-        .query::<&ProceduralEnemyMarker>()
+    let sleeper_count = world
+        .query::<&ProceduralSleeperMarker>()
         .iter(world)
         .count();
     assert!(
-        enemy_count >= 2,
-        "server should have at least 2 procedural enemies"
+        sleeper_count >= 2,
+        "server should have at least 2 procedural sleepers"
     );
 
     let light_count = world

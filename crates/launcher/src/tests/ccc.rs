@@ -1,9 +1,10 @@
 use super::*;
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::prelude::{
-    Entity, GlobalTransform, IntoScheduleConfigs, Plugin, Query, Res, Time, Transform, Update, Vec2,
-    Vec3, With,
+    Commands, Entity, GlobalTransform, IntoScheduleConfigs, Plugin, Query, Res, Time, Transform,
+    Update, Vec2, Vec3, With,
 };
+use bevy_enhanced_input::action::mock::ActionMock;
 use bevy_enhanced_input::prelude::*;
 use client::camera::PlayerCamera;
 use lightyear::prelude::{Controlled, PeerId, Predicted};
@@ -90,6 +91,7 @@ fn apply_test_input_system(
     mut move_action_query: Query<&mut Action<Move>>,
     mut look_action_query: Query<&mut Action<Look>>,
     actions_query: Query<&Actions<shared::inputs::PlayerActions>>,
+    mut commands: Commands,
 ) {
     for player_entity in player_query.iter() {
         // Find the Actions relationship target to get child action entities
@@ -98,11 +100,21 @@ fn apply_test_input_system(
                 if test_input.look != Vec2::ZERO {
                     if let Ok(mut look_action) = look_action_query.get_mut(*action_entity) {
                         **look_action = test_input.look;
+                        commands.entity(*action_entity).insert(ActionMock::new(
+                            TriggerState::Fired,
+                            test_input.look,
+                            MockSpan::Manual,
+                        ));
                     }
                 }
                 if test_input.move_axis != Vec2::ZERO {
                     if let Ok(mut move_action) = move_action_query.get_mut(*action_entity) {
                         **move_action = test_input.move_axis;
+                        commands.entity(*action_entity).insert(ActionMock::new(
+                            TriggerState::Fired,
+                            test_input.move_axis,
+                            MockSpan::Manual,
+                        ));
                     }
                 }
             }
@@ -120,6 +132,11 @@ fn set_client_move_input(client_app: &mut App, player_entity: Entity, axis: Vec2
     for action_entity in action_entities {
         if let Some(mut move_action) = world.get_mut::<Action<Move>>(action_entity) {
             **move_action = axis;
+            world.entity_mut(action_entity).insert(ActionMock::new(
+                TriggerState::Fired,
+                axis,
+                MockSpan::Manual,
+            ));
         }
     }
 }
@@ -134,6 +151,11 @@ fn set_client_look_input(client_app: &mut App, player_entity: Entity, axis: Vec2
     for action_entity in action_entities {
         if let Some(mut look_action) = world.get_mut::<Action<Look>>(action_entity) {
             **look_action = axis;
+            world.entity_mut(action_entity).insert(ActionMock::new(
+                TriggerState::Fired,
+                axis,
+                MockSpan::Manual,
+            ));
         }
     }
 }

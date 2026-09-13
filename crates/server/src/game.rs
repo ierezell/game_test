@@ -47,7 +47,7 @@ pub fn generate_and_build_level(
         let config = LevelConfig {
             seed: level_seed.seed,
             target_zone_count: 12,
-            min_zone_spacing: 35.0,
+            min_zone_spacing: 55.0,
             max_depth: 8,
         };
         let level_graph = generate_level(config);

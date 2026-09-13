@@ -1,13 +1,13 @@
 use bevy::app::Update;
 use bevy::prelude::{
     App, Assets, Capsule3d, Color, Commands, Entity, Mesh, Mesh3d, MeshMaterial3d, Plugin, Query,
-    Res, ResMut, StandardMaterial, With, Without, default,
+    Res, ResMut, StandardMaterial, Transform, With, Without, default,
 };
 
-use shared::entities::{NpcPhysicsBundle, PlayerPhysicsBundle};
+use shared::entities::PlayerPhysicsBundle;
 
-use crate::inputs::spawn_local_player_input_actions;
 use crate::LocalPlayerId;
+use crate::inputs::spawn_local_player_input_actions;
 use lightyear::prelude::{Controlled, Interpolated, Predicted};
 use shared::inputs::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
 
@@ -44,6 +44,7 @@ fn handle_local_player_setup(
             commands.entity(entity).insert((
                 Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
                 MeshMaterial3d(materials.add(color.0)),
+                Transform::default(),
                 PlayerPhysicsBundle::default(),
             ));
         }
@@ -63,7 +64,7 @@ fn handle_interpolated_players_setup(
         commands.entity(entity).insert((
             Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
             MeshMaterial3d(materials.add(color.0)),
-            PlayerPhysicsBundle::default(),
+            Transform::default(),
         ));
     }
 }
@@ -83,7 +84,40 @@ fn handle_interpolated_npcs_setup(
                 unlit: false,
                 ..default()
             })),
-            NpcPhysicsBundle::default(),
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::handle_interpolated_players_setup;
+    use avian3d::prelude::RigidBody;
+    use bevy::prelude::{
+        App, AssetApp, AssetPlugin, Color, Mesh, Mesh3d, MinimalPlugins, StandardMaterial, Update,
+    };
+    use lightyear::prelude::Interpolated;
+    use shared::protocol::{CharacterMarker, PlayerColor};
+
+    #[test]
+    fn interpolated_players_are_visual_only_on_the_client() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+        app.init_asset::<Mesh>();
+        app.init_asset::<StandardMaterial>();
+        app.add_systems(Update, handle_interpolated_players_setup);
+
+        let entity = app
+            .world_mut()
+            .spawn((
+                Interpolated,
+                CharacterMarker,
+                PlayerColor(Color::srgb(0.2, 0.4, 0.8)),
+            ))
+            .id();
+
+        app.update();
+
+        assert!(app.world().get::<Mesh3d>(entity).is_some());
+        assert!(app.world().get::<RigidBody>(entity).is_none());
     }
 }

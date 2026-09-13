@@ -6,7 +6,7 @@ use lightyear::prelude::{Client, MessageReceiver};
 use shared::{GymMode, NetworkMode};
 use shared::gym::setup_gym_level;
 use shared::level::generation::{LevelConfig, build_level_physics, generate_level};
-use shared::level::visuals::build_level_visuals;
+use shared::level::prefabs::build_prefab_level;
 
 use crate::ClientGameState;
 use shared::protocol::{LevelSeed, StartLoadingGameEvent};
@@ -74,13 +74,15 @@ fn handle_world_creation(
             let config = LevelConfig {
                 seed,
                 target_zone_count: 12,
-                min_zone_spacing: 35.0,
+                min_zone_spacing: 55.0,
                 max_depth: 8,
             };
 
             let level_graph = generate_level(config);
             build_level_physics(commands.reborrow(), &level_graph);
-            build_level_visuals(commands.reborrow(), meshes, materials, &level_graph);
+            if let Some(mat_assets) = materials {
+                build_prefab_level(commands.reborrow(), meshes, mat_assets, &level_graph);
+            }
         } else {
             bevy::log::info!(
                 "⏳ Client waiting for LevelSeed replication before generating procedural level"

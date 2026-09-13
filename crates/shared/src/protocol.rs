@@ -6,6 +6,8 @@ use crate::{
     },
     inputs::movement::GroundState,
     navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
+    sleeper::{ProceduralSleeperMarker, Sleeper},
+    terminal::{TerminalCommand, TerminalConsole, TerminalState},
 };
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
 use bevy::{
@@ -16,8 +18,7 @@ use bevy::{
 
 use lightyear::prelude::{
     AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings,
-    InterpolationRegistrationExt, NetworkDirection, PeerId, ReliableSettings,
-    PredictionBuilderExt,
+    InterpolationRegistrationExt, NetworkDirection, PeerId, PredictionBuilderExt, ReliableSettings,
 };
 
 use serde::{Deserialize, Serialize};
@@ -64,6 +65,12 @@ pub struct StartLoadingGameEvent {
     pub start: bool,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TerminalInteractionRequest {
+    pub terminal_id: String,
+    pub command: TerminalCommand,
+}
+
 #[derive(TypePath)]
 pub struct LobbyControlChannel;
 
@@ -88,9 +95,7 @@ impl Plugin for ProtocolPlugin {
             .replicate()
             .predict()
             .add_linear_interpolation()
-            .add_correction_fn(|start: Rotation, end: Rotation, t| {
-                start.slerp(end, t)
-            });
+            .add_correction_fn(|start: Rotation, end: Rotation, t| start.slerp(end, t));
 
         app.component::<Position>()
             .replicate()
@@ -111,13 +116,17 @@ impl Plugin for ProtocolPlugin {
         app.component::<ProjectileGun>().replicate().predict();
         app.component::<Projectile>().replicate().predict();
 
-        app.component::<PlayerFlashlight>()
-            .replicate()
-            .predict();
+        app.component::<PlayerFlashlight>().replicate().predict();
 
         app.component::<SimpleNavigationAgent>().replicate();
         app.component::<PatrolRoute>().replicate();
         app.component::<PatrolState>().replicate();
+
+        app.component::<Sleeper>().replicate();
+        app.component::<ProceduralSleeperMarker>().replicate();
+
+        app.component::<TerminalState>().replicate();
+        app.component::<TerminalConsole>().replicate();
 
         app.component::<LobbyState>().replicate();
 
@@ -136,6 +145,9 @@ impl Plugin for ProtocolPlugin {
 
         app.register_message::<StartLoadingGameEvent>()
             .add_direction(NetworkDirection::ServerToClient);
+
+        app.register_message::<TerminalInteractionRequest>()
+            .add_direction(NetworkDirection::ClientToServer);
 
         debug!("Protocol plugin initialized with components, messages, inputs, and events");
     }

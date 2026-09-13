@@ -4,7 +4,10 @@ use bevy::prelude::{
 };
 
 use lightyear::prelude::{RemoteId, server::ClientOf};
-use shared::level::visuals::build_level_visuals;
+use shared::level::prefabs::build_prefab_level;
+use shared::noise::build_zone_connectivity;
+use shared::sleeper::SleeperConfig;
+use shared::terminal::TerminalNetworkResource;
 use shared::{
     GymMode,
     gym::setup_gym_level,
@@ -47,17 +50,22 @@ pub(super) fn generate_and_build_level(
         let config = LevelConfig {
             seed: level_seed.seed,
             target_zone_count: 12,
-            min_zone_spacing: 35.0,
+            min_zone_spacing: 55.0,
             max_depth: 8,
         };
         let level_graph = generate_level(config);
         build_level_physics(commands.reborrow(), &level_graph);
 
+        let zone_conn = build_zone_connectivity(&level_graph);
+        commands.insert_resource(zone_conn);
+        commands.insert_resource(TerminalNetworkResource::from_graph(&level_graph));
+        commands.insert_resource(SleeperConfig::default());
+
         if let (Some(mesh_assets), Some(mat_assets)) = (meshes, materials) {
-            build_level_visuals(
+            build_prefab_level(
                 commands.reborrow(),
                 mesh_assets,
-                Some(mat_assets),
+                mat_assets,
                 &level_graph,
             );
         }

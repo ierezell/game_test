@@ -1,5 +1,5 @@
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
-use bevy::prelude::{Commands, Entity, Name, Query, Vec3, With, info};
+use bevy::prelude::{Commands, Entity, Name, Query, Transform, Vec3, With, info};
 use shared::inputs::get_player_actions;
 
 use lightyear::prelude::{
@@ -52,6 +52,7 @@ pub fn spawn_player_entities(
                     Rotation::default(),
                     Position::new(spawn_position),
                     LinearVelocity::default(),
+                    Transform::from_translation(spawn_position),
                     Health::basic(),
                     Respawnable::new(3.0),
                     Gun::default(),
@@ -132,6 +133,7 @@ pub fn spawn_late_joining_players(
                     Rotation::default(),
                     Position::new(spawn_position),
                     LinearVelocity::default(),
+                    Transform::from_translation(spawn_position),
                     Health::basic(),
                     Respawnable::new(3.0),
                     Gun::default(),

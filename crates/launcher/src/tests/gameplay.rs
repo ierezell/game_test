@@ -190,7 +190,7 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
     use shared::inputs::movement::GroundState;
     use shared::inputs::{Jump, Move, PlayerActions, Reload, Shoot, Sprint};
     use shared::level::building::{
-        ProceduralConnectionLightMarker, ProceduralEnemyMarker, ProceduralNavMeshMarker,
+        ProceduralConnectionLightMarker, ProceduralSleeperMarker, ProceduralNavMeshMarker,
         build_procedural_runtime_content,
     };
     use shared::level::generation::{LevelConfig, LevelGraph, build_level_physics, generate_level};
@@ -230,7 +230,7 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
     let graph = generate_level(LevelConfig {
         seed: 404,
         target_zone_count: 14,
-        min_zone_spacing: 30.0,
+        min_zone_spacing: 55.0,
         max_depth: 8,
     });
 
@@ -324,13 +324,13 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
         .count();
     assert!(navmesh_count >= 1, "Procedural navmesh should be generated");
 
-    let procedural_enemy_count = world
-        .query_filtered::<bevy::prelude::Entity, bevy::prelude::With<ProceduralEnemyMarker>>()
+    let procedural_sleeper_count = world
+        .query_filtered::<bevy::prelude::Entity, bevy::prelude::With<ProceduralSleeperMarker>>()
         .iter(world)
         .count();
     assert!(
-        procedural_enemy_count >= 2,
-        "Procedural level should spawn multiple enemies"
+        procedural_sleeper_count >= 2,
+        "Procedural level should spawn multiple sleepers"
     );
 
     let connection_light_count = world
@@ -388,7 +388,7 @@ fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
     use shared::inputs::movement::GroundState;
     use shared::inputs::{Move, PlayerActions};
     use shared::level::building::{
-        ProceduralEnemyMarker, ProceduralNavMeshMarker, build_procedural_runtime_content,
+        ProceduralSleeperMarker, ProceduralNavMeshMarker, build_procedural_runtime_content,
     };
     use shared::level::generation::{LevelConfig, LevelGraph, build_level_physics, generate_level};
     use shared::protocol::PlayerId;
@@ -427,7 +427,7 @@ fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
     let graph = generate_level(LevelConfig {
         seed: 905,
         target_zone_count: 16,
-        min_zone_spacing: 30.0,
+        min_zone_spacing: 55.0,
         max_depth: 9,
     });
 
@@ -506,18 +506,18 @@ fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
         );
     }
 
-    let mut enemy_query =
-        world.query_filtered::<&Position, bevy::prelude::With<ProceduralEnemyMarker>>();
-    let mut checked_enemies = 0usize;
-    for position in enemy_query.iter(world) {
-        checked_enemies += 1;
+    let mut sleeper_query =
+        world.query_filtered::<&Position, bevy::prelude::With<ProceduralSleeperMarker>>();
+    let mut checked_sleepers = 0usize;
+    for position in sleeper_query.iter(world) {
+        checked_sleepers += 1;
         assert!(
             position.0.y > -1.5,
-            "Procedural enemy fell below safety threshold at y={:.3}",
+            "Procedural sleeper fell below safety threshold at y={:.3}",
             position.0.y
         );
     }
-    assert!(checked_enemies >= 2, "Expected multiple procedural enemies");
+    assert!(checked_sleepers >= 2, "Expected multiple procedural sleepers");
 }
 
 #[test]
@@ -532,7 +532,7 @@ fn test_e2e_full_game_cycle() {
     use shared::inputs::movement::GroundState;
     use shared::inputs::{Jump, Move, PlayerActions, Reload, Shoot, Sprint};
     use shared::level::building::{
-        ProceduralConnectionLightMarker, ProceduralEnemyMarker, ProceduralNavMeshMarker,
+        ProceduralConnectionLightMarker, ProceduralSleeperMarker, ProceduralNavMeshMarker,
         build_procedural_runtime_content,
     };
     use shared::level::generation::{LevelConfig, LevelGraph, build_level_physics, generate_level};
@@ -572,7 +572,7 @@ fn test_e2e_full_game_cycle() {
     let graph = generate_level(LevelConfig {
         seed: 42,
         target_zone_count: 10,
-        min_zone_spacing: 30.0,
+        min_zone_spacing: 55.0,
         max_depth: 6,
     });
 
@@ -656,11 +656,11 @@ fn test_e2e_full_game_cycle() {
         .count();
     assert!(navmesh_count >= 1, "Navmesh should be generated");
 
-    let enemy_count = world
-        .query_filtered::<bevy::prelude::Entity, bevy::prelude::With<ProceduralEnemyMarker>>()
+    let sleeper_count = world
+        .query_filtered::<bevy::prelude::Entity, bevy::prelude::With<ProceduralSleeperMarker>>()
         .iter(world)
         .count();
-    assert!(enemy_count >= 1, "Enemies should spawn");
+    assert!(sleeper_count >= 1, "Sleepers should spawn");
 
     let light_count = world
         .query_filtered::<

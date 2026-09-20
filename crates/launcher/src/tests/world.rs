@@ -312,8 +312,7 @@ fn test_gym_npc_progresses_toward_forced_straight_line_target() {
         .get::<Position>(npc_entity)
         .expect("NPC should keep Position while moving")
         .0;
-    let final_distance =
-        Vec3::new(end.x - forced_target.x, 0.0, end.z - forced_target.z).length();
+    let final_distance = Vec3::new(end.x - forced_target.x, 0.0, end.z - forced_target.z).length();
 
     assert!(
         final_distance < initial_distance - 8.0,

@@ -1,9 +1,11 @@
+use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
 use lightyear::prelude::AppComponentExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use crate::level::generation::{IndexedItemKind, LevelGraph, TerminalNetwork, ZoneId};
+use crate::protocol::TerminalInteractionRequest;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, Reflect, Default)]
 pub enum ReactorState {
@@ -33,12 +35,13 @@ pub enum TerminalMode {
     Extraction,
 }
 
-#[derive(Component, Serialize, Deserialize, Clone, Debug, Default, Reflect)]
+#[derive(Component, Serialize, Deserialize, Clone, Debug, Reflect)]
 #[reflect(Component)]
 pub struct TerminalState {
     pub terminal_id: String,
     pub zone_id: ZoneId,
     pub mode: TerminalMode,
+    pub active: bool,
     pub unlocked_keycards: HashSet<String>,
     pub objective_progress: u32,
     pub reactor_state: ReactorState,
@@ -47,6 +50,25 @@ pub struct TerminalState {
     pub extract_timer: f32,
     pub downloaded_files: HashSet<String>,
     pub completed_objectives: HashSet<String>,
+}
+
+impl Default for TerminalState {
+    fn default() -> Self {
+        Self {
+            terminal_id: String::new(),
+            zone_id: ZoneId::default(),
+            mode: TerminalMode::default(),
+            active: true,
+            unlocked_keycards: HashSet::default(),
+            objective_progress: 0,
+            reactor_state: ReactorState::default(),
+            uplink_state: UplinkState::default(),
+            has_extracted: false,
+            extract_timer: 0.0,
+            downloaded_files: HashSet::default(),
+            completed_objectives: HashSet::default(),
+        }
+    }
 }
 
 #[derive(Component, Serialize, Deserialize, Clone, Debug, Reflect)]
@@ -58,13 +80,41 @@ pub struct TerminalConsole {
 }
 
 pub const TERMINAL_INTERACTION_RANGE: f32 = 3.0;
+pub const TERMINAL_INTERACTION_COOLDOWN: f32 = 0.5;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TerminalInteractionError {
     SessionNotPlayable,
     InvalidPosition,
     OutOfRange,
+    LineOfSightBlocked,
     Cooldown,
+    DuplicateRequest,
+    TerminalInactive,
+}
+
+#[derive(Component, Clone, Debug, Default, PartialEq, Reflect, Serialize, Deserialize)]
+pub struct TerminalInteractionState {
+    pub last_interaction_time: Option<f32>,
+    pub last_request_key: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TerminalRequestKey {
+    pub terminal_id: String,
+    pub command: String,
+}
+
+impl TerminalRequestKey {
+    pub fn from_request(request: &TerminalInteractionRequest) -> Self {
+        Self {
+            terminal_id: request.terminal_id.clone(),
+            command: request.command.full_command(),
+        }
+    }
+    pub fn as_string(&self) -> String {
+        format!("{}::{}", self.terminal_id, self.command)
+    }
 }
 
 pub fn validate_terminal_interaction(
@@ -72,6 +122,7 @@ pub fn validate_terminal_interaction(
     terminal_position: Vec3,
     session_is_playable: bool,
     cooldown_ready: bool,
+    line_of_sight_clear: bool,
 ) -> Result<(), TerminalInteractionError> {
     if !session_is_playable {
         return Err(TerminalInteractionError::SessionNotPlayable);
@@ -87,11 +138,74 @@ pub fn validate_terminal_interaction(
         return Err(TerminalInteractionError::OutOfRange);
     }
 
+    if !line_of_sight_clear {
+        return Err(TerminalInteractionError::LineOfSightBlocked);
+    }
+
     if !cooldown_ready {
         return Err(TerminalInteractionError::Cooldown);
     }
 
     Ok(())
+}
+
+pub fn check_line_of_sight(
+    spatial_query: &SpatialQuery,
+    player_entity: Entity,
+    player_position: Vec3,
+    terminal_entity: Entity,
+    terminal_position: Vec3,
+) -> bool {
+    let direction = terminal_position - player_position;
+    let distance = direction.length();
+    if distance < 1e-6 {
+        return true;
+    }
+    let dir = match Dir3::new(direction) {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+    let filter =
+        SpatialQueryFilter::default().with_excluded_entities([player_entity, terminal_entity]);
+    spatial_query
+        .cast_ray(player_position, dir, distance, false, &filter)
+        .is_none()
+}
+
+pub fn is_cooldown_ready(
+    state: &TerminalInteractionState,
+    current_time: f32,
+    cooldown_duration: f32,
+) -> bool {
+    match state.last_interaction_time {
+        Some(last_time) => current_time - last_time >= cooldown_duration,
+        None => true,
+    }
+}
+
+pub fn is_duplicate_request(
+    state: &TerminalInteractionState,
+    request: &TerminalInteractionRequest,
+    current_time: f32,
+    cooldown_duration: f32,
+) -> bool {
+    let Some(last_time) = state.last_interaction_time else {
+        return false;
+    };
+    if current_time - last_time >= cooldown_duration {
+        return false;
+    }
+    let key = TerminalRequestKey::from_request(request).as_string();
+    state.last_request_key.as_deref() == Some(key.as_str())
+}
+
+pub fn record_interaction(
+    state: &mut TerminalInteractionState,
+    request: &TerminalInteractionRequest,
+    current_time: f32,
+) {
+    state.last_interaction_time = Some(current_time);
+    state.last_request_key = Some(TerminalRequestKey::from_request(request).as_string());
 }
 
 impl TerminalConsole {
@@ -112,7 +226,7 @@ pub struct TerminalCommand {
 
 impl TerminalCommand {
     pub fn new(cmd: &str) -> Self {
-        let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+        let parts: Vec<&str> = cmd.split_whitespace().collect();
         if parts.is_empty() {
             return Self {
                 command: String::new(),
@@ -186,7 +300,8 @@ pub struct TerminalPlugin;
 impl Plugin for TerminalPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<TerminalConsole>()
-            .register_type::<TerminalState>();
+            .register_type::<TerminalState>()
+            .register_type::<TerminalInteractionState>();
 
         app.component::<TerminalConsole>().replicate();
         app.component::<TerminalState>().replicate();
@@ -434,7 +549,7 @@ mod tests {
     #[test]
     fn terminal_interaction_accepts_playable_in_range_request() {
         assert_eq!(
-            validate_terminal_interaction(Vec3::ZERO, Vec3::new(2.0, 0.0, 0.0), true, true),
+            validate_terminal_interaction(Vec3::ZERO, Vec3::new(2.0, 0.0, 0.0), true, true, true),
             Ok(())
         );
     }
@@ -442,7 +557,7 @@ mod tests {
     #[test]
     fn terminal_interaction_rejects_non_playable_session() {
         assert_eq!(
-            validate_terminal_interaction(Vec3::ZERO, Vec3::ZERO, false, true),
+            validate_terminal_interaction(Vec3::ZERO, Vec3::ZERO, false, true, true),
             Err(TerminalInteractionError::SessionNotPlayable)
         );
     }
@@ -450,7 +565,7 @@ mod tests {
     #[test]
     fn terminal_interaction_rejects_invalid_positions() {
         assert_eq!(
-            validate_terminal_interaction(Vec3::NAN, Vec3::ZERO, true, true),
+            validate_terminal_interaction(Vec3::NAN, Vec3::ZERO, true, true, true),
             Err(TerminalInteractionError::InvalidPosition)
         );
     }
@@ -462,6 +577,7 @@ mod tests {
                 Vec3::ZERO,
                 Vec3::new(TERMINAL_INTERACTION_RANGE + 0.1, 0.0, 0.0),
                 true,
+                true,
                 true
             ),
             Err(TerminalInteractionError::OutOfRange)
@@ -469,11 +585,101 @@ mod tests {
     }
 
     #[test]
+    fn terminal_interaction_rejects_blocked_line_of_sight() {
+        assert_eq!(
+            validate_terminal_interaction(Vec3::ZERO, Vec3::ZERO, true, true, false),
+            Err(TerminalInteractionError::LineOfSightBlocked)
+        );
+    }
+
+    #[test]
     fn terminal_interaction_rejects_cooldown_request() {
         assert_eq!(
-            validate_terminal_interaction(Vec3::ZERO, Vec3::ZERO, true, false),
+            validate_terminal_interaction(Vec3::ZERO, Vec3::ZERO, true, false, true),
             Err(TerminalInteractionError::Cooldown)
         );
+    }
+
+    #[test]
+    fn is_cooldown_ready_returns_true_when_never_used() {
+        let state = TerminalInteractionState::default();
+        assert!(is_cooldown_ready(
+            &state,
+            0.0,
+            TERMINAL_INTERACTION_COOLDOWN
+        ));
+    }
+
+    #[test]
+    fn is_cooldown_ready_returns_false_within_cooldown_window() {
+        let state = TerminalInteractionState {
+            last_interaction_time: Some(0.0),
+            ..Default::default()
+        };
+        assert!(!is_cooldown_ready(
+            &state,
+            TERMINAL_INTERACTION_COOLDOWN - 0.01,
+            TERMINAL_INTERACTION_COOLDOWN
+        ));
+    }
+
+    #[test]
+    fn is_cooldown_ready_returns_true_after_expiry() {
+        let state = TerminalInteractionState {
+            last_interaction_time: Some(0.0),
+            ..Default::default()
+        };
+        assert!(is_cooldown_ready(
+            &state,
+            TERMINAL_INTERACTION_COOLDOWN + 0.01,
+            TERMINAL_INTERACTION_COOLDOWN
+        ));
+    }
+
+    #[test]
+    fn is_duplicate_request_detects_same_command() {
+        let state = TerminalInteractionState {
+            last_interaction_time: Some(1.0),
+            last_request_key: Some("TERM_A::UNLOCK KEY_RED".to_string()),
+        };
+        let request = TerminalInteractionRequest {
+            terminal_id: "TERM_A".to_string(),
+            command: TerminalCommand::new("UNLOCK KEY_RED"),
+        };
+        assert!(is_duplicate_request(
+            &state,
+            &request,
+            1.0 + TERMINAL_INTERACTION_COOLDOWN - 0.01,
+            TERMINAL_INTERACTION_COOLDOWN
+        ));
+        let request2 = TerminalInteractionRequest {
+            terminal_id: "TERM_A".to_string(),
+            command: TerminalCommand::new("LIST"),
+        };
+        assert!(!is_duplicate_request(
+            &state,
+            &request2,
+            1.0 + TERMINAL_INTERACTION_COOLDOWN - 0.01,
+            TERMINAL_INTERACTION_COOLDOWN
+        ));
+    }
+
+    #[test]
+    fn record_interaction_updates_cooldown_and_key() {
+        let mut state = TerminalInteractionState::default();
+        let request = TerminalInteractionRequest {
+            terminal_id: "TERM_X".to_string(),
+            command: TerminalCommand::new("STATUS"),
+        };
+        record_interaction(&mut state, &request, 10.0);
+        assert_eq!(state.last_interaction_time, Some(10.0));
+        assert_eq!(state.last_request_key, Some("TERM_X::STATUS".to_string()));
+    }
+
+    #[test]
+    fn terminal_state_defaults_to_active() {
+        let state = TerminalState::default();
+        assert!(state.active);
     }
 
     #[test]

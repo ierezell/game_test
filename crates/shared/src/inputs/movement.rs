@@ -3,8 +3,9 @@ use bevy::prelude::*;
 use bevy_enhanced_input::prelude::{Action, Actions};
 use serde::{Deserialize, Serialize};
 
-use crate::inputs::{Move, Jump, Sprint, PlayerActions};
+use crate::components::stamina::Stamina;
 use crate::inputs::look::update_player_rotation_from_input;
+use crate::inputs::{Jump, Move, PlayerActions, Sprint};
 
 pub const WALK_SPEED: f32 = 20.0;
 pub const RUN_SPEED: f32 = 40.0;
@@ -160,6 +161,7 @@ pub fn update_ground_detection(
 ///    via the `actions!` macro — resolved by iterating the relationship.
 /// 2. Legacy/test: `Action<T>` placed directly as a component on the entity
 ///    — resolved via a fallback query on the entity itself.
+#[allow(clippy::collapsible_if)]
 pub fn apply_movement(
     time: Res<Time>,
     mut player_query: Query<
@@ -168,6 +170,7 @@ pub fn apply_movement(
             Entity,
             &GroundState,
             &Rotation,
+            Option<&mut Stamina>,
             &mut LinearVelocity,
         ),
         With<PlayerActions>,
@@ -178,7 +181,9 @@ pub fn apply_movement(
 ) {
     let dt = time.delta_secs();
 
-    for (actions, entity, ground_state, rotation, mut velocity) in player_query.iter_mut() {
+    for (actions, entity, ground_state, rotation, mut stamina, mut velocity) in
+        player_query.iter_mut()
+    {
         // In bevy_enhanced_input 0.26, `actions!` spawns each `Action<T>` as a
         // *related child* of the `Actions<PlayerActions>` context rather than as
         // a component on the player entity. Read them back through the
@@ -243,8 +248,25 @@ pub fn apply_movement(
         let (wish_direction, mut wish_speed) = get_wish_direction(move_action, yaw, 100.0, 60.0);
 
         // Apply speed limits
-        let max_speed = if is_sprinting { RUN_SPEED } else { WALK_SPEED };
+        let stamina_allows_sprint = stamina.as_ref().map(|s| s.can_sprint()).unwrap_or(true);
+        let max_speed = if is_sprinting && stamina_allows_sprint {
+            RUN_SPEED
+        } else {
+            WALK_SPEED
+        };
         wish_speed = wish_speed.min(max_speed);
+
+        // Stamina drain/regen (server-authoritative; client predicted via same logic)
+        if let Some(stam) = stamina.as_mut() {
+            let now = time.elapsed_secs();
+            if is_sprinting && stamina_allows_sprint && ground_state.is_grounded {
+                let amount = stam.drain_rate * dt;
+                stam.drain(amount, now);
+            } else if stam.can_regenerate(now) {
+                let amount = stam.regen_rate * dt;
+                stam.regenerate(amount, now);
+            }
+        }
 
         // Ground movement
         if ground_state.is_grounded {
@@ -296,7 +318,12 @@ pub fn apply_movement(
 pub fn integrate_position_from_velocity(
     time: Res<Time>,
     mut query: Query<
-        (&mut Position, &Rotation, &LinearVelocity, Option<&mut Transform>),
+        (
+            &mut Position,
+            &Rotation,
+            &LinearVelocity,
+            Option<&mut Transform>,
+        ),
         Without<RigidBody>,
     >,
 ) {
@@ -348,13 +375,13 @@ mod tests {
         GroundState, LinearVelocity, apply_ground_friction, calculate_acceleration,
         clamp_max_velocity, get_wish_direction,
     };
-    use crate::inputs::{Jump, Move, PlayerActions, Sprint, get_player_actions};
     use crate::inputs::look::update_player_rotation_from_input;
+    use crate::inputs::{Jump, Move, PlayerActions, Sprint, get_player_actions};
     use crate::protocol::{CharacterMarker, PlayerId};
     use avian3d::prelude::{Position, Rotation};
     use bevy::prelude::{
-        App, FixedUpdate, GamepadAxis, IntoScheduleConfigs, KeyCode, MinimalPlugins, Quat,
-        Res, Time, Update, Vec2, Vec3,
+        App, FixedUpdate, GamepadAxis, IntoScheduleConfigs, KeyCode, MinimalPlugins, Quat, Res,
+        Time, Update, Vec2, Vec3,
     };
     use bevy_enhanced_input::prelude::*;
     use lightyear::prelude::{Controlled, PeerId, Predicted};
@@ -386,6 +413,7 @@ mod tests {
     ///   S (0, -1) → backward (+Z)
     ///   D (+1, 0) → right (+X)
     #[test]
+    #[allow(clippy::explicit_auto_deref)]
     fn wasd_input_vectors_produce_orthogonal_directions() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
@@ -393,10 +421,10 @@ mod tests {
             .add_input_context::<PlayerActions>()
             .finish();
 
-        let entity = app.world_mut().spawn((
-            PlayerActions,
-            Action::<Move>::default(),
-        )).id();
+        let entity = app
+            .world_mut()
+            .spawn((PlayerActions, Action::<Move>::default()))
+            .id();
 
         let yaw = 0.0;
 
@@ -407,7 +435,11 @@ mod tests {
             let (dir, speed) = get_wish_direction(&*action, yaw, 100.0, 60.0);
             assert!(speed > 0.0);
             assert!(dir.x.abs() < 0.1, "W should not produce X movement");
-            assert!(dir.z < -0.9, "W should move along -Z (forward), got {:?}", dir);
+            assert!(
+                dir.z < -0.9,
+                "W should move along -Z (forward), got {:?}",
+                dir
+            );
         }
 
         // A → left (-X)
@@ -427,7 +459,11 @@ mod tests {
             let (dir, speed) = get_wish_direction(&*action, yaw, 100.0, 60.0);
             assert!(speed > 0.0);
             assert!(dir.x.abs() < 0.1, "S should not produce X movement");
-            assert!(dir.z > 0.9, "S should move along +Z (backward), got {:?}", dir);
+            assert!(
+                dir.z > 0.9,
+                "S should move along +Z (backward), got {:?}",
+                dir
+            );
         }
 
         // D → right (+X)
@@ -576,35 +612,72 @@ mod tests {
             .add_input_context::<PlayerActions>()
             .finish();
 
-        let entity = app.world_mut().spawn((
-            PlayerActions,
-            actions!(PlayerActions[
-                (Action::<Move>::new(), bindings![
-                    (KeyCode::KeyW, SwizzleAxis::YXZ),
-                    (KeyCode::KeyA, Negate::all()),
-                    (KeyCode::KeyS, Negate::all(), SwizzleAxis::YXZ),
-                    KeyCode::KeyD,
-                    GamepadAxis::LeftStickX,
-                    (GamepadAxis::LeftStickY, SwizzleAxis::YXZ),
+        let entity = app
+            .world_mut()
+            .spawn((
+                PlayerActions,
+                actions!(PlayerActions[
+                    (Action::<Move>::new(), bindings![
+                        (KeyCode::KeyW, SwizzleAxis::YXZ),
+                        (KeyCode::KeyA, Negate::all()),
+                        (KeyCode::KeyS, Negate::all(), SwizzleAxis::YXZ),
+                        KeyCode::KeyD,
+                        GamepadAxis::LeftStickX,
+                        (GamepadAxis::LeftStickY, SwizzleAxis::YXZ),
+                    ]),
                 ]),
-            ]),
-            Action::<Move>::default(),
-        )).id();
+                Action::<Move>::default(),
+            ))
+            .id();
 
         let mut move_action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
         **move_action = Vec2::new(0.0, 1.0);
 
         let action_ref = app.world().get::<Action<Move>>(entity).unwrap();
-        let (dir, speed) = get_wish_direction(
-            action_ref,
-            std::f32::consts::FRAC_PI_2,
-            100.0,
-            60.0,
-        );
+        let (dir, speed) = get_wish_direction(action_ref, std::f32::consts::FRAC_PI_2, 100.0, 60.0);
         assert!(speed > 0.0);
         assert!(
             dir.x.abs() > 0.9,
             "Direction should rotate into x axis, got {:?}",
+            dir
+        );
+    }
+
+    #[test]
+    fn diagonal_input_is_normalized_to_unit_length() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(EnhancedInputPlugin)
+            .add_input_context::<PlayerActions>()
+            .finish();
+
+        let entity = app
+            .world_mut()
+            .spawn((PlayerActions, Action::<Move>::default()))
+            .id();
+
+        // Set diagonal input: forward + right
+        {
+            let mut move_action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
+            **move_action = Vec2::new(1.0, 1.0);
+        }
+
+        let action_ref = app.world().get::<Action<Move>>(entity).unwrap();
+        let (dir, speed) = get_wish_direction(action_ref, 0.0, 100.0, 60.0);
+
+        // Combined speed should be the magnitude of the vector sum, not the sum of speeds
+        let expected_magnitude = (100.0_f32.powi(2) + 60.0_f32.powi(2)).sqrt();
+        assert!(
+            (speed - expected_magnitude).abs() < 0.001,
+            "Diagonal speed should be sqrt(100^2 + 60^2) = {}, got {:?}",
+            expected_magnitude,
+            speed
+        );
+
+        // Direction should be normalized to unit length
+        assert!(
+            (dir.length() - 1.0).abs() < 0.001,
+            "Diagonal direction should be normalized to unit length, got {:?}",
             dir
         );
     }
@@ -622,25 +695,28 @@ mod tests {
             (super::apply_movement, integrate_position).chain(),
         );
 
-        let entity = app.world_mut().spawn((
-            PlayerActions,
-            Action::<Move>::default(),
-            Action::<Sprint>::default(),
-            Action::<Jump>::default(),
-            PlayerId(PeerId::Netcode(1)),
-            Predicted,
-            Controlled,
-            CharacterMarker,
-            GroundState {
-                is_grounded: true,
-                ground_normal: Vec3::Y,
-                ground_distance: 0.0,
-                ground_tick: 1,
-            },
-            LinearVelocity(Vec3::ZERO),
-            Position::new(Vec3::ZERO),
-            Rotation::default(),
-        )).id();
+        let entity = app
+            .world_mut()
+            .spawn((
+                PlayerActions,
+                Action::<Move>::default(),
+                Action::<Sprint>::default(),
+                Action::<Jump>::default(),
+                PlayerId(PeerId::Netcode(1)),
+                Predicted,
+                Controlled,
+                CharacterMarker,
+                GroundState {
+                    is_grounded: true,
+                    ground_normal: Vec3::Y,
+                    ground_distance: 0.0,
+                    ground_tick: 1,
+                },
+                LinearVelocity(Vec3::ZERO),
+                Position::new(Vec3::ZERO),
+                Rotation::default(),
+            ))
+            .id();
 
         // Set movement input
         let mut move_action = app.world_mut().get_mut::<Action<Move>>(entity).unwrap();
@@ -701,5 +777,80 @@ mod tests {
             first_dir,
             second_dir
         );
+    }
+
+    #[test]
+    fn sprint_drain_reduces_stamina_and_marks_exhausted() {
+        use crate::FIXED_TIMESTEP_HZ;
+        use crate::components::stamina::STAMINA_DRAIN_RATE;
+        use crate::components::stamina::Stamina;
+
+        let mut stamina = Stamina::default();
+        let dt = 1.0 / FIXED_TIMESTEP_HZ as f32;
+
+        let drains_per_tick = STAMINA_DRAIN_RATE * dt;
+        stamina.drain(drains_per_tick, 0.0);
+        assert!(
+            stamina.current < crate::components::stamina::STAMINA_MAX,
+            "Stamina should decrease after drain"
+        );
+        assert!(!stamina.exhausted, "Should not be exhausted while > 0");
+
+        for _ in 0..1000 {
+            stamina.drain(drains_per_tick, 0.5);
+        }
+        assert!(
+            stamina.exhausted,
+            "Should be exhausted when stamina reaches 0"
+        );
+        assert!(
+            !stamina.can_sprint(),
+            "Cannot sprint when stamina is depleted"
+        );
+    }
+
+    #[test]
+    fn stamina_regenerates_after_delay_without_draining() {
+        use crate::components::stamina::STAMINA_MAX;
+        use crate::components::stamina::STAMINA_REGEN_DELAY;
+        use crate::components::stamina::Stamina;
+
+        let mut stamina = Stamina {
+            current: 0.0,
+            exhausted: true,
+            last_drain_time: 0.0,
+            ..Stamina::default()
+        };
+
+        assert!(
+            !stamina.can_regenerate(0.5),
+            "Should not regenerate within regen_delay"
+        );
+
+        let now = STAMINA_REGEN_DELAY + 0.01;
+        assert!(
+            stamina.can_regenerate(now),
+            "Should regenerate after regen_delay"
+        );
+
+        stamina.regenerate(STAMINA_MAX, now);
+        assert!(stamina.current > 0.0);
+        assert!(
+            !stamina.exhausted,
+            "Should not be exhausted after full regeneration"
+        );
+    }
+
+    #[test]
+    fn exhausted_player_cannot_sprint() {
+        use crate::components::stamina::Stamina;
+
+        let stamina = Stamina {
+            current: 0.0,
+            exhausted: true,
+            ..Stamina::default()
+        };
+
+        assert!(!stamina.can_sprint());
     }
 }

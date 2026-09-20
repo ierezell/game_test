@@ -1,11 +1,13 @@
 use avian3d::prelude::Position;
 use bevy::prelude::{
-    App, ButtonInput, IntoScheduleConfigs, KeyCode, Plugin, Query, Res, Resource, Update, Vec3,
-    With, in_state,
+    App, ButtonInput, IntoScheduleConfigs, KeyCode, Plugin, Query, Res, ResMut, Resource, Update,
+    Vec3, With, in_state, info,
 };
-use lightyear::prelude::{Client, Controlled, MessageSender};
+use lightyear::prelude::{Client, Controlled, MessageReceiver, MessageSender};
 use shared::inputs::PLAYER_CAPSULE_HEIGHT;
-use shared::protocol::{LobbyControlChannel, TerminalInteractionRequest};
+use shared::protocol::{
+    LobbyControlChannel, TerminalInteractionRequest, TerminalInteractionResponse,
+};
 use shared::terminal::{TERMINAL_INTERACTION_RANGE, TerminalCommand, TerminalConsole};
 
 use crate::ClientGameState;
@@ -19,15 +21,52 @@ impl Default for TerminalCommandInput {
     }
 }
 
+#[derive(Resource, Clone, Debug, Default)]
+pub struct TerminalResponseOutput {
+    pub terminal_id: String,
+    pub success: bool,
+    pub output: String,
+    pub error: Option<String>,
+}
+
 pub struct ClientTerminalPlugin;
 
 impl Plugin for ClientTerminalPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TerminalCommandInput>();
+        app.init_resource::<TerminalResponseOutput>();
         app.add_systems(
             Update,
-            send_terminal_interaction.run_if(in_state(ClientGameState::Playing)),
+            (send_terminal_interaction, receive_terminal_response)
+                .run_if(in_state(ClientGameState::Playing)),
         );
+    }
+}
+
+fn receive_terminal_response(
+    mut response_query: Query<&mut MessageReceiver<TerminalInteractionResponse>, With<Client>>,
+    mut output: ResMut<TerminalResponseOutput>,
+) {
+    for mut receiver in response_query.iter_mut() {
+        for response in receiver.receive() {
+            output.terminal_id = response.terminal_id.clone();
+            output.success = response.success;
+            output.output = response.output.clone();
+            output.error = response.error.clone();
+
+            if response.success {
+                info!(
+                    "Terminal [{}] response: {}",
+                    response.terminal_id, response.output
+                );
+            } else {
+                let err = response
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "Unknown error".to_string());
+                info!("Terminal [{}] error: {}", response.terminal_id, err);
+            }
+        }
     }
 }
 

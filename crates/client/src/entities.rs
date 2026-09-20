@@ -9,6 +9,7 @@ use shared::entities::PlayerPhysicsBundle;
 use crate::LocalPlayerId;
 use crate::inputs::spawn_local_player_input_actions;
 use lightyear::prelude::{Controlled, Interpolated, Predicted};
+use shared::components::stamina::Stamina;
 use shared::inputs::{PLAYER_CAPSULE_HEIGHT, PLAYER_CAPSULE_RADIUS};
 
 use shared::protocol::{CharacterMarker, PlayerColor, PlayerId};
@@ -45,6 +46,7 @@ fn handle_local_player_setup(
                 Mesh3d(meshes.add(Capsule3d::new(PLAYER_CAPSULE_RADIUS, PLAYER_CAPSULE_HEIGHT))),
                 MeshMaterial3d(materials.add(color.0)),
                 Transform::default(),
+                Stamina::default(),
                 PlayerPhysicsBundle::default(),
             ));
         }

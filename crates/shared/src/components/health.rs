@@ -1,6 +1,6 @@
 use bevy::prelude::{
-    App, Component, Entity, Message, MessageReader, Plugin, Query, Reflect, ReflectComponent,
-    Res, Time, Update, Vec3, info,
+    App, Component, Entity, Message, MessageReader, Plugin, Query, Reflect, ReflectComponent, Res,
+    Time, Update, Vec3, info,
 };
 use serde::{Deserialize, Serialize};
 

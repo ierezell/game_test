@@ -1,6 +1,6 @@
 pub mod window;
 
-use bevy::prelude::{App, Commands, Entity, Plugin, Query, Res, With, Without};
+use bevy::prelude::{App, Commands, Entity, Plugin, Query, Res, Without};
 use shared::inputs::{PlayerActions, get_player_actions};
 use shared::protocol::PlayerId;
 

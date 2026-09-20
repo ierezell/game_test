@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
-use lightyear::prelude::{Controlled, Interpolated, Predicted};
+use lightyear::prelude::{Controlled, ControlledBy, Interpolated, Predicted};
 use shared::components::flashlight::PlayerFlashlight;
 use shared::inputs::{PLAYER_CAPSULE_HEIGHT, ToggleFlashlight};
 use shared::protocol::PlayerId;
@@ -16,19 +16,13 @@ struct HasFlashlightBeam;
 impl Plugin for ClientFlashlightPlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(handle_flashlight_toggle);
-        app.add_systems(
-            Update,
-            (
-                spawn_flashlight_beam,
-                update_flashlight_beam,
-            ),
-        );
+        app.add_systems(Update, (spawn_flashlight_beam, update_flashlight_beam));
     }
 }
 
 fn handle_flashlight_toggle(
     trigger: On<Start<ToggleFlashlight>>,
-    mut flashlight_query: Query<&mut PlayerFlashlight>,
+    mut flashlight_query: Query<&mut PlayerFlashlight, (With<Predicted>, Without<Interpolated>)>,
 ) {
     if let Ok(mut flashlight) = flashlight_query.get_mut(trigger.context) {
         flashlight.toggle();
@@ -44,7 +38,7 @@ fn spawn_flashlight_beam(
     player_query: Query<
         (Entity, &PlayerFlashlight, Has<Controlled>),
         (
-            Or<(With<Predicted>, With<Interpolated>)>,
+            Or<(With<Predicted>, With<Interpolated>, With<ControlledBy>)>,
             With<PlayerId>,
             Without<HasFlashlightBeam>,
         ),
@@ -93,7 +87,7 @@ fn update_flashlight_beam(
     player_query: Query<
         (&PlayerFlashlight, &Children),
         (
-            Or<(With<Predicted>, With<Interpolated>)>,
+            Or<(With<Predicted>, With<Interpolated>, With<ControlledBy>)>,
             With<PlayerId>,
             Changed<PlayerFlashlight>,
         ),
@@ -132,10 +126,18 @@ mod tests {
     fn beam_intensity_matches_flashlight_state() {
         let mut flashlight = PlayerFlashlight::new();
         flashlight.is_on = true;
-        let intensity_on = if flashlight.is_on { flashlight.intensity } else { 0.0 };
+        let intensity_on = if flashlight.is_on {
+            flashlight.intensity
+        } else {
+            0.0
+        };
 
         flashlight.is_on = false;
-        let intensity_off = if flashlight.is_on { flashlight.intensity } else { 0.0 };
+        let intensity_off = if flashlight.is_on {
+            flashlight.intensity
+        } else {
+            0.0
+        };
 
         assert_eq!(intensity_on, 1400000.0);
         assert_eq!(intensity_off, 0.0);
@@ -149,13 +151,16 @@ mod tests {
         app.add_systems(Update, spawn_flashlight_beam);
 
         // Spawn a player entity with PlayerFlashlight and PlayerId and Predicted
-        let _player = app.world_mut().spawn((
-            PlayerFlashlight::new(),
-            PlayerId(PeerId::Netcode(1)),
-            Predicted,
-            Transform::default(),
-            bevy::ecs::name::Name::new("Player"),
-        )).id();
+        let _player = app
+            .world_mut()
+            .spawn((
+                PlayerFlashlight::new(),
+                PlayerId(PeerId::Netcode(1)),
+                Predicted,
+                Transform::default(),
+                bevy::ecs::name::Name::new("Player"),
+            ))
+            .id();
 
         // Run the system - it should spawn a flashlight beam
         app.update();
@@ -163,7 +168,7 @@ mod tests {
 
         // Verify a SpotLight was spawned as a child
         let mut child_query = app.world_mut().query::<&SpotLight>();
-        let spot_light_count = child_query.iter(&app.world()).count();
+        let spot_light_count = child_query.iter(app.world()).count();
         assert!(
             spot_light_count >= 1,
             "Expected at least one SpotLight to be spawned, got {}",
@@ -172,7 +177,7 @@ mod tests {
 
         // Verify the child has the FlashlightBeam marker
         let mut beam_query = app.world_mut().query::<&FlashlightBeam>();
-        let beam_count = beam_query.iter(&app.world()).count();
+        let beam_count = beam_query.iter(app.world()).count();
         assert!(
             beam_count >= 1,
             "Expected at least one FlashlightBeam marker, got {}",
@@ -189,13 +194,16 @@ mod tests {
         app.add_systems(Update, update_flashlight_beam);
 
         // Spawn a player entity
-        let player = app.world_mut().spawn((
-            PlayerFlashlight::new(),
-            PlayerId(PeerId::Netcode(1)),
-            Predicted,
-            Transform::default(),
-            bevy::ecs::name::Name::new("Player"),
-        )).id();
+        let player = app
+            .world_mut()
+            .spawn((
+                PlayerFlashlight::new(),
+                PlayerId(PeerId::Netcode(1)),
+                Predicted,
+                Transform::default(),
+                bevy::ecs::name::Name::new("Player"),
+            ))
+            .id();
 
         // Initial update to spawn the beam
         app.update();
@@ -210,7 +218,7 @@ mod tests {
         // Verify the spotlight intensity is 0
         let mut spotlight_q = app.world_mut().query::<&SpotLight>();
         let all_zero = spotlight_q
-            .iter(&app.world())
+            .iter(app.world())
             .all(|light| light.intensity == 0.0);
         assert!(
             all_zero,

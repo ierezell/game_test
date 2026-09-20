@@ -89,6 +89,7 @@ impl Plugin for SharedPlugin {
         app.add_plugins(NavmeshUpdaterPlugin::<Collider, NavigationObstacle>::default());
         app.add_plugins(navigation::NavigationPlugin);
         app.add_plugins(components::health::HealthPlugin);
+        app.add_plugins(components::stamina::StaminaPlugin);
         app.add_plugins(components::weapons::WeaponsPlugin);
         app.add_plugins(noise::NoisePlugin);
         app.add_plugins(sleeper::SleeperPlugin);

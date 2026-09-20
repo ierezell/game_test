@@ -2,8 +2,10 @@ use crate::{
     components::{
         flashlight::PlayerFlashlight,
         health::{Health, Respawnable},
+        stamina::Stamina,
         weapons::{Gun, Projectile, ProjectileGun},
     },
+    inputs::PlayerActions,
     inputs::movement::GroundState,
     navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
     sleeper::{ProceduralSleeperMarker, Sleeper},
@@ -20,6 +22,7 @@ use lightyear::prelude::{
     AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings,
     InterpolationRegistrationExt, NetworkDirection, PeerId, PredictionBuilderExt, ReliableSettings,
 };
+use lightyear_inputs_bei::prelude::InputPlugin as BeiInputPlugin;
 
 use serde::{Deserialize, Serialize};
 
@@ -47,7 +50,7 @@ pub struct LevelSeed {
 #[derive(Component, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LobbyState {
     pub players: Vec<u64>,
-    pub host_id: u64,
+    pub host_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -71,6 +74,14 @@ pub struct TerminalInteractionRequest {
     pub command: TerminalCommand,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TerminalInteractionResponse {
+    pub terminal_id: String,
+    pub success: bool,
+    pub output: String,
+    pub error: Option<String>,
+}
+
 #[derive(TypePath)]
 pub struct LobbyControlChannel;
 
@@ -83,6 +94,8 @@ impl Plugin for ProtocolPlugin {
             position_to_transform: true,
             ..default()
         });
+
+        app.add_plugins(BeiInputPlugin::<PlayerActions>::default());
 
         app.component::<PlayerId>().replicate();
         app.component::<Name>().replicate();
@@ -108,6 +121,8 @@ impl Plugin for ProtocolPlugin {
         app.component::<LinearVelocity>().replicate().predict();
 
         app.component::<GroundState>().replicate().predict();
+
+        app.component::<Stamina>().replicate().predict();
 
         // Health and weapon components
         app.component::<Health>().replicate().predict();
@@ -148,6 +163,9 @@ impl Plugin for ProtocolPlugin {
 
         app.register_message::<TerminalInteractionRequest>()
             .add_direction(NetworkDirection::ClientToServer);
+
+        app.register_message::<TerminalInteractionResponse>()
+            .add_direction(NetworkDirection::ServerToClient);
 
         debug!("Protocol plugin initialized with components, messages, inputs, and events");
     }

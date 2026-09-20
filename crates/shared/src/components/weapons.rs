@@ -1,10 +1,9 @@
 use crate::components::health::DamageEvent;
-use crate::navigation::NavigationObstacle;
 use crate::inputs::{PlayerActions, Reload, Shoot};
+use crate::navigation::NavigationObstacle;
 use crate::noise::{NoiseEvent, NoiseType};
 use avian3d::prelude::{
-    Collider, LinearVelocity, Position, RigidBody, Rotation, SpatialQueryFilter,
-    SpatialQuery,
+    Collider, LinearVelocity, Position, RigidBody, Rotation, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::ecs::query::With;
 use bevy::prelude::{
@@ -90,6 +89,7 @@ pub struct HitEvent {
 }
 
 // Gun use raycast to detect hits. ProjectileGun spawns projectile entities.
+#[allow(clippy::too_many_arguments, clippy::collapsible_if)]
 pub fn fire_gun_system(
     mut commands: Commands,
     mut query: Query<
@@ -342,12 +342,12 @@ pub fn process_hit_events(mut commands: Commands, hit_events: Query<(Entity, &Hi
 #[cfg(test)]
 mod tests {
     use super::{Gun, HitEvent, fire_gun_system, shoot_direction};
+    use crate::components::health::HealthPlugin;
+    use crate::inputs::{Move, PlayerActions, Reload, Shoot};
     use avian3d::prelude::{Collider, Position, RigidBody, Rotation};
     use bevy::prelude::{App, GamepadAxis, KeyCode, MinimalPlugins, Quat, Timer, TimerMode, Vec3};
     use bevy_enhanced_input::prelude::*;
     use lightyear::prelude::ControlledBy;
-    use crate::inputs::{Move, PlayerActions, Reload, Shoot};
-    use crate::components::health::HealthPlugin;
     use std::time::Duration;
 
     #[test]
@@ -427,39 +427,45 @@ mod tests {
 
         let owner = app.world_mut().spawn_empty().id();
 
-        let entity = app.world_mut().spawn((
-            PlayerActions,
-            actions!(PlayerActions[
-                (Action::<Move>::new(), bindings![
-                    (KeyCode::KeyW, SwizzleAxis::YXZ),
-                    (KeyCode::KeyA, Negate::all()),
-                    (KeyCode::KeyS, Negate::all(), SwizzleAxis::YXZ),
-                    KeyCode::KeyD,
-                    GamepadAxis::LeftStickX,
-                    (GamepadAxis::LeftStickY, SwizzleAxis::YXZ),
+        let entity = app
+            .world_mut()
+            .spawn((
+                PlayerActions,
+                actions!(PlayerActions[
+                    (Action::<Move>::new(), bindings![
+                        (KeyCode::KeyW, SwizzleAxis::YXZ),
+                        (KeyCode::KeyA, Negate::all()),
+                        (KeyCode::KeyS, Negate::all(), SwizzleAxis::YXZ),
+                        KeyCode::KeyD,
+                        GamepadAxis::LeftStickX,
+                        (GamepadAxis::LeftStickY, SwizzleAxis::YXZ),
+                    ]),
+                    (Action::<Shoot>::new(), bindings![KeyCode::Space]),
+                    (Action::<Reload>::new(), bindings![KeyCode::KeyR]),
                 ]),
-                (Action::<Shoot>::new(), bindings![KeyCode::Space]),
-                (Action::<Reload>::new(), bindings![KeyCode::KeyR]),
-            ]),
-            Action::<Shoot>::default(),
-            Action::<Reload>::default(),
-            Position::new(Vec3::new(0.0, 0.5, 0.0)),
-            Rotation::default(),
-            Gun {
-                cooldown: Timer::from_seconds(0.0, TimerMode::Once),
-                ..Gun::default()
-            },
-            ControlledBy {
-                owner,
-                lifetime: Default::default(),
-            },
-        )).id();
+                Action::<Shoot>::default(),
+                Action::<Reload>::default(),
+                Position::new(Vec3::new(0.0, 0.5, 0.0)),
+                Rotation::default(),
+                Gun {
+                    cooldown: Timer::from_seconds(0.0, TimerMode::Once),
+                    ..Gun::default()
+                },
+                ControlledBy {
+                    owner,
+                    lifetime: Default::default(),
+                },
+            ))
+            .id();
 
-        let obstacle = app.world_mut().spawn((
-            Position::new(Vec3::new(0.0, 1.5, -6.0)),
-            RigidBody::Static,
-            Collider::cuboid(1.5, 1.5, 1.5),
-        )).id();
+        let obstacle = app
+            .world_mut()
+            .spawn((
+                Position::new(Vec3::new(0.0, 1.5, -6.0)),
+                RigidBody::Static,
+                Collider::cuboid(1.5, 1.5, 1.5),
+            ))
+            .id();
 
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             Duration::from_millis(16),

@@ -58,8 +58,7 @@ async fn fetch_config(path: &str) -> Result<String, JsValue> {
     }
 
     let text = JsFuture::from(resp.text()?).await?;
-    text
-        .as_string()
+    text.as_string()
         .ok_or_else(|| JsValue::from_str("response text could not be converted to string"))
 }
 

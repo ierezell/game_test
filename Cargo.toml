@@ -57,6 +57,7 @@ lightyear = { version = "0.29", default-features = true, features = [
     "interpolation",
     "replication",
 ] }
+lightyear_inputs_bei = "0.29"
 vleue_navigator = { version = "0.16", default-features = false, features = [
     "avian3d",
 ] }

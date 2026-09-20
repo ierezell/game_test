@@ -3,27 +3,20 @@ use bevy::prelude::*;
 use lightyear::prelude::{NetworkTarget, Replicate};
 use serde::{Deserialize, Serialize};
 
-use crate::components::health::Health;
 use crate::components::flashlight::PlayerFlashlight;
+use crate::components::health::Health;
 use crate::entities::NpcPhysicsBundle;
 use crate::navigation::{NavigationPathState, SimpleNavigationAgent};
 use crate::noise::{NoiseEvent, NoiseField, NoiseType, ZoneConnectivity};
 use crate::protocol::{CharacterMarker, PlayerId};
 
-#[derive(
-    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, Reflect,
-)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, Reflect, Default)]
 pub enum SleeperState {
+    #[default]
     Dormant,
     Investigating,
     Alerted,
     Combat,
-}
-
-impl Default for SleeperState {
-    fn default() -> Self {
-        Self::Dormant
-    }
 }
 
 impl SleeperState {
@@ -68,20 +61,13 @@ impl std::fmt::Display for SleeperState {
     }
 }
 
-#[derive(
-    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, Reflect,
-)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, Reflect, Default)]
 pub enum SleeperArchetype {
+    #[default]
     Drone,
     Spitter,
     Scout,
     Tank,
-}
-
-impl Default for SleeperArchetype {
-    fn default() -> Self {
-        Self::Drone
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Reflect)]
@@ -278,17 +264,13 @@ impl Plugin for SleeperPlugin {
         app.add_systems(
             FixedUpdate,
             (
-                sleeper_audio_reaction_system
-                    .after(crate::noise::propagate_noise_system),
-                sleeper_vision_system
-                    .after(crate::noise::propagate_noise_system),
+                sleeper_audio_reaction_system.after(crate::noise::propagate_noise_system),
+                sleeper_vision_system.after(crate::noise::propagate_noise_system),
                 sleeper_state_machine_system
                     .after(sleeper_audio_reaction_system)
                     .after(sleeper_vision_system),
-                sleeper_scream_system
-                    .after(sleeper_state_machine_system),
-                sleeper_visual_feedback_system
-                    .after(sleeper_state_machine_system),
+                sleeper_scream_system.after(sleeper_state_machine_system),
+                sleeper_visual_feedback_system.after(sleeper_state_machine_system),
                 despawn_dead_sleepers_system,
             ),
         );
@@ -372,27 +354,23 @@ fn sleeper_vision_system(
     }
 }
 
+#[allow(clippy::collapsible_if)]
 fn sleeper_state_machine_system(
     time: Res<Time>,
     config: Res<SleeperConfig>,
     zone_conn: Option<Res<ZoneConnectivity>>,
     players: Query<(Entity, &Position), With<PlayerId>>,
-    mut sleepers: Query<(
-        Entity,
-        &mut Sleeper,
-        &mut SimpleNavigationAgent,
-        &Position,
-    ), With<Sleeper>>,
+    mut sleepers: Query<
+        (Entity, &mut Sleeper, &mut SimpleNavigationAgent, &Position),
+        With<Sleeper>,
+    >,
     mut scream_writer: MessageWriter<SleeperScreamEvent>,
     mut noise_writer: MessageWriter<NoiseEvent>,
 ) {
     let dt = time.delta_secs();
     let now = time.elapsed().as_secs_f32();
 
-    let player_data: Vec<(Entity, Vec3)> = players
-        .iter()
-        .map(|(e, pos)| (e, pos.0))
-        .collect();
+    let player_data: Vec<(Entity, Vec3)> = players.iter().map(|(e, pos)| (e, pos.0)).collect();
 
     for (entity, mut sleeper, mut nav_agent, pos) in sleepers.iter_mut() {
         sleeper.scream_cooldown = (sleeper.scream_cooldown - dt).max(0.0);
@@ -408,14 +386,15 @@ fn sleeper_state_machine_system(
                 SleeperState::Investigating => {
                     if sleeper.investigate_target.is_none() {
                         if let Some(zone_id) = sleeper.zone_id {
-                            if let Some(zone_info) = zone_conn.as_ref().and_then(|c| c.zones.get(&zone_id)) {
+                            if let Some(zone_info) =
+                                zone_conn.as_ref().and_then(|c| c.zones.get(&zone_id))
+                            {
                                 let offset = Vec3::new(
-                                    pseudo_rand_offset(zone_id.0 as u32, 0),
+                                    pseudo_rand_offset(zone_id.0, 0),
                                     0.0,
-                                    pseudo_rand_offset(zone_id.0 as u32, 1),
+                                    pseudo_rand_offset(zone_id.0, 1),
                                 );
-                                sleeper.investigate_target =
-                                    Some(zone_info.center + offset * 5.0);
+                                sleeper.investigate_target = Some(zone_info.center + offset * 5.0);
                             }
                         }
                     }
@@ -431,7 +410,9 @@ fn sleeper_state_machine_system(
                         scream_writer.write(SleeperScreamEvent {
                             source: pos.0,
                             source_entity: entity,
-                            zone_id: sleeper.zone_id.unwrap_or(crate::level::generation::ZoneId(0)),
+                            zone_id: sleeper
+                                .zone_id
+                                .unwrap_or(crate::level::generation::ZoneId(0)),
                         });
 
                         noise_writer.write(NoiseEvent::with_entity(
@@ -451,7 +432,9 @@ fn sleeper_state_machine_system(
                         scream_writer.write(SleeperScreamEvent {
                             source: pos.0,
                             source_entity: entity,
-                            zone_id: sleeper.zone_id.unwrap_or(crate::level::generation::ZoneId(0)),
+                            zone_id: sleeper
+                                .zone_id
+                                .unwrap_or(crate::level::generation::ZoneId(0)),
                         });
 
                         noise_writer.write(NoiseEvent::with_entity(
@@ -485,9 +468,7 @@ fn sleeper_state_machine_system(
                 sleeper.investigate_timer += dt;
                 if sleeper.investigate_timer >= sleeper.investigate_duration {
                     sleeper.lose_alert(config.alert_decay_rate * dt * 2.0);
-                    if sleeper.alert_level
-                        < SleeperState::Investigating.alert_threshold()
-                    {
+                    if sleeper.alert_level < SleeperState::Investigating.alert_threshold() {
                         sleeper.state = SleeperState::Dormant;
                         sleeper.investigate_target = None;
                         nav_agent.current_target = None;
@@ -501,14 +482,14 @@ fn sleeper_state_machine_system(
             }
             SleeperState::Alerted => {
                 if sleeper.combat_target.is_none() {
-                    if let Some((target_entity, target_pos)) =
-                        nearest_player(pos.0, &player_data)
-                    {
+                    if let Some((target_entity, target_pos)) = nearest_player(pos.0, &player_data) {
                         sleeper.combat_target = Some(target_entity);
                         nav_agent.current_target = Some(target_pos);
                     }
-                } else if let Some(target_pos) =
-                    player_data.iter().find(|(e, _)| Some(*e) == sleeper.combat_target).map(|(_, p)| *p)
+                } else if let Some(target_pos) = player_data
+                    .iter()
+                    .find(|(e, _)| Some(*e) == sleeper.combat_target)
+                    .map(|(_, p)| *p)
                 {
                     nav_agent.current_target = Some(target_pos);
                 }
@@ -531,10 +512,7 @@ fn sleeper_state_machine_system(
     }
 }
 
-fn nearest_player(
-    from: Vec3,
-    players: &[(Entity, Vec3)],
-) -> Option<(Entity, Vec3)> {
+fn nearest_player(from: Vec3, players: &[(Entity, Vec3)]) -> Option<(Entity, Vec3)> {
     players
         .iter()
         .min_by(|(_, a), (_, b)| {
@@ -678,12 +656,12 @@ pub fn spawn_sleeper(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::level::generation::{generate_level, LevelConfig, ZoneId};
+    use crate::level::generation::{LevelConfig, ZoneId, generate_level};
     use crate::noise::build_zone_connectivity;
 
     fn test_entity(id: u32) -> Entity {
         bevy::ecs::entity::EntityIndex::from_raw_u32(id)
-            .map(|idx| Entity::from_index(idx))
+            .map(Entity::from_index)
             .unwrap()
     }
 
@@ -691,8 +669,14 @@ mod tests {
     fn sleeper_state_transitions_by_alert_level() {
         assert_eq!(SleeperState::next_state_at(0.0), SleeperState::Dormant);
         assert_eq!(SleeperState::next_state_at(0.29), SleeperState::Dormant);
-        assert_eq!(SleeperState::next_state_at(0.3), SleeperState::Investigating);
-        assert_eq!(SleeperState::next_state_at(0.59), SleeperState::Investigating);
+        assert_eq!(
+            SleeperState::next_state_at(0.3),
+            SleeperState::Investigating
+        );
+        assert_eq!(
+            SleeperState::next_state_at(0.59),
+            SleeperState::Investigating
+        );
         assert_eq!(SleeperState::next_state_at(0.6), SleeperState::Alerted);
         assert_eq!(SleeperState::next_state_at(0.89), SleeperState::Alerted);
         assert_eq!(SleeperState::next_state_at(0.9), SleeperState::Combat);
@@ -758,13 +742,19 @@ mod tests {
         assert!((sleeper.alert_level - 0.5).abs() < 0.001);
 
         sleeper.gain_alert(0.6);
-        assert!((sleeper.alert_level - 1.0).abs() < 0.001, "Alert should clamp at 1.0");
+        assert!(
+            (sleeper.alert_level - 1.0).abs() < 0.001,
+            "Alert should clamp at 1.0"
+        );
 
         sleeper.lose_alert(0.3);
         assert!((sleeper.alert_level - 0.7).abs() < 0.001);
 
         sleeper.lose_alert(1.0);
-        assert!((sleeper.alert_level - 0.0).abs() < 0.001, "Alert should clamp at 0.0");
+        assert!(
+            (sleeper.alert_level - 0.0).abs() < 0.001,
+            "Alert should clamp at 0.0"
+        );
     }
 
     #[test]
@@ -783,10 +773,8 @@ mod tests {
         assert!(config.scout_weight > 0.0);
         assert!(config.alert_decay_rate > 0.0);
 
-        let total_weight = config.drone_weight
-            + config.spitter_weight
-            + config.scout_weight
-            + config.tank_weight;
+        let total_weight =
+            config.drone_weight + config.spitter_weight + config.scout_weight + config.tank_weight;
         assert!(
             (total_weight - 1.0).abs() < 0.001,
             "Archetype weights should sum to 1.0, got {}",
@@ -817,7 +805,7 @@ mod tests {
         let from = Vec3::new(0.0, 0.0, 0.0);
         let players = vec![
             (test_entity(1), Vec3::new(3.0, 100.0, 3.0)), // far in 3D, close in 2D
-            (test_entity(2), Vec3::new(10.0, 0.0, 0.0)),    // close in 2D
+            (test_entity(2), Vec3::new(10.0, 0.0, 0.0)),  // close in 2D
         ];
 
         let result = nearest_player(from, &players);
@@ -840,7 +828,7 @@ mod tests {
             for axis in 0..3 {
                 let val = pseudo_rand_offset(seed, axis);
                 assert!(
-                    val >= -2.0 && val <= 2.0,
+                    (-2.0..=2.0).contains(&val),
                     "Offset should be in [-2, 2], got {} for seed={}, axis={}",
                     val,
                     seed,
@@ -1033,6 +1021,6 @@ mod tests {
         let zone_id = *level.zones.keys().next().unwrap();
         let zone_info = conn.zones.get(&zone_id).unwrap();
         assert_eq!(zone_info.zone_id, zone_id);
-        assert!(conn.zones.len() > 0);
+        assert!(!conn.zones.is_empty());
     }
 }

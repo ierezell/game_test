@@ -154,7 +154,8 @@ mod tests {
         app.insert_resource(LocalPlayerId(1));
         app.add_systems(Update, update_ammo_text);
 
-        app.world_mut().spawn((AmmoText, Text::new("Ammo: -- / --")));
+        app.world_mut()
+            .spawn((AmmoText, Text::new("Ammo: -- / --")));
 
         app.world_mut().spawn((
             PlayerId(PeerId::Netcode(1)),
@@ -191,7 +192,8 @@ mod tests {
         app.insert_resource(LocalPlayerId(1));
         app.add_systems(Update, update_ammo_text);
 
-        app.world_mut().spawn((AmmoText, Text::new("Ammo: -- / --")));
+        app.world_mut()
+            .spawn((AmmoText, Text::new("Ammo: -- / --")));
         app.world_mut().spawn((
             PlayerId(PeerId::Netcode(2)),
             Gun {

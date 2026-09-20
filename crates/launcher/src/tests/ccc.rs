@@ -85,6 +85,7 @@ fn advance_frames(app: &mut App, frames: u32) {
     }
 }
 
+#[allow(clippy::collapsible_if)]
 fn apply_test_input_system(
     test_input: Res<TestInput>,
     player_query: Query<Entity, With<CharacterMarker>>,

@@ -79,7 +79,8 @@ fn start_connection_crossbeam(
     ));
 
     use lightyear::prelude::{
-        Linked, LocalId, PeerId, PingConfig, PingManager, RemoteId, ReplicationSender, Transport,
+        Connected, Linked, LocalId, MessageReceiver, MessageSender, PeerId, PingConfig,
+        PingManager, RemoteId, ReplicationSender, Transport,
     };
 
     let io = endpoint.0.clone();
@@ -87,6 +88,7 @@ fn start_connection_crossbeam(
     let client_entity = commands
         .spawn((
             Client,
+            Connected,
             Link::default(),
             Linked,
             io,
@@ -98,6 +100,9 @@ fn start_connection_crossbeam(
             }),
             ReplicationSender::default(),
             ReplicationReceiver::default(),
+            MessageSender::<shared::protocol::HostStartGameEvent>::default(),
+            MessageSender::<shared::protocol::TerminalInteractionRequest>::default(),
+            MessageReceiver::<shared::protocol::TerminalInteractionResponse>::default(),
         ))
         .insert(Name::from(format!("Client {}", client_id.0)))
         .id();
@@ -186,8 +191,7 @@ fn start_connection(
         client_id.0
     ));
 
-    let client_port = 5000 + client_id.0 as u16;
-    let client_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), client_port);
+    let client_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
 
     let server_addr = if let Some(test_addr) = test_server_addr {
         test_addr.0
@@ -239,10 +243,6 @@ fn start_connection(
         }
         Err(e) => {
             error!("❌ Failed to create Netcode client: {:?}", e);
-            error!(
-                "This might be because the client port {} is already in use.",
-                client_port
-            );
             error!("Server might not be ready yet or there's a network issue.");
         }
     }
@@ -297,13 +297,19 @@ mod tests {
         app.insert_state(ClientGameState::Lobby);
         app.add_observer(handle_client_disconnected);
 
-        let lobby_ent = app.world_mut().spawn(LobbyState {
-            players: vec![1, 2],
-            host_id: 1,
-        }).id();
+        let lobby_ent = app
+            .world_mut()
+            .spawn(LobbyState {
+                players: vec![1, 2],
+                host_id: Some(1),
+            })
+            .id();
         let seed_ent = app.world_mut().spawn(LevelSeed { seed: 42 }).id();
 
-        let client_ent = app.world_mut().spawn((Connected, RemoteId(PeerId::Server))).id();
+        let client_ent = app
+            .world_mut()
+            .spawn((Connected, RemoteId(PeerId::Server)))
+            .id();
         app.update();
 
         // Simulate disconnection by removing Connected
@@ -315,7 +321,13 @@ mod tests {
 
         let lobby_exists = app.world().get::<LobbyState>(lobby_ent).is_some();
         let seed_exists = app.world().get::<LevelSeed>(seed_ent).is_some();
-        assert!(!lobby_exists, "LobbyState should be despawned on client disconnect");
-        assert!(!seed_exists, "LevelSeed should be despawned on client disconnect");
+        assert!(
+            !lobby_exists,
+            "LobbyState should be despawned on client disconnect"
+        );
+        assert!(
+            !seed_exists,
+            "LevelSeed should be despawned on client disconnect"
+        );
     }
 }

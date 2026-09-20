@@ -3,10 +3,10 @@ use bevy::prelude::{
 };
 use bevy::state::commands::CommandsStatesExt;
 use lightyear::prelude::{Client, MessageReceiver};
-use shared::{GymMode, NetworkMode};
 use shared::gym::setup_gym_level;
 use shared::level::generation::{LevelConfig, build_level_physics, generate_level};
 use shared::level::prefabs::build_prefab_level;
+use shared::{GymMode, NetworkMode};
 
 use crate::ClientGameState;
 use shared::protocol::{LevelSeed, StartLoadingGameEvent};
@@ -64,11 +64,7 @@ fn handle_world_creation(
         {
             bevy::log::info!("🏋️  Gym mode active - using simple static level");
             setup_gym_level(commands.reborrow(), meshes, materials);
-        } else if let Some(seed) = level_seed_query
-            .iter()
-            .next()
-            .map(|seed| seed.seed)
-        {
+        } else if let Some(seed) = level_seed_query.iter().next().map(|seed| seed.seed) {
             bevy::log::info!("🌱 Client generating level with seed: {}", seed);
 
             let config = LevelConfig {

@@ -54,7 +54,7 @@ fn test_shooting_applies_damage_and_sets_death_state() {
     {
         let world = app.world_mut();
         if let Some(mut shoot_action) = world.get_mut::<Action<Shoot>>(shooter) {
-                **shoot_action = true;
+            **shoot_action = true;
         }
     }
 
@@ -132,7 +132,10 @@ fn test_respawn_after_death_for_player_and_npc_components() {
     player_respawn.death_time = 5.0;
     npc_respawn.death_time = 5.0;
 
-    assert!(player_health.is_dead, "Player should be dead after lethal damage");
+    assert!(
+        player_health.is_dead,
+        "Player should be dead after lethal damage"
+    );
     assert!(npc_health.is_dead, "NPC should be dead after lethal damage");
 
     let player_early = apply_respawn(&mut player_health, &player_respawn, &mut player_pos, 7.0);
@@ -155,10 +158,12 @@ fn test_respawn_after_death_for_player_and_npc_components() {
 
     let player_respawned = apply_respawn(&mut player_health, &player_respawn, &mut player_pos, 8.2);
     assert!(player_respawned, "Player should respawn after its delay");
-    assert!(!player_health.is_dead, "Player should be alive after respawn");
+    assert!(
+        !player_health.is_dead,
+        "Player should be alive after respawn"
+    );
     assert_eq!(
-        player_health.current,
-        player_health.max,
+        player_health.current, player_health.max,
         "Player should respawn at full health"
     );
     assert_eq!(
@@ -181,8 +186,8 @@ fn test_projectile_spawn_and_lifecycle_in_playing_server_world() {
 #[test]
 fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
     use avian3d::prelude::{Collider, LinearVelocity, Position, RigidBody, Rotation};
-    use bevy::prelude::{Commands, FixedUpdate, Quat, Resource, Update, Vec2};
     use bevy::ecs::schedule::IntoScheduleConfigs;
+    use bevy::prelude::{Commands, FixedUpdate, Quat, Resource, Update, Vec2};
     use bevy_enhanced_input::prelude::*;
     use lightyear::prelude::{ControlledBy, PeerId};
     use shared::components::health::Health;
@@ -190,7 +195,7 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
     use shared::inputs::movement::GroundState;
     use shared::inputs::{Jump, Move, PlayerActions, Reload, Shoot, Sprint};
     use shared::level::building::{
-        ProceduralConnectionLightMarker, ProceduralSleeperMarker, ProceduralNavMeshMarker,
+        ProceduralConnectionLightMarker, ProceduralNavMeshMarker, ProceduralSleeperMarker,
         build_procedural_runtime_content,
     };
     use shared::level::generation::{LevelConfig, LevelGraph, build_level_physics, generate_level};
@@ -381,14 +386,14 @@ fn test_e2e_procedural_level_load_many_characters_move_and_shoot() {
 #[test]
 fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
     use avian3d::prelude::{LinearVelocity, Position, Rotation};
-    use bevy::prelude::{Commands, FixedUpdate, Quat, Resource, Update, Vec2};
     use bevy::ecs::schedule::IntoScheduleConfigs;
+    use bevy::prelude::{Commands, FixedUpdate, Quat, Resource, Update, Vec2};
     use bevy_enhanced_input::prelude::*;
     use lightyear::prelude::{ControlledBy, PeerId};
     use shared::inputs::movement::GroundState;
     use shared::inputs::{Move, PlayerActions};
     use shared::level::building::{
-        ProceduralSleeperMarker, ProceduralNavMeshMarker, build_procedural_runtime_content,
+        ProceduralNavMeshMarker, ProceduralSleeperMarker, build_procedural_runtime_content,
     };
     use shared::level::generation::{LevelConfig, LevelGraph, build_level_physics, generate_level};
     use shared::protocol::PlayerId;
@@ -517,14 +522,17 @@ fn test_e2e_procedural_level_characters_do_not_fall_below_threshold() {
             position.0.y
         );
     }
-    assert!(checked_sleepers >= 2, "Expected multiple procedural sleepers");
+    assert!(
+        checked_sleepers >= 2,
+        "Expected multiple procedural sleepers"
+    );
 }
 
 #[test]
 fn test_e2e_full_game_cycle() {
     use avian3d::prelude::{Collider, LinearVelocity, Position, RigidBody, Rotation};
-    use bevy::prelude::{Commands, FixedUpdate, Quat, Resource, Update, Vec2};
     use bevy::ecs::schedule::IntoScheduleConfigs;
+    use bevy::prelude::{Commands, FixedUpdate, Quat, Resource, Update, Vec2};
     use bevy_enhanced_input::prelude::*;
     use lightyear::prelude::{ControlledBy, PeerId};
     use shared::components::health::Health;
@@ -532,7 +540,7 @@ fn test_e2e_full_game_cycle() {
     use shared::inputs::movement::GroundState;
     use shared::inputs::{Jump, Move, PlayerActions, Reload, Shoot, Sprint};
     use shared::level::building::{
-        ProceduralConnectionLightMarker, ProceduralSleeperMarker, ProceduralNavMeshMarker,
+        ProceduralConnectionLightMarker, ProceduralNavMeshMarker, ProceduralSleeperMarker,
         build_procedural_runtime_content,
     };
     use shared::level::generation::{LevelConfig, LevelGraph, build_level_physics, generate_level};
@@ -604,10 +612,7 @@ fn test_e2e_full_game_cycle() {
                 ground_tick: 1,
             },
             Gun {
-                cooldown: bevy::prelude::Timer::from_seconds(
-                    0.0,
-                    bevy::prelude::TimerMode::Once,
-                ),
+                cooldown: bevy::prelude::Timer::from_seconds(0.0, bevy::prelude::TimerMode::Once),
                 ..Gun::default()
             },
             PlayerActions,

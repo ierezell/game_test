@@ -26,6 +26,7 @@ use std::time::Duration;
 
 mod app_flow;
 mod ccc;
+mod reconciliation;
 
 mod gameplay;
 mod health;
@@ -89,6 +90,25 @@ fn try_send_host_start(client_app: &mut App) -> bool {
         .query_filtered::<&mut MessageSender<HostStartGameEvent>, bevy::prelude::With<Client>>();
     if let Some(mut sender) = q.iter_mut(world).next() {
         sender.send::<LobbyControlChannel>(HostStartGameEvent { requested: true });
+        true
+    } else {
+        false
+    }
+}
+
+fn try_send_terminal_request(client_app: &mut App, terminal_id: &str, command: &str) -> bool {
+    use lightyear::prelude::{Client, MessageSender};
+    use shared::protocol::{LobbyControlChannel, TerminalInteractionRequest};
+    use shared::terminal::TerminalCommand;
+
+    let world = client_app.world_mut();
+    let mut q = world
+        .query_filtered::<&mut MessageSender<TerminalInteractionRequest>, bevy::prelude::With<Client>>();
+    if let Some(mut sender) = q.iter_mut(world).next() {
+        sender.send::<LobbyControlChannel>(TerminalInteractionRequest {
+            terminal_id: terminal_id.to_string(),
+            command: TerminalCommand::new(command),
+        });
         true
     } else {
         false
@@ -204,12 +224,12 @@ fn wait_until_all_playing(server_app: &mut App, client_app1: &mut App, client_ap
             bevy::prelude::With<Connected>,
         )>();
         q.iter(world).next().map(|transport| {
-            let has_sender = transport.channel_sends().any(|(kind, _)| {
-                kind == ChannelKind::of::<LobbyControlChannel>()
-            });
-            let has_receiver = transport.channel_receives().any(|r| {
-                r.channel_kind() == ChannelKind::of::<LobbyControlChannel>()
-            });
+            let has_sender = transport
+                .channel_sends()
+                .any(|(kind, _)| kind == ChannelKind::of::<LobbyControlChannel>());
+            let has_receiver = transport
+                .channel_receives()
+                .any(|r| r.channel_kind() == ChannelKind::of::<LobbyControlChannel>());
             (has_sender, has_receiver)
         })
     };
@@ -497,6 +517,7 @@ fn create_test_client_app_with_mode_and_endpoint(
     client_app.add_plugins(ClientEntitiesPlugin);
     client_app.add_plugins(ClientLobbyPlugin);
     client_app.add_plugins(ClientGameCyclePlugin);
+    client_app.add_plugins(client::terminal::ClientTerminalPlugin);
 
     client_app.init_state::<ClientGameState>();
     client_app.insert_state(ClientGameState::Lobby);
@@ -533,9 +554,10 @@ fn add_server_clientof(
 ) {
     use lightyear::prelude::server::{ClientOf, Server};
     use lightyear::prelude::{
-        Connected, Link, LinkOf, Linked, LocalId, PeerId, PingConfig, PingManager, RemoteId,
-        ReplicationReceiver, ReplicationSender, Transport,
+        Connected, Link, LinkOf, Linked, LocalId, MessageReceiver, PeerId, PingConfig, PingManager,
+        RemoteId, ReplicationReceiver, ReplicationSender, Transport,
     };
+    use shared::protocol::{HostStartGameEvent, TerminalInteractionRequest};
 
     let server_world = server_app.world_mut();
     let server_entity = server_world
@@ -560,6 +582,8 @@ fn add_server_clientof(
         }),
         ReplicationSender::default(),
         ReplicationReceiver::default(),
+        MessageReceiver::<HostStartGameEvent>::default(),
+        MessageReceiver::<TerminalInteractionRequest>::default(),
         bevy::prelude::Name::from(format!("ClientOf {}", client_id)),
     ));
 }
@@ -650,10 +674,7 @@ fn attach_crossbeam_client(server_app: &mut App, client_id: u64, gym_mode: bool)
     client_app
 }
 
-fn create_test_server_app_with_mode_unfinished(
-    gym_mode: bool,
-    network_mode: NetworkMode,
-) -> App {
+fn create_test_server_app_with_mode_unfinished(gym_mode: bool, network_mode: NetworkMode) -> App {
     let mut app = App::new();
 
     app.add_plugins((

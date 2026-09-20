@@ -14,7 +14,9 @@ This is the order of work. Each phase is complete only when its exit gate and te
 - Procedural generation coverage expanded: a 100-seed corpus now verifies objective reachability and terminal objective indexing, alongside the existing 18 generation tests.
 - Stealth propagation coverage expanded: cyclic zone graphs now have an executable regression proving noise propagation terminates, attenuates, and stays bounded; all 11 noise and 21 sleeper tests pass.
 - Terminal authority hardened: `UNLOCK` now requires an indexed keycard item, preventing forged client commands from mutating unlocked-keycard state; terminal and server authority tests pass.
-- Next implementation slice: strengthen player physics/reconciliation and interaction validation, then add the remaining Phase 2 edge-case tests.
+- Terminal interaction security completed: Avian line-of-sight validation added to `TerminalInteractionRequest` processing via `check_line_of_sight`; session phase check made authoritative by deriving `session_is_playing` from `ServerGameState::Playing` instead of hardcoding `true`; cooldown remains authoritative using server `Time`.
+- Terminal interaction networking tests fixed and hardened: `ClientTerminalPlugin` added to test client app, all four integration tests pass (`test_terminal_interaction_response_received_by_client`, `test_terminal_interaction_duplicate_within_cooldown_rejected`, `test_terminal_interaction_rejects_stale_target`, `test_terminal_state_replicated_consistently_to_both_clients`), plus 38 shared terminal unit tests and 15 server lobby tests pass.
+- Next implementation slice: strengthen player physics/reconciliation and add the remaining Phase 2 edge-case tests for out-of-range, blocked line-of-sight, and non-playing session phase through integration tests.
 
 ## Phase 1: Session and networking hardening
 

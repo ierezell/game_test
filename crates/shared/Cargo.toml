@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 rand.workspace = true
 lightyear.workspace = true
+lightyear_inputs_bei.workspace = true
 bevy_enhanced_input.workspace = true
 avian3d.workspace = true
 serde.workspace = true

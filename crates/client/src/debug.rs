@@ -8,12 +8,12 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use bevy_enhanced_input::action::Action;
 
 use lightyear::prelude::{Controlled, Predicted};
+use shared::inputs::Move;
 use shared::{
     components::health::Health,
     navigation::{PatrolRoute, PatrolState, SimpleNavigationAgent},
     protocol::{CharacterMarker, PlayerId},
 };
-use shared::inputs::Move;
 use std::time::Duration;
 
 pub struct ClientDebugPlugin;
@@ -171,10 +171,7 @@ fn update_debug_options_text(
         (With<DebugInputStatusText>, Without<DebugCursorStatusText>),
     >,
     cursor_options_query: Query<&CursorOptions, With<PrimaryWindow>>,
-    player_actions: Query<
-        &Action<Move>,
-        (With<PlayerId>, With<Predicted>, With<Controlled>),
-    >,
+    player_actions: Query<&Action<Move>, (With<PlayerId>, With<Predicted>, With<Controlled>)>,
 ) {
     if let Ok(mut text) = cursor_text_query.single_mut() {
         let is_locked = cursor_options_query
@@ -188,9 +185,7 @@ fn update_debug_options_text(
     }
 
     if let Ok(mut text) = input_text_query.single_mut() {
-        let input_enabled = player_actions
-            .single()
-            .is_ok();
+        let input_enabled = player_actions.single().is_ok();
         **text = if input_enabled {
             "Input: Enabled".to_string()
         } else {

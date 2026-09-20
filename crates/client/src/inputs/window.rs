@@ -127,14 +127,17 @@ mod tests {
 
         let mut release_app = App::new();
         release_app.add_plugins(MinimalPlugins);
-        let release_entity = release_app.world_mut().spawn((
-            CursorOptions {
-                grab_mode: CursorGrabMode::Locked,
-                visible: false,
-                ..default()
-            },
-            PrimaryWindow::default(),
-        )).id();
+        let release_entity = release_app
+            .world_mut()
+            .spawn((
+                CursorOptions {
+                    grab_mode: CursorGrabMode::Locked,
+                    visible: false,
+                    ..default()
+                },
+                PrimaryWindow::default(),
+            ))
+            .id();
         release_app.add_systems(Update, release_inputs);
         release_app.update();
         let cursor_options = release_app

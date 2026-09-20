@@ -66,13 +66,15 @@ fn handle_auto_start(
     if let Some(auto_start_res) = auto_start
         && auto_start_res.0
     {
-        // Require lobby replication to be visible client-side
-        let replicated_lobby = lobby_state.single().ok().cloned();
+        // Require lobby replication to be visible client-side.
+        // In host mode, there may be two LobbyState entities (server + client replicated),
+        // so use iter().next() instead of single() to avoid panic.
+        let replicated_lobby = lobby_state.iter().next().cloned();
 
         if let Some(lobby_data) = replicated_lobby {
             // Require a MessageSender to be present (established link)
             if let Some(mut sender) = sender_q.iter_mut().next() {
-                if lobby_data.host_id == local_player_id.0 {
+                if lobby_data.host_id == Some(local_player_id.0) {
                     debug_println(format_args!(
                         "DEBUG: handle_auto_start sending HostStartGameEvent"
                     ));
@@ -86,7 +88,9 @@ fn handle_auto_start(
             }
         } else {
             // No lobby yet; will try again on next tick
-            debug_println(format_args!("DEBUG: handle_auto_start - No LobbyState found"));
+            debug_println(format_args!(
+                "DEBUG: handle_auto_start - No LobbyState found"
+            ));
         }
     }
 }
@@ -215,11 +219,15 @@ fn update_lobby_text(
     local_player_id: Res<LocalPlayerId>,
     mut ui_queries: LobbyUiQueries,
     mut commands: Commands,
-    mut last_rendered: Local<Option<(Vec<u64>, u64, bool)>>,
+    mut last_rendered: Local<Option<(Vec<u64>, Option<u64>, bool)>>,
 ) {
     if let Ok(lobby_data) = lobby_state.single() {
-        let is_host_player = lobby_data.host_id == local_player_id.0;
-        let current_signature = (lobby_data.players.clone(), lobby_data.host_id, is_host_player);
+        let is_host_player = lobby_data.host_id == Some(local_player_id.0);
+        let current_signature = (
+            lobby_data.players.clone(),
+            lobby_data.host_id,
+            is_host_player,
+        );
         let needs_render = last_rendered.as_ref() != Some(&current_signature)
             || (ui_queries.player_text.is_empty() && !lobby_data.players.is_empty());
 
@@ -269,9 +277,9 @@ fn update_lobby_text(
                                             commands.entity(btn).despawn();
                                         }
                                         if let Some(mut sender) = sender_q.iter_mut().next() {
-                                            sender.send::<LobbyControlChannel>(HostStartGameEvent {
-                                                requested: true,
-                                            });
+                                            sender.send::<LobbyControlChannel>(
+                                                HostStartGameEvent { requested: true },
+                                            );
                                             commands.remove_resource::<AutoStart>();
                                         }
                                     },
@@ -297,7 +305,7 @@ fn update_lobby_text(
             for container_entity in ui_queries.player_list_container.iter() {
                 commands.entity(container_entity).with_children(|parent| {
                     for (i, player_id) in lobby_data.players.iter().enumerate() {
-                        let is_host_marker = if *player_id == lobby_data.host_id {
+                        let is_host_marker = if Some(*player_id) == lobby_data.host_id {
                             " (Host)"
                         } else {
                             ""
@@ -390,7 +398,7 @@ mod tests {
             .world_mut()
             .spawn(LobbyState {
                 players: vec![1, 2],
-                host_id: 1,
+                host_id: Some(1),
             })
             .id();
 
@@ -405,7 +413,7 @@ mod tests {
 
         // Now host changes to player 2
         let mut lobby = app.world_mut().get_mut::<LobbyState>(lobby_entity).unwrap();
-        lobby.host_id = 2;
+        lobby.host_id = Some(2);
 
         app.update();
 
@@ -438,7 +446,7 @@ mod tests {
 
         app.world_mut().spawn(LobbyState {
             players: vec![1],
-            host_id: 1,
+            host_id: Some(1),
         });
 
         app.update();
@@ -467,7 +475,7 @@ mod tests {
 
         app.world_mut().spawn(LobbyState {
             players: vec![1, 2],
-            host_id: 1,
+            host_id: Some(1),
         });
 
         app.update();

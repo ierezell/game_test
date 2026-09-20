@@ -195,7 +195,7 @@ pub fn spawn_gym_patrolling_npc_entities(
     gym_debug_info(format_args!(
         "Spawning {} patrolling NPC(s) for gym mode",
         npc_specs.len()
-    )    );
+    ));
 
     for (name, spawn_position, speed) in npc_specs {
         let validated_spawn = validate_spawn_position(spawn_position, &obstacles, 0.5);

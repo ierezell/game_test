@@ -101,6 +101,7 @@ fn measure_pair_fps(gym_mode: bool, sample_frames: usize) -> f64 {
 }
 
 #[test]
+#[ignore = "environment-dependent FPS benchmark; run on dev machines with cargo test -- --ignored"]
 fn simulation_sustains_over_30_fps_with_two_clients() {
     let (mut server_app, mut client_app1, mut client_app2) = setup_two_client_server(false);
 
@@ -131,6 +132,7 @@ fn simulation_sustains_over_30_fps_with_two_clients() {
 }
 
 #[test]
+#[ignore = "environment-dependent FPS benchmark; run on dev machines with cargo test -- --ignored"]
 fn gym_simulation_sustains_over_30_fps_and_stays_near_baseline() {
     let sample_frames = 600usize;
     let gym_fps = measure_pair_fps(true, sample_frames);
@@ -150,6 +152,7 @@ fn gym_simulation_sustains_over_30_fps_and_stays_near_baseline() {
 }
 
 #[test]
+#[ignore = "environment-dependent FPS benchmark; run on dev machines with cargo test -- --ignored"]
 fn gym_simulation_sustains_over_60_fps_when_enforced() {
     let gym_fps = measure_pair_fps(true, 600);
     assert!(

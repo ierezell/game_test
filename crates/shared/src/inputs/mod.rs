@@ -1,13 +1,14 @@
 use bevy::prelude::{
     Bundle, Component, GamepadAxis, GamepadButton, KeyCode, MouseButton, Plugin, Reflect, Vec2,
 };
-use bevy_enhanced_input::prelude::*;
 pub use bevy_enhanced_input::action::relationship::Actions;
+use bevy_enhanced_input::prelude::*;
+use serde::{Deserialize, Serialize};
 
-pub mod movement;
 pub mod look;
+pub mod movement;
 
-#[derive(Component, Reflect)]
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PlayerActions;
 
 #[derive(InputAction)]

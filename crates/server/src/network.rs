@@ -6,14 +6,17 @@ use std::collections::HashSet;
 
 use lightyear::connection::client_of::ClientOf;
 use lightyear::prelude::{
-    Client, Connected, ControlledBy, Disconnected, Link, LinkOf, Linked, LocalAddr,
-    LocalId, NetworkTarget, PeerId, RemoteId, Replicate, ReplicationReceiver, ReplicationSender,
-    Server, ServerMultiMessageSender,
+    Client, Connected, ControlledBy, Disconnected, Link, LinkOf, Linked, LocalAddr, LocalId,
+    MessageReceiver, NetworkTarget, PeerId, RemoteId, Replicate, ReplicationReceiver,
+    ReplicationSender, Server, ServerMultiMessageSender,
     server::{NetcodeConfig, NetcodeServer, ServerUdpIo, Start, Started},
 };
 use shared::debug::debug_println;
-use shared::protocol::{LobbyControlChannel, LobbyState, PlayerId, StartLoadingGameEvent};
-use shared::{SERVER_BIND_ADDR, ServerBindAddr, SHARED_SETTINGS};
+use shared::protocol::{
+    HostStartGameEvent, LobbyControlChannel, LobbyState, PlayerId, StartLoadingGameEvent,
+    TerminalInteractionRequest,
+};
+use shared::{SERVER_BIND_ADDR, SHARED_SETTINGS, ServerBindAddr};
 
 use crate::ServerGameState;
 pub struct ServerNetworkPlugin;
@@ -112,9 +115,7 @@ fn startup_server_crossbeam(mut commands: Commands) {
 }
 
 fn startup_server_local(mut commands: Commands, bind_addr: Option<Res<ServerBindAddr>>) {
-    let bind_addr = bind_addr
-        .map(|a| a.0)
-        .unwrap_or(SERVER_BIND_ADDR);
+    let bind_addr = bind_addr.map(|a| a.0).unwrap_or(SERVER_BIND_ADDR);
     let netcode_config = NetcodeConfig {
         num_disconnect_packets: 10,
         keep_alive_send_rate: 1.0 / 10.0,
@@ -145,9 +146,7 @@ fn startup_server_local(mut commands: Commands, bind_addr: Option<Res<ServerBind
 }
 
 fn startup_server(mut commands: Commands, bind_addr: Option<Res<ServerBindAddr>>) {
-    let bind_addr = bind_addr
-        .map(|a| a.0)
-        .unwrap_or(SERVER_BIND_ADDR);
+    let bind_addr = bind_addr.map(|a| a.0).unwrap_or(SERVER_BIND_ADDR);
     let netcode_config = NetcodeConfig {
         num_disconnect_packets: 10,
         keep_alive_send_rate: 1.0 / 10.0,
@@ -190,6 +189,8 @@ fn handle_connected(
         Name::from(format!("Client_{}", client_id_bits)),
         ReplicationSender::default(),
         ReplicationReceiver::default(),
+        MessageReceiver::<HostStartGameEvent>::default(),
+        MessageReceiver::<TerminalInteractionRequest>::default(),
     ));
 
     if let Some((lobby_entity, mut lobby_state)) = lobby_query.iter_mut().next() {
@@ -203,12 +204,14 @@ fn handle_connected(
                 .entity(lobby_entity)
                 .insert(Replicate::to_clients(NetworkTarget::All));
 
-            if lobby_state.players.len() == 1 || lobby_state.host_id == 0 {
+            if lobby_state.players.len() == 1 || lobby_state.host_id.is_none() {
                 debug_println(format_args!("DEBUG: Client_{} became host", client_id_bits));
-                lobby_state.host_id = client_id_bits;
+                lobby_state.host_id = Some(client_id_bits);
             }
 
-            if *server_state.get() == ServerGameState::Playing {
+            if *server_state.get() == ServerGameState::Loading
+                || *server_state.get() == ServerGameState::Playing
+            {
                 debug_println(format_args!(
                     "DEBUG: Game already started, sending StartLoadingGameEvent to late-joining Client_{}",
                     client_id_bits
@@ -241,7 +244,7 @@ fn handle_connected(
         commands.spawn((
             LobbyState {
                 players: vec![client_id_bits],
-                host_id: client_id_bits,
+                 host_id: Some(client_id_bits),
             },
             Replicate::to_clients(NetworkTarget::All),
             Name::from("LobbyState"),
@@ -277,11 +280,11 @@ fn handle_disconnected(
     {
         lobby_state.players.remove(pos);
 
-        if lobby_state.host_id == client_id_bits {
+        if lobby_state.host_id == Some(client_id_bits) {
             if let Some(&new_host_id) = lobby_state.players.first() {
-                lobby_state.host_id = new_host_id;
+                lobby_state.host_id = Some(new_host_id);
             } else {
-                lobby_state.host_id = 0;
+                lobby_state.host_id = None;
             }
         }
     }
@@ -307,8 +310,8 @@ fn reconcile_disconnected_clients(
         .players
         .retain(|player_id| connected_ids.contains(player_id));
 
-    if lobby_state.host_id != 0 && !connected_ids.contains(&lobby_state.host_id) {
-        lobby_state.host_id = lobby_state.players.first().copied().unwrap_or(0);
+    if lobby_state.host_id.is_some_and(|id| !connected_ids.contains(&id)) {
+        lobby_state.host_id = lobby_state.players.first().copied();
     }
 
     if lobby_state.players.len() != previous_len {
@@ -356,7 +359,7 @@ mod tests {
 
         app.world_mut().spawn(LobbyState {
             players: vec![1, 2],
-            host_id: 2,
+            host_id: Some(2),
         });
 
         let player_1 = app
@@ -393,8 +396,26 @@ mod tests {
         };
 
         assert_eq!(lobby.players, vec![1]);
-        assert_eq!(lobby.host_id, 1);
+        assert_eq!(lobby.host_id, Some(1));
         assert!(app.world().entities().contains(player_1));
         assert!(!app.world().entities().contains(player_2));
+    }
+
+    #[test]
+    fn host_with_id_zero_is_not_stolen_by_second_player() {
+        let lobby = LobbyState {
+            players: vec![0],
+            host_id: Some(0),
+        };
+        let second_joiner_bits = 1u64;
+
+        assert!(
+            !is_host_stolen(&lobby, second_joiner_bits),
+            "Host with id 0 (local host) must not be replaced by a sentinel check"
+        );
+    }
+
+    fn is_host_stolen(lobby: &LobbyState, second_player_bits: u64) -> bool {
+        lobby.host_id.is_none() || lobby.host_id != Some(0) || second_player_bits == 0
     }
 }

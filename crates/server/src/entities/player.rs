@@ -1,12 +1,16 @@
 use avian3d::prelude::{LinearVelocity, Position, Rotation};
-use bevy::prelude::{Commands, Entity, Name, Query, Transform, Vec3, With, info};
+use bevy::prelude::*;
+use bevy_enhanced_input::prelude::Start;
+use shared::inputs::ToggleFlashlight;
 use shared::inputs::get_player_actions;
 
 use lightyear::prelude::{
     Connected, ControlledBy, NetworkTarget, PeerId, RemoteId, Replicate, server::ClientOf,
 };
+use shared::components::stamina::Stamina;
 use shared::debug::debug_println;
 use shared::inputs::movement::GroundState;
+use shared::terminal::TerminalInteractionState;
 use shared::{
     components::{
         flashlight::PlayerFlashlight,
@@ -30,10 +34,9 @@ pub fn spawn_player_entities(
     let spawn_radius = 3.0;
 
     for (index, player_id) in lobby_data.players.iter().enumerate() {
-        if let Some((client_entity, _remote_id)) =
-            client_query
-                .iter()
-                .find(|(_, remote_id)| remote_id.0.to_bits() == *player_id)
+        if let Some((client_entity, _remote_id)) = client_query
+            .iter()
+            .find(|(_, remote_id)| remote_id.0.to_bits() == *player_id)
         {
             let angle = (index as f32) * 2.0 * std::f32::consts::PI / player_count;
             let spawn_position =
@@ -64,10 +67,9 @@ pub fn spawn_player_entities(
                     Replicate::to_clients(NetworkTarget::All),
                 ))
                 .insert(GroundState::default())
-                .insert((
-                    CharacterMarker,
-                    PlayerPhysicsBundle::default(),
-                ))
+                .insert(TerminalInteractionState::default())
+                .insert(Stamina::default())
+                .insert((CharacterMarker, PlayerPhysicsBundle::default()))
                 // Add the input actions for this player (will be replicated from client)
                 .insert(get_player_actions());
         } else {
@@ -145,10 +147,9 @@ pub fn spawn_late_joining_players(
                     Replicate::to_clients(NetworkTarget::All),
                 ))
                 .insert(GroundState::default())
-                .insert((
-                    CharacterMarker,
-                    PlayerPhysicsBundle::default(),
-                ))
+                .insert(TerminalInteractionState::default())
+                .insert(Stamina::default())
+                .insert((CharacterMarker, PlayerPhysicsBundle::default()))
                 // Add the input actions for this player (will be replicated from client)
                 .insert(get_player_actions());
         }
@@ -168,5 +169,14 @@ pub fn handle_player_death(
             );
             commands.entity(entity).despawn();
         }
+    }
+}
+
+pub fn handle_flashlight_toggle(
+    trigger: On<Start<ToggleFlashlight>>,
+    mut flashlight_query: Query<&mut PlayerFlashlight>,
+) {
+    if let Ok(mut flashlight) = flashlight_query.get_mut(trigger.context) {
+        flashlight.toggle();
     }
 }

@@ -306,16 +306,11 @@ impl DoorType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Reflect)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Reflect, Default)]
 pub enum KeycardColor {
+    #[default]
     Red,
     Blue,
-}
-
-impl Default for KeycardColor {
-    fn default() -> Self {
-        Self::Red
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -733,6 +728,7 @@ fn connection_endpoints(conn: &ZoneConnection) -> (ZoneId, ZoneId) {
     (conn.from_zone, conn.to_zone)
 }
 
+#[allow(clippy::collapsible_if)]
 fn set_path_edge_door(
     graph: &mut LevelGraph,
     critical_path: &[ZoneId],
@@ -752,11 +748,11 @@ fn set_path_edge_door(
     }
 }
 
-fn find_connection_mut<'a>(
-    connections: &'a mut [ZoneConnection],
+fn find_connection_mut(
+    connections: &mut [ZoneConnection],
     a: ZoneId,
     b: ZoneId,
-) -> Option<&'a mut ZoneConnection> {
+) -> Option<&mut ZoneConnection> {
     for conn in connections.iter_mut() {
         let (f, t) = connection_endpoints(conn);
         if (f == a && t == b) || (f == b && t == a) {
@@ -778,6 +774,7 @@ fn color_name(color: KeycardColor) -> &'static str {
 /// force backtracking, escalating door types along the critical path, hazard
 /// density that grows downstream, a resource budget concentrated in dead-ends,
 /// a terminal network index, scan-node hold positions and routed horde spawns.
+#[allow(clippy::collapsible_if)]
 pub fn apply_expedition_design(graph: &mut LevelGraph, rng: &mut StdRng) {
     if graph.zones.len() < 4 {
         return;
@@ -1011,6 +1008,7 @@ fn build_terminal_network(graph: &LevelGraph, _depths: &HashMap<ZoneId, u32>) ->
     TerminalNetwork { items }
 }
 
+#[allow(clippy::collapsible_if)]
 /// Alarm hordes are routed to spawn 2-3 rooms away from the objective so that
 /// players have time to set up mines/sentries at the defensive choke points.
 fn horde_spawn_zones(critical_path: &[ZoneId], objective: ZoneId) -> Vec<ZoneId> {
@@ -1036,6 +1034,7 @@ fn horde_spawn_zones(critical_path: &[ZoneId], objective: ZoneId) -> Vec<ZoneId>
     spawns
 }
 
+#[allow(clippy::collapsible_if)]
 /// Scan nodes anchor the defensive hold inside the objective room and just
 /// upstream so players cannot cheese the alarm behind a single wall.
 fn scan_node_zones(critical_path: &[ZoneId], objective: ZoneId, spawn: ZoneId) -> Vec<ZoneId> {
@@ -1782,7 +1781,7 @@ mod tests {
         let mut app = make_physics_app(level);
 
         let walls = entities_named_with(&mut app, "Physics_Wall_");
-        assert!(walls.len() > 0, "should have wall segments");
+        assert!(!walls.is_empty(), "should have wall segments");
 
         let safety_exists = {
             let world = app.world_mut();

@@ -5,7 +5,7 @@ use rand::{Rng, RngExt, SeedableRng};
 use std::sync::LazyLock;
 
 use crate::level::generation::{
-    DoorType, LevelGraph, Zone, ZoneConnection, ZoneId, ZoneType, WALL_THICKNESS,
+    DoorType, LevelGraph, WALL_THICKNESS, Zone, ZoneConnection, ZoneId, ZoneType,
 };
 use crate::navigation::NavigationObstacle;
 
@@ -108,7 +108,6 @@ impl RoomPrefab {
     }
 }
 
-
 fn base_socket_offset(side: SocketSide, half_size: Vec3) -> Vec3 {
     Vec3::new(
         match side {
@@ -133,7 +132,12 @@ fn base_socket(side: SocketSide, half_size: Vec3, door_type: DoorType) -> RoomSo
     }
 }
 
-fn shifted_socket(side: SocketSide, half_size: Vec3, shift: f32, door_type: DoorType) -> RoomSocket {
+fn shifted_socket(
+    side: SocketSide,
+    half_size: Vec3,
+    shift: f32,
+    door_type: DoorType,
+) -> RoomSocket {
     let mut offset = base_socket_offset(side, half_size);
     match side {
         SocketSide::East | SocketSide::West => offset.z += shift,
@@ -155,8 +159,16 @@ pub fn new_hub_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(30.0, 5.0, 30.0), DoorType::Normal),
-                base_socket(SocketSide::East, Vec3::new(30.0, 5.0, 30.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(30.0, 5.0, 30.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(30.0, 5.0, 30.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.16, 0.17, 0.19),
         },
@@ -167,9 +179,23 @@ pub fn new_hub_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                shifted_socket(SocketSide::North, Vec3::new(33.0, 5.0, 28.0), -3.0, DoorType::Normal),
-                shifted_socket(SocketSide::East, Vec3::new(33.0, 5.0, 28.0), 3.0, DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(33.0, 5.0, 28.0), DoorType::Normal),
+                shifted_socket(
+                    SocketSide::North,
+                    Vec3::new(33.0, 5.0, 28.0),
+                    -3.0,
+                    DoorType::Normal,
+                ),
+                shifted_socket(
+                    SocketSide::East,
+                    Vec3::new(33.0, 5.0, 28.0),
+                    3.0,
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(33.0, 5.0, 28.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.18, 0.17, 0.20),
         },
@@ -180,9 +206,21 @@ pub fn new_hub_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(28.0, 5.0, 33.0), DoorType::Normal),
-                base_socket(SocketSide::East, Vec3::new(28.0, 5.0, 33.0), DoorType::Normal),
-                base_socket(SocketSide::West, Vec3::new(28.0, 5.0, 33.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(28.0, 5.0, 33.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(28.0, 5.0, 33.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::West,
+                    Vec3::new(28.0, 5.0, 33.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.15, 0.18, 0.17),
         },
@@ -193,10 +231,26 @@ pub fn new_hub_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(36.0, 5.0, 36.0), DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(36.0, 5.0, 36.0), DoorType::Normal),
-                base_socket(SocketSide::East, Vec3::new(36.0, 5.0, 36.0), DoorType::Normal),
-                base_socket(SocketSide::West, Vec3::new(36.0, 5.0, 36.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(36.0, 5.0, 36.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(36.0, 5.0, 36.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(36.0, 5.0, 36.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::West,
+                    Vec3::new(36.0, 5.0, 36.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.14, 0.16, 0.20),
         },
@@ -212,8 +266,16 @@ pub fn new_corridor_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(5.0, 5.0, 25.0), DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(5.0, 5.0, 25.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(5.0, 5.0, 25.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(5.0, 5.0, 25.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.11, 0.09, 0.09),
         },
@@ -224,8 +286,18 @@ pub fn new_corridor_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                shifted_socket(SocketSide::North, Vec3::new(6.0, 5.0, 23.0), 2.0, DoorType::Normal),
-                shifted_socket(SocketSide::South, Vec3::new(6.0, 5.0, 23.0), -2.0, DoorType::Normal),
+                shifted_socket(
+                    SocketSide::North,
+                    Vec3::new(6.0, 5.0, 23.0),
+                    2.0,
+                    DoorType::Normal,
+                ),
+                shifted_socket(
+                    SocketSide::South,
+                    Vec3::new(6.0, 5.0, 23.0),
+                    -2.0,
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.13, 0.10, 0.10),
         },
@@ -236,8 +308,16 @@ pub fn new_corridor_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(7.0, 5.0, 27.0), DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(7.0, 5.0, 27.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(7.0, 5.0, 27.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(7.0, 5.0, 27.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.12, 0.11, 0.09),
         },
@@ -248,8 +328,16 @@ pub fn new_corridor_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(8.0, 5.0, 26.0), DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(8.0, 5.0, 26.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(8.0, 5.0, 26.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(8.0, 5.0, 26.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.10, 0.08, 0.08),
         },
@@ -265,8 +353,16 @@ pub fn new_industrial_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(35.0, 5.0, 35.0), DoorType::Normal),
-                base_socket(SocketSide::East, Vec3::new(35.0, 5.0, 35.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(35.0, 5.0, 35.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(35.0, 5.0, 35.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.18, 0.16, 0.13),
         },
@@ -277,9 +373,22 @@ pub fn new_industrial_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                shifted_socket(SocketSide::North, Vec3::new(38.0, 5.0, 32.0), -4.0, DoorType::Normal),
-                base_socket(SocketSide::East, Vec3::new(38.0, 5.0, 32.0), DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(38.0, 5.0, 32.0), DoorType::Alarm),
+                shifted_socket(
+                    SocketSide::North,
+                    Vec3::new(38.0, 5.0, 32.0),
+                    -4.0,
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(38.0, 5.0, 32.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(38.0, 5.0, 32.0),
+                    DoorType::Alarm,
+                ),
             ],
             mesh_color: Color::srgb(0.20, 0.15, 0.11),
         },
@@ -290,9 +399,21 @@ pub fn new_industrial_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(33.0, 5.0, 38.0), DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(33.0, 5.0, 38.0), DoorType::Normal),
-                base_socket(SocketSide::West, Vec3::new(33.0, 5.0, 38.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(33.0, 5.0, 38.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(33.0, 5.0, 38.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::West,
+                    Vec3::new(33.0, 5.0, 38.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.17, 0.17, 0.14),
         },
@@ -303,9 +424,21 @@ pub fn new_industrial_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(40.0, 5.0, 40.0), DoorType::Normal),
-                base_socket(SocketSide::East, Vec3::new(40.0, 5.0, 40.0), DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(40.0, 5.0, 40.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(40.0, 5.0, 40.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(40.0, 5.0, 40.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(40.0, 5.0, 40.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.16, 0.14, 0.12),
         },
@@ -316,9 +449,24 @@ pub fn new_industrial_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                shifted_socket(SocketSide::North, Vec3::new(37.0, 5.0, 37.0), 5.0, DoorType::Normal),
-                shifted_socket(SocketSide::East, Vec3::new(37.0, 5.0, 37.0), 5.0, DoorType::Normal),
-                shifted_socket(SocketSide::West, Vec3::new(37.0, 5.0, 37.0), -5.0, DoorType::Normal),
+                shifted_socket(
+                    SocketSide::North,
+                    Vec3::new(37.0, 5.0, 37.0),
+                    5.0,
+                    DoorType::Normal,
+                ),
+                shifted_socket(
+                    SocketSide::East,
+                    Vec3::new(37.0, 5.0, 37.0),
+                    5.0,
+                    DoorType::Normal,
+                ),
+                shifted_socket(
+                    SocketSide::West,
+                    Vec3::new(37.0, 5.0, 37.0),
+                    -5.0,
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.19, 0.18, 0.15),
         },
@@ -333,9 +481,11 @@ pub fn new_objective_variants() -> Vec<RoomPrefab> {
             half_size: Vec3::new(20.0, 5.0, 20.0),
             floor_height: 0.5,
             wall_height: 10.0,
-            sockets: vec![
-                base_socket(SocketSide::South, Vec3::new(20.0, 5.0, 20.0), DoorType::Bulkhead),
-            ],
+            sockets: vec![base_socket(
+                SocketSide::South,
+                Vec3::new(20.0, 5.0, 20.0),
+                DoorType::Bulkhead,
+            )],
             mesh_color: Color::srgb(0.08, 0.12, 0.08),
         },
         RoomPrefab {
@@ -345,8 +495,16 @@ pub fn new_objective_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::South, Vec3::new(22.0, 5.0, 19.0), DoorType::Bulkhead),
-                base_socket(SocketSide::East, Vec3::new(22.0, 5.0, 19.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(22.0, 5.0, 19.0),
+                    DoorType::Bulkhead,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(22.0, 5.0, 19.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.07, 0.14, 0.07),
         },
@@ -357,8 +515,17 @@ pub fn new_objective_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                shifted_socket(SocketSide::South, Vec3::new(19.0, 5.0, 21.0), 3.0, DoorType::Bulkhead),
-                base_socket(SocketSide::North, Vec3::new(19.0, 5.0, 21.0), DoorType::Normal),
+                shifted_socket(
+                    SocketSide::South,
+                    Vec3::new(19.0, 5.0, 21.0),
+                    3.0,
+                    DoorType::Bulkhead,
+                ),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(19.0, 5.0, 21.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.09, 0.10, 0.06),
         },
@@ -369,9 +536,21 @@ pub fn new_objective_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::South, Vec3::new(24.0, 5.0, 24.0), DoorType::Bulkhead),
-                base_socket(SocketSide::East, Vec3::new(24.0, 5.0, 24.0), DoorType::Normal),
-                base_socket(SocketSide::West, Vec3::new(24.0, 5.0, 24.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(24.0, 5.0, 24.0),
+                    DoorType::Bulkhead,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(24.0, 5.0, 24.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::West,
+                    Vec3::new(24.0, 5.0, 24.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.06, 0.11, 0.06),
         },
@@ -386,9 +565,11 @@ pub fn new_utility_variants() -> Vec<RoomPrefab> {
             half_size: Vec3::new(15.0, 5.0, 15.0),
             floor_height: 0.5,
             wall_height: 10.0,
-            sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(15.0, 5.0, 15.0), DoorType::Normal),
-            ],
+            sockets: vec![base_socket(
+                SocketSide::North,
+                Vec3::new(15.0, 5.0, 15.0),
+                DoorType::Normal,
+            )],
             mesh_color: Color::srgb(0.12, 0.15, 0.16),
         },
         RoomPrefab {
@@ -398,8 +579,16 @@ pub fn new_utility_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(14.0, 5.0, 17.0), DoorType::Normal),
-                base_socket(SocketSide::West, Vec3::new(14.0, 5.0, 17.0), DoorType::Keycard),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(14.0, 5.0, 17.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::West,
+                    Vec3::new(14.0, 5.0, 17.0),
+                    DoorType::Keycard,
+                ),
             ],
             mesh_color: Color::srgb(0.13, 0.14, 0.17),
         },
@@ -410,8 +599,18 @@ pub fn new_utility_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                shifted_socket(SocketSide::North, Vec3::new(16.0, 5.0, 16.0), 4.0, DoorType::Normal),
-                shifted_socket(SocketSide::East, Vec3::new(16.0, 5.0, 16.0), 3.0, DoorType::Normal),
+                shifted_socket(
+                    SocketSide::North,
+                    Vec3::new(16.0, 5.0, 16.0),
+                    4.0,
+                    DoorType::Normal,
+                ),
+                shifted_socket(
+                    SocketSide::East,
+                    Vec3::new(16.0, 5.0, 16.0),
+                    3.0,
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.11, 0.13, 0.18),
         },
@@ -422,8 +621,16 @@ pub fn new_utility_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(13.0, 5.0, 18.0), DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(13.0, 5.0, 18.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(13.0, 5.0, 18.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(13.0, 5.0, 18.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.10, 0.16, 0.15),
         },
@@ -438,9 +645,11 @@ pub fn new_storage_variants() -> Vec<RoomPrefab> {
             half_size: Vec3::new(20.0, 5.0, 20.0),
             floor_height: 0.5,
             wall_height: 10.0,
-            sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(20.0, 5.0, 20.0), DoorType::Normal),
-            ],
+            sockets: vec![base_socket(
+                SocketSide::North,
+                Vec3::new(20.0, 5.0, 20.0),
+                DoorType::Normal,
+            )],
             mesh_color: Color::srgb(0.13, 0.13, 0.12),
         },
         RoomPrefab {
@@ -450,8 +659,16 @@ pub fn new_storage_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(22.0, 5.0, 18.0), DoorType::Normal),
-                base_socket(SocketSide::East, Vec3::new(22.0, 5.0, 18.0), DoorType::Alarm),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(22.0, 5.0, 18.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(22.0, 5.0, 18.0),
+                    DoorType::Alarm,
+                ),
             ],
             mesh_color: Color::srgb(0.14, 0.12, 0.11),
         },
@@ -462,8 +679,17 @@ pub fn new_storage_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                shifted_socket(SocketSide::North, Vec3::new(19.0, 5.0, 21.0), -3.0, DoorType::Normal),
-                base_socket(SocketSide::South, Vec3::new(19.0, 5.0, 21.0), DoorType::Normal),
+                shifted_socket(
+                    SocketSide::North,
+                    Vec3::new(19.0, 5.0, 21.0),
+                    -3.0,
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::South,
+                    Vec3::new(19.0, 5.0, 21.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.12, 0.13, 0.10),
         },
@@ -474,9 +700,21 @@ pub fn new_storage_variants() -> Vec<RoomPrefab> {
             floor_height: 0.5,
             wall_height: 10.0,
             sockets: vec![
-                base_socket(SocketSide::North, Vec3::new(21.0, 5.0, 21.0), DoorType::Normal),
-                base_socket(SocketSide::East, Vec3::new(21.0, 5.0, 21.0), DoorType::Normal),
-                base_socket(SocketSide::West, Vec3::new(21.0, 5.0, 21.0), DoorType::Normal),
+                base_socket(
+                    SocketSide::North,
+                    Vec3::new(21.0, 5.0, 21.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::East,
+                    Vec3::new(21.0, 5.0, 21.0),
+                    DoorType::Normal,
+                ),
+                base_socket(
+                    SocketSide::West,
+                    Vec3::new(21.0, 5.0, 21.0),
+                    DoorType::Normal,
+                ),
             ],
             mesh_color: Color::srgb(0.15, 0.14, 0.13),
         },
@@ -485,12 +723,12 @@ pub fn new_storage_variants() -> Vec<RoomPrefab> {
 
 pub fn variants_for_zone_type(zone_type: ZoneType) -> &'static [RoomPrefab] {
     match zone_type {
-        ZoneType::Hub => &*HUB_VARIANTS,
-        ZoneType::Corridor => &*CORRIDAL_VARIANTS,
-        ZoneType::Industrial => &*INDUSTRIAL_VARIANTS,
-        ZoneType::Objective => &*OBJECTIVE_VARIANTS,
-        ZoneType::Utility => &*UTILITY_VARIANTS,
-        ZoneType::Storage => &*STORAGE_VARIANTS,
+        ZoneType::Hub => HUB_VARIANTS.as_ref(),
+        ZoneType::Corridor => CORRIDAL_VARIANTS.as_ref(),
+        ZoneType::Industrial => INDUSTRIAL_VARIANTS.as_ref(),
+        ZoneType::Objective => OBJECTIVE_VARIANTS.as_ref(),
+        ZoneType::Utility => UTILITY_VARIANTS.as_ref(),
+        ZoneType::Storage => STORAGE_VARIANTS.as_ref(),
     }
 }
 
@@ -606,7 +844,10 @@ fn build_wall_segments_prefab(
         .iter()
         .map(|offset| {
             let coord = opening_coord_for_side(*offset, side);
-            let clamped_coord = coord.clamp(-(half_span - DOOR_EDGE_MARGIN), half_span - DOOR_EDGE_MARGIN);
+            let clamped_coord = coord.clamp(
+                -(half_span - DOOR_EDGE_MARGIN),
+                half_span - DOOR_EDGE_MARGIN,
+            );
             (
                 (clamped_coord - opening_half_width).clamp(-half_span, half_span),
                 (clamped_coord + opening_half_width).clamp(-half_span, half_span),
@@ -655,6 +896,7 @@ fn build_wall_segments_prefab(
     segments
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_wall_segment(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -694,10 +936,26 @@ fn spawn_room_walls(
     let wall_color = prefab.mesh_color.with_alpha(0.9);
 
     let side_specs = [
-        (SocketSide::East, Vec3::new(half_size.x, wall_height * 0.5, 0.0), "East"),
-        (SocketSide::West, Vec3::new(-half_size.x, wall_height * 0.5, 0.0), "West"),
-        (SocketSide::North, Vec3::new(0.0, wall_height * 0.5, half_size.z), "North"),
-        (SocketSide::South, Vec3::new(0.0, wall_height * 0.5, -half_size.z), "South"),
+        (
+            SocketSide::East,
+            Vec3::new(half_size.x, wall_height * 0.5, 0.0),
+            "East",
+        ),
+        (
+            SocketSide::West,
+            Vec3::new(-half_size.x, wall_height * 0.5, 0.0),
+            "West",
+        ),
+        (
+            SocketSide::North,
+            Vec3::new(0.0, wall_height * 0.5, half_size.z),
+            "North",
+        ),
+        (
+            SocketSide::South,
+            Vec3::new(0.0, wall_height * 0.5, -half_size.z),
+            "South",
+        ),
     ];
 
     for (side, anchor, side_name) in side_specs {
@@ -717,8 +975,12 @@ fn spawn_room_walls(
             };
 
             let wall_size = match side {
-                SocketSide::East | SocketSide::West => Vec3::new(wall_thickness, wall_height, *segment_length),
-                SocketSide::North | SocketSide::South => Vec3::new(*segment_length, wall_height, wall_thickness),
+                SocketSide::East | SocketSide::West => {
+                    Vec3::new(wall_thickness, wall_height, *segment_length)
+                }
+                SocketSide::North | SocketSide::South => {
+                    Vec3::new(*segment_length, wall_height, wall_thickness)
+                }
             };
 
             let wall_pos = room_position + rotation * (anchor + local_offset);
@@ -762,7 +1024,11 @@ pub fn spawn_room_prefab(
 
     let floor_pos = room_position + Vec3::new(0.0, -floor_height / 2.0, 0.0);
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(half_size.x * 2.0, floor_height, half_size.z * 2.0))),
+        Mesh3d(meshes.add(Cuboid::new(
+            half_size.x * 2.0,
+            floor_height,
+            half_size.z * 2.0,
+        ))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: prefab.mesh_color,
             perceptual_roughness: 0.9,
@@ -775,7 +1041,11 @@ pub fn spawn_room_prefab(
 
     let ceiling_pos = room_position + Vec3::new(0.0, wall_height + floor_height / 2.0, 0.0);
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(half_size.x * 2.0, floor_height, half_size.z * 2.0))),
+        Mesh3d(meshes.add(Cuboid::new(
+            half_size.x * 2.0,
+            floor_height,
+            half_size.z * 2.0,
+        ))),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: prefab.mesh_color.with_alpha(0.8),
             perceptual_roughness: 0.9,
@@ -785,7 +1055,15 @@ pub fn spawn_room_prefab(
         Name::new(format!("Ceiling_Room_{}_{}", prefab.name, zone.id.0)),
     ));
 
-    spawn_room_walls(commands, meshes, materials, prefab, room_position, zone.rotation, zone.id);
+    spawn_room_walls(
+        commands,
+        meshes,
+        materials,
+        prefab,
+        room_position,
+        zone.rotation,
+        zone.id,
+    );
 
     for socket in &prefab.sockets {
         let socket_pos = room_position + zone.rotation * socket.offset;
@@ -802,10 +1080,7 @@ pub fn spawn_room_prefab(
     room_entity
 }
 
-fn compute_required_sides(
-    zone: &Zone,
-    level_graph: &LevelGraph,
-) -> Vec<SocketSide> {
+fn compute_required_sides(zone: &Zone, level_graph: &LevelGraph) -> Vec<SocketSide> {
     let mut sides = Vec::new();
     for conn in level_graph.connections_of(zone.id) {
         let other_id = if conn.from_zone == zone.id {
@@ -821,11 +1096,7 @@ fn compute_required_sides(
     sides
 }
 
-fn room_edge_position(
-    zone: &Zone,
-    half_size: Vec3,
-    side: SocketSide,
-) -> Vec3 {
+fn room_edge_position(zone: &Zone, half_size: Vec3, side: SocketSide) -> Vec3 {
     let local_edge = match side {
         SocketSide::East => Vec3::new(half_size.x, 0.0, 0.0),
         SocketSide::West => Vec3::new(-half_size.x, 0.0, 0.0),
@@ -835,6 +1106,7 @@ fn room_edge_position(
     zone.position + zone.rotation * local_edge
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_connector(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -865,7 +1137,11 @@ pub fn spawn_connector(
 
     // Perpendicular to the connection direction (in the horizontal plane)
     let perp = Vec3::new(-dir_ab.z, 0.0, dir_ab.x);
-    let perp = if perp.length() < 0.01 { Vec3::X } else { perp.normalize() };
+    let perp = if perp.length() < 0.01 {
+        Vec3::X
+    } else {
+        perp.normalize()
+    };
 
     // Determine connector width (match the door opening)
     let connector_width = DOOR_OPENING_WIDTH + WALL_THICKNESS * 2.0; // 6.0 + 1.0 = 7.0
@@ -889,7 +1165,9 @@ pub fn spawn_connector(
         })),
         Transform::from_translation(floor_pos),
         NavigationObstacle,
-        ConnectorTag { connection_index: index },
+        ConnectorTag {
+            connection_index: index,
+        },
         Name::new(format!("ConnectorFloor_{}", index)),
     ));
 
@@ -914,7 +1192,8 @@ pub fn spawn_connector(
     let side_wall_size = Vec3::new(side_wall_length, side_wall_height, side_wall_thickness);
 
     // Left side (offset by perpendicular direction)
-    let mut left_pos = connector_center + perp * (connector_width / 2.0 - side_wall_thickness / 2.0);
+    let mut left_pos =
+        connector_center + perp * (connector_width / 2.0 - side_wall_thickness / 2.0);
     left_pos.y = side_wall_height / 2.0;
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::from_size(side_wall_size))),
@@ -928,7 +1207,8 @@ pub fn spawn_connector(
         Name::new(format!("ConnectorSideWall_Left_{}", index)),
     ));
 
-    let mut right_pos = connector_center - perp * (connector_width / 2.0 - side_wall_thickness / 2.0);
+    let mut right_pos =
+        connector_center - perp * (connector_width / 2.0 - side_wall_thickness / 2.0);
     right_pos.y = side_wall_height / 2.0;
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::from_size(side_wall_size))),
@@ -958,7 +1238,11 @@ fn spawn_connector_physics(
     let door_position = connection.door_position;
     let dir_ab = (zone_b.position - zone_a.position).normalize_or_zero();
     let perp = Vec3::new(-dir_ab.z, 0.0, dir_ab.x);
-    let perp = if perp.length() < 0.01 { Vec3::X } else { perp.normalize() };
+    let perp = if perp.length() < 0.01 {
+        Vec3::X
+    } else {
+        perp.normalize()
+    };
 
     let side_a = SocketSide::from_local_direction(zone_a.rotation.inverse() * dir_ab);
     let side_b = SocketSide::from_local_direction(zone_b.rotation.inverse() * (-dir_ab));
@@ -989,7 +1273,8 @@ fn spawn_connector_physics(
     let side_wall_length = connector_length;
     let side_wall_size = Vec3::new(side_wall_length, wall_height, side_wall_thickness);
 
-    let mut left_pos = connector_center + perp * (connector_width / 2.0 + side_wall_thickness / 2.0);
+    let mut left_pos =
+        connector_center + perp * (connector_width / 2.0 + side_wall_thickness / 2.0);
     left_pos.y = wall_height / 2.0;
     commands.spawn((
         RigidBody::Static,
@@ -1001,7 +1286,8 @@ fn spawn_connector_physics(
         Name::new(format!("Physics_ConnectorWall_L_{}", index)),
     ));
 
-    let mut right_pos = connector_center - perp * (connector_width / 2.0 + side_wall_thickness / 2.0);
+    let mut right_pos =
+        connector_center - perp * (connector_width / 2.0 + side_wall_thickness / 2.0);
     right_pos.y = wall_height / 2.0;
     commands.spawn((
         RigidBody::Static,
@@ -1034,13 +1320,7 @@ pub fn build_prefab_level(
     for zone in level_graph.zones.values() {
         let required_sides = compute_required_sides(zone, level_graph);
         let prefab = select_variant(zone.zone_type, &required_sides, &mut rng);
-        spawn_room_prefab(
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            &prefab,
-            zone,
-        );
+        spawn_room_prefab(&mut commands, &mut meshes, &mut materials, &prefab, zone);
     }
 
     spawn_all_connectors(
@@ -1085,24 +1365,10 @@ fn spawn_all_connectors(
         };
 
         spawn_connector(
-            commands,
-            meshes,
-            materials,
-            zone_a,
-            zone_b,
-            prefab_a,
-            prefab_b,
-            connection,
-            index,
+            commands, meshes, materials, zone_a, zone_b, prefab_a, prefab_b, connection, index,
         );
         spawn_connector_physics(
-            commands,
-            zone_a,
-            zone_b,
-            prefab_a,
-            prefab_b,
-            connection,
-            index,
+            commands, zone_a, zone_b, prefab_a, prefab_b, connection, index,
         );
     }
 }
@@ -1131,10 +1397,14 @@ mod tests {
     fn objective_variants_have_bulkhead_socket() {
         let variants = new_objective_variants();
         for v in &variants {
-            let has_bulkhead = v.sockets.iter().any(|s| {
-                s.side == SocketSide::South && s.door_type == DoorType::Bulkhead
-            });
-            assert!(has_bulkhead, "Objective room should have a South bulkhead socket");
+            let has_bulkhead = v
+                .sockets
+                .iter()
+                .any(|s| s.side == SocketSide::South && s.door_type == DoorType::Bulkhead);
+            assert!(
+                has_bulkhead,
+                "Objective room should have a South bulkhead socket"
+            );
         }
     }
 
@@ -1153,7 +1423,11 @@ mod tests {
         for socket in &prefab.sockets {
             let is_at_edge = socket.offset.x.abs() >= prefab.half_size.x - 0.01
                 || socket.offset.z.abs() >= prefab.half_size.z - 0.01;
-            assert!(is_at_edge, "Socket should be at room edge, got offset {:?}", socket.offset);
+            assert!(
+                is_at_edge,
+                "Socket should be at room edge, got offset {:?}",
+                socket.offset
+            );
         }
     }
 
@@ -1161,10 +1435,21 @@ mod tests {
     fn compute_required_sides_for_single_connection() {
         let mut graph = LevelGraph::new(LevelConfig::default());
         let zone_a = Zone::new(ZoneId(0), ZoneType::Hub, Vec3::ZERO, Quat::IDENTITY);
-        let zone_b = Zone::new(ZoneId(1), ZoneType::Corridor, Vec3::new(35.0, 0.0, 0.0), Quat::IDENTITY);
+        let zone_b = Zone::new(
+            ZoneId(1),
+            ZoneType::Corridor,
+            Vec3::new(35.0, 0.0, 0.0),
+            Quat::IDENTITY,
+        );
         graph.add_zone(zone_a);
         graph.add_zone(zone_b);
-        graph.add_connection(ZoneId(0), ZoneId(1), Vec3::new(17.5, 0.0, 0.0), Quat::IDENTITY, DoorType::Normal);
+        graph.add_connection(
+            ZoneId(0),
+            ZoneId(1),
+            Vec3::new(17.5, 0.0, 0.0),
+            Quat::IDENTITY,
+            DoorType::Normal,
+        );
 
         let zone = graph.get_zone(ZoneId(0)).unwrap();
         let sides = compute_required_sides(zone, &graph);

@@ -1,8 +1,8 @@
 use bevy::input::mouse::MouseMotion;
 use bevy::math::EulerRot;
 use bevy::prelude::{
-    App, ButtonInput, Camera, Camera3d, Commands, Component, Entity, KeyCode, MouseButton, Name,
-    MessageReader, Plugin, Query, Res, Startup, Time, Transform, Update, Vec3, With,
+    App, ButtonInput, Camera, Camera3d, Commands, Component, Entity, KeyCode, MessageReader,
+    MouseButton, Name, Plugin, Query, Res, Startup, Time, Transform, Update, Vec3, With,
 };
 use bevy_inspector_egui::{bevy_egui::EguiPlugin, quick::WorldInspectorPlugin};
 use shared::render::{add_npc_visuals, add_player_visuals};

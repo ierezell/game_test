@@ -31,7 +31,10 @@ pub fn add_player_visuals(
 
 pub fn add_npc_visuals(
     trigger: On<Add, CharacterMarker>,
-    npc_query: Query<(Entity, &Position), (With<CharacterMarker>, Without<PlayerId>, Without<Mesh3d>)>,
+    npc_query: Query<
+        (Entity, &Position),
+        (With<CharacterMarker>, Without<PlayerId>, Without<Mesh3d>),
+    >,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut commands: Commands,

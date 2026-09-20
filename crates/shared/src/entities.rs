@@ -27,7 +27,7 @@ impl Default for PlayerPhysicsBundle {
             friction: Friction::new(0.5),
             linear_damping: LinearDamping(2.0),
             angular_damping: AngularDamping(8.0),
-            locked_axes: LockedAxes::ROTATION_LOCKED.unlock_rotation_y(),
+            locked_axes: LockedAxes::ROTATION_LOCKED,
         }
     }
 }

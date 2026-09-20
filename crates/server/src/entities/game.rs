@@ -62,12 +62,7 @@ pub(super) fn generate_and_build_level(
         commands.insert_resource(SleeperConfig::default());
 
         if let (Some(mesh_assets), Some(mat_assets)) = (meshes, materials) {
-            build_prefab_level(
-                commands.reborrow(),
-                mesh_assets,
-                mat_assets,
-                &level_graph,
-            );
+            build_prefab_level(commands.reborrow(), mesh_assets, mat_assets, &level_graph);
         }
 
         build_procedural_runtime_content(&mut commands, &level_graph);

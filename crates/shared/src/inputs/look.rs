@@ -4,7 +4,7 @@ use bevy_enhanced_input::action::Action;
 use bevy_enhanced_input::prelude::Actions;
 
 use crate::{
-    inputs::{PITCH_LIMIT_RADIANS, Look, PlayerActions},
+    inputs::{Look, PITCH_LIMIT_RADIANS, PlayerActions},
     protocol::{CharacterMarker, PlayerId},
 };
 
@@ -39,11 +39,7 @@ pub fn apply_look_delta(current_rotation: Quat, mouse_delta: Vec2) -> Quat {
 ///    — resolved via a fallback query on the entity itself.
 pub fn update_player_rotation_from_input(
     mut player_query: Query<
-        (
-            Option<&Actions<PlayerActions>>,
-            Entity,
-            &mut Rotation,
-        ),
+        (Option<&Actions<PlayerActions>>, Entity, &mut Rotation),
         (With<PlayerActions>, With<CharacterMarker>, With<PlayerId>),
     >,
     look_query: Query<&Action<Look>>,
@@ -142,11 +138,11 @@ mod tests {
     fn production_look_binding_consumes_mouse_motion() {
         use crate::inputs::{Look, PlayerActions, get_player_actions};
         use bevy::ecs::message::Messages;
-        use bevy::input::mouse::MouseMotion;
         use bevy::input::InputPlugin;
+        use bevy::input::mouse::MouseMotion;
         use bevy::prelude::{App, MinimalPlugins, Vec2};
-        use bevy_enhanced_input::prelude::*;
         use bevy_enhanced_input::action::relationship::Actions;
+        use bevy_enhanced_input::prelude::*;
 
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
@@ -155,10 +151,7 @@ mod tests {
             .add_input_context::<PlayerActions>()
             .finish();
 
-        let entity = app
-            .world_mut()
-            .spawn(get_player_actions())
-            .id();
+        let entity = app.world_mut().spawn(get_player_actions()).id();
 
         app.world_mut()
             .resource_mut::<Messages<MouseMotion>>()
